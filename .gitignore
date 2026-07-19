@@ -1,0 +1,10 @@
+# python
+__pycache__/
+*.pyc
+# local deploy state (mounted into the container; not source)
+.env
+models/
+vllm-cache/
+# editor / os
+*.swp
+.DS_Store

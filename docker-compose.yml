@@ -1,0 +1,108 @@
+# Example serve for Qwen3.6-27B-FP8 on dual R9700 (gfx1201), managed by docker compose.
+# Launch from this directory:
+#     docker compose up -d          # start (detached); poll `docker compose logs -f`
+#     docker compose down           # stop + remove
+#     docker compose restart        # restart in place
+#
+# The image ENTRYPOINT is radiance_entrypoint.sh (RADIANCE banner + env prechecks, then
+# `exec vllm serve "$@"`); `command:` below supplies the args.
+# Tunable knobs are ${VAR:-default}: override via the shell or a .env file WITHOUT editing
+# this file, e.g.:  MAX_NUM_SEQS=16 MAX_MODEL_LEN=32768 docker compose up -d
+services:
+  vllm:
+    image: ${IMAGE:-vllm-radiance:0.2.3}
+    container_name: vllm-radiance
+    restart: unless-stopped
+    command:
+      - /models/Qwen/Qwen3.6-27B-FP8
+      - --served-model-name=qwen3.6-27b
+      - --quantization=fp8
+      - --tensor-parallel-size=${TP:-2}
+      # --- defaults: 8 concurrent seqs, 200K ctx/seq ---
+      - --max-num-seqs=${MAX_NUM_SEQS:-8}
+      - --max-model-len=${MAX_MODEL_LEN:-200000}
+      - --gpu-memory-utilization=${GPU_UTIL:-0.97}
+      # chunk size that works well at long context (chunked prefill). MTP also forces
+      # max_num_scheduled_tokens=2048, so this just makes it explicit.
+      - --max-num-batched-tokens=${MAX_NUM_BATCHED_TOKENS:-2048}
+      - --kv-cache-dtype=fp8
+      - --attention-backend=ROCM_AITER_UNIFIED_ATTN
+      # MTP self-speculation. nspec=8 default: RADIANCE dynamic-draft caps the actual MTP depth
+      # by confidence, so 8 is the ceiling not a fixed cost. nspec=16 is an option for more verbatim
+      # upside (editing/RAG) but needs GPU_UTIL=0.90 to stay safe at 8 concurrent sequences (else CUDA OOM).
+      - '--speculative-config={"method":"mtp","num_speculative_tokens":${MTP_NSPEC:-8},"attention_backend":"ROCM_AITER_UNIFIED_ATTN","disable_padded_drafter_batch":true}'
+      # disable_padded_drafter_batch (above) is incompatible with async scheduling; vLLM would
+      # otherwise auto-enable async then disable it with a runtime warning. Turn it off explicitly.
+      - --no-async-scheduling
+      # agentic serving: XML tool calls + qwen3 reasoning + the fixed chat template
+      - --enable-auto-tool-choice
+      - --tool-call-parser=qwen3_coder
+      - --reasoning-parser=qwen3
+      - --chat-template=/work/qwen3.6-enhanced.jinja
+      - --language-model-only
+      - --trust-remote-code
+      - --host=0.0.0.0
+      - --port=8000
+    environment:
+      # GPU visibility: select your two R9700s by HIP index (exclude any iGPU). Never CUDA_VISIBLE_DEVICES.
+      HIP_VISIBLE_DEVICES: "0,1"
+      # AITER: unified attention ON, every other AITER path OFF (LINEAR=1 crashes on gfx1201).
+      VLLM_ROCM_USE_AITER: "1"
+      VLLM_ROCM_USE_AITER_UNIFIED_ATTENTION: "1"
+      VLLM_ROCM_USE_AITER_MHA: "0"
+      VLLM_ROCM_USE_AITER_MLA: "0"
+      VLLM_ROCM_USE_AITER_MOE: "0"
+      VLLM_ROCM_USE_AITER_LINEAR: "0"
+      VLLM_ROCM_USE_AITER_FP8BMM: "0"
+      VLLM_ROCM_USE_AITER_FP4BMM: "0"
+      VLLM_ROCM_USE_AITER_RMSNORM: "0"
+      # radiance rms+group-fp8-quant fusion coverage fix (also baked default 1; explicit here).
+      RADIANCE_FUSE_RMS_QUANT: "1"
+      # fp8 all-reduce payload for large (prefill) messages; baked ON. Not bit-identical to RCCL;
+      # set "0" for the exact bf16 all-reduce.
+      RADIANCE_AR_QUANT: "1"
+      # optional NUMA pinning of the vLLM fleet to the GPU-local node(s). Off by default (no-op on
+      # single-node hosts). Set "auto" to detect, or explicit nodes (e.g. "0" / "0,1"). Requires the
+      # SYS_NICE cap above. Equivalent to passing --numa-bind in command:.
+      RADIANCE_NUMA_BIND: "${RADIANCE_NUMA_BIND:-}"
+      # RADIANCE dynamic drafting (baked ON in the image; explicit here for visibility/overridability).
+      # Per-request MTP draft-depth control: a per-slot confidence gate picks the draft depth and takes
+      # free-win n-grams; the schedule caps serial MTP forwards by batch size. Set DYNAMIC_DRAFT="0" to
+      # disable (byte-identical stock MTP). The two knobs below are the only tunables.
+      RADIANCE_DYNAMIC_DRAFT: "1"
+      RADIANCE_DRAFT_SCHEDULE: "1:8,2:7,4:6,8:5,16:4"
+      RADIANCE_DRAFT_TAU: "0.35"
+      NCCL_PROTO: Simple
+      # throttle inductor compile workers to limit peak compile-time RAM (defensive).
+      TORCHINDUCTOR_COMPILE_THREADS: "4"
+      # persistent compile caches -> fast warm restarts (skips the ~20 min cold autotune). Mounted below.
+      VLLM_CACHE_ROOT: /cache/vllm
+      TORCHINDUCTOR_CACHE_DIR: /cache/inductor
+      TRITON_CACHE_DIR: /cache/triton
+      AITER_ROOT_DIR: /cache/aiter
+      TRITON_CACHE_AUTOTUNING: "1"
+    devices:
+      - /dev/kfd:/dev/kfd
+      - /dev/dri:/dev/dri
+    group_add:                # GPU access: set to YOUR host's GIDs:
+      - "RENDER_GID"          #   getent group render | cut -d: -f3
+      - "VIDEO_GID"           #   getent group video  | cut -d: -f3
+    cap_add:
+      - SYS_PTRACE            # py-spy
+      - SYS_NICE              # numactl mempolicy syscalls (only needed if you enable RADIANCE_NUMA_BIND)
+    security_opt:
+      - seccomp=unconfined
+    ipc: host
+    ports:
+      - "8000:8000"
+    volumes:
+      # override any of these via the shell or a .env file (e.g. MODELS=/data/models)
+      - ${MODELS:-./models}:/models:ro           # holds your model at Qwen/Qwen3.6-27B-FP8 (matches command: below)
+      - ${VLLM_CACHE:-./vllm-cache}:/cache        # torch.compile / aiter JIT cache, persist across restarts
+      - ${WORK:-.}:/work:ro                        # supplies /work/qwen3.6-enhanced.jinja (this repo directory)
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 60
+      start_period: 1800s     # cold FLA/GDN autotune can take ~20 min on an empty cache
