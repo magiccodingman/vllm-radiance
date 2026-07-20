@@ -2,7 +2,7 @@
 
 vLLM inference server for the AMD Radeon AI PRO R9700 (gfx1201 / RDNA4). Bundles a working ROCm + PyTorch + Triton + AITER + vLLM stack with the RDNA4 patches and custom kernels needed to run vLLM on this card, so you don't have to build the stack yourself.
 
-> **Status: super early dev (v0.2.3). Experimental.**
+> **Status: super early dev (v0.2.7). Experimental.**
 > This is a very early build. The performance numbers here come from one exact configuration: Qwen3.6-27B-FP8, fp8 KV cache, two R9700 GPUs (tensor parallel); bf16 / `auto` KV also works (see below). Other models, non-FP8 weights, single or 3+ GPUs, and non-R9700 hardware are untested. Expect rough edges, breaking changes between versions, and things that just don't work yet. Not production hardened. Use at your own risk.
 
 ## Tested so far
@@ -44,6 +44,7 @@ vLLM's ROCm builds target datacenter cards (MI300 / CDNA). RDNA4 workstation car
 - Tool-parser streaming vs non-streaming consistency.
 - `from_json` Jinja filter for tool-calling chat templates.
 - MTP drafter unpadding, so `--speculative-config`'s `disable_padded_drafter_batch:true` works (the single-stream MTP speed path).
+- MTP drafter multimodal mask alignment, so speculative decoding works with image inputs (otherwise the vision-placeholder mask outlives the compacted draft batch and the engine crashes).
 
 ## Custom kernels and tuning (on by default, env-gated)
 
@@ -51,6 +52,8 @@ vLLM's ROCm builds target datacenter cards (MI300 / CDNA). RDNA4 workstation car
 |---|---|---|
 | `RADIANCE_PRESHUFFLE` | `1` | preshuffled AITER FP8 blockscale GEMM |
 | `RADIANCE_ATTN_TUNE` | `1` | RDNA4 attention tiling, gain grows with context length |
+| `RADIANCE_GDN_WMMA` | `1` | for hybrid gated-delta-net (linear-attention) models, runs the KKt gram on the fp16 matrix cores (WMMA) instead of an fp32 scalar path. RDNA4 has no fp32 matrix-core path, so the stock kernel is both slow to run and very slow to compile (dominates cold start); the WMMA path is far faster on both. fp16 matches the precision of the TF32 path these models run on NVIDIA. A no-op for pure-transformer models. |
+| `RADIANCE_VIT_FLASH` | `1` | native head_dim-72 flash-attention for the multimodal vision encoder (ViT). On RDNA4 the vendor flash kernels (CK / AITER) have no device code and torch SDPA runs a non-tiled path; this kernel handles the vision tower's odd head dim without padding and runs ~1.5-2x faster. Only used when serving a vision model; no effect for text-only. Per-image / windowed attention is preserved. |
 | `RADIANCE_FAST_REDUCE` | `1` | custom PCIe peer-to-peer all-reduce for TP=2, byte-identical to RCCL, falls back to RCCL if P2P is unavailable |
 | `RADIANCE_AR_MAX_KB` | `32768` | size gate for the P2P all-reduce, in KB (32768 = 32 MB); messages above it use RCCL |
 | `RADIANCE_AR_QUANT` | `1` | quantize the all-reduce payload to block-scaled fp8 (e4m3) for large messages, halving the PCIe bytes. Speeds up prefill; leaves decode untouched. NOT bit-identical to RCCL (it is quantized). On by default; set `0` for the exact bf16 all-reduce. |
@@ -79,8 +82,9 @@ docker run --rm -it \
   --device /dev/kfd --device /dev/dri \
   --group-add "$(getent group render | cut -d: -f3)" \
   --group-add "$(getent group video  | cut -d: -f3)" \
-  --ipc host --cap-add SYS_PTRACE --security-opt seccomp=unconfined \
+  --shm-size 4g --cap-add SYS_PTRACE --security-opt seccomp=unconfined \
   -v /path/to/models:/models:ro \
+  -v "$PWD/vllm-cache:/cache" \
   -p 8000:8000 \
   -e HIP_VISIBLE_DEVICES=0,1 \
   -e VLLM_ROCM_USE_AITER=1 -e VLLM_ROCM_USE_AITER_UNIFIED_ATTENTION=1 \
@@ -90,12 +94,17 @@ docker run --rm -it \
   -e NCCL_PROTO=Simple \
   -e RADIANCE_PRESHUFFLE=1 \
   -e RADIANCE_ATTN_TUNE=1 \
+  -e RADIANCE_GDN_WMMA=1 \
+  -e RADIANCE_VIT_FLASH=1 \
   -e RADIANCE_FAST_REDUCE=1 \
   -e RADIANCE_AR_MAX_KB=32768 \
   -e RADIANCE_AR_QUANT=1 \
   -e RADIANCE_FUSE_RMS_QUANT=1 \
   -e RADIANCE_DYNAMIC_DRAFT=1 \
-  stilldeadcode/vllm-radiance:0.2.3 \
+  -e VLLM_CACHE_ROOT=/cache/vllm -e TORCHINDUCTOR_CACHE_DIR=/cache/inductor \
+  -e TRITON_CACHE_DIR=/cache/triton -e AITER_ROOT_DIR=/cache/aiter \
+  -e TRITON_CACHE_AUTOTUNING=1 \
+  stilldeadcode/vllm-radiance:0.2.7 \
     /models/YourOrg/Your-Model-FP8 \
     --served-model-name my-model \
     --quantization fp8 --kv-cache-dtype fp8 \
@@ -120,7 +129,7 @@ curl http://localhost:8000/v1/chat/completions \
 ```yaml
 services:
   vllm:
-    image: stilldeadcode/vllm-radiance:0.2.3
+    image: stilldeadcode/vllm-radiance:0.2.7
     restart: unless-stopped
     command:
       - /models/YourOrg/Your-Model-FP8
@@ -148,24 +157,33 @@ services:
       NCCL_PROTO: Simple
       RADIANCE_PRESHUFFLE: "1"
       RADIANCE_ATTN_TUNE: "1"
+      RADIANCE_GDN_WMMA: "1"
+      RADIANCE_VIT_FLASH: "1"
       RADIANCE_FAST_REDUCE: "1"
       RADIANCE_AR_MAX_KB: "32768"
       RADIANCE_AR_QUANT: "1"
       RADIANCE_FUSE_RMS_QUANT: "1"
       RADIANCE_DYNAMIC_DRAFT: "1"
+      # point the torch.compile / Triton / AITER caches at the mounted /cache so they persist
+      # across restarts (without these the ./vllm-cache mount does nothing and every start re-autotunes)
+      VLLM_CACHE_ROOT: /cache/vllm
+      TORCHINDUCTOR_CACHE_DIR: /cache/inductor
+      TRITON_CACHE_DIR: /cache/triton
+      AITER_ROOT_DIR: /cache/aiter
+      TRITON_CACHE_AUTOTUNING: "1"
     devices:
       - /dev/kfd:/dev/kfd
       - /dev/dri:/dev/dri
     group_add:
       - "RENDER_GID"   # getent group render | cut -d: -f3
       - "VIDEO_GID"    # getent group video  | cut -d: -f3
-    ipc: host
+    shm_size: "4gb"        # vLLM's TP workers share tensors via /dev/shm; the 64 MB default is too small
     cap_add: [SYS_PTRACE]
     security_opt: ["seccomp=unconfined"]
     ports: ["8000:8000"]
     volumes:
       - /path/to/models:/models:ro
-      - ./vllm-cache:/cache
+      - ./vllm-cache:/cache   # persists the caches pointed at /cache above; first start is slow, restarts fast
 ```
 
 ## First run is slow
@@ -177,6 +195,7 @@ With an empty cache the first start spends about 15 to 20 minutes autotuning Tri
   -e VLLM_CACHE_ROOT=/cache/vllm \
   -e TORCHINDUCTOR_CACHE_DIR=/cache/inductor \
   -e TRITON_CACHE_DIR=/cache/triton \
+  -e AITER_ROOT_DIR=/cache/aiter \
   -e TRITON_CACHE_AUTOTUNING=1
 ```
 

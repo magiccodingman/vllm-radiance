@@ -5,7 +5,7 @@ ROCm + PyTorch + Triton + AITER + vLLM stack with the RDNA4 patches and custom k
 this card, plus RDNA4-tuned GEMM / attention / all-reduce paths and a dynamic MTP draft controller, so you
 don't have to build the stack yourself.
 
-> **Status: super early dev (v0.2.3). Experimental.** Everything here was built and measured on one exact
+> **Status: super early dev (v0.2.7). Experimental.** Everything here was built and measured on one exact
 > setup: Qwen3.6-27B-FP8, fp8 (or bf16/`auto`) KV cache, two R9700 GPUs (tensor parallel). Other models,
 > non-FP8 weights, single or 3+ GPUs, and non-R9700 hardware are untested. Expect rough edges and breaking
 > changes. Not production hardened. Use at your own risk.
@@ -19,7 +19,7 @@ reference, tested configuration, and stack versions.
 Everything the build needs is in this directory (a flat Docker build context):
 
 ```bash
-docker build -t vllm-radiance:0.2.3 .
+docker build -t vllm-radiance:0.2.7 .
 ```
 
 The build pins a working ROCm/PyTorch/Triton/vLLM combination, builds AITER from source for gfx1201, applies
@@ -62,10 +62,16 @@ editing it. The full knob list (kernel toggles, draft controller, AITER routing,
 ## What's inside
 
 - **Correctness patches** to make vLLM run on gfx1201 (GPU enumeration, AITER enablement, native sampler
-  fallback, MTP drafter unpad, tool-parser + `from_json` filter). Always on.
+  fallback, MTP drafter unpad + multimodal draft-mask alignment, tool-parser + `from_json` filter). Always on.
 - **Tuned kernels** (env-gated, on by default): preshuffled FP8 blockscale GEMM, RDNA4 unified-attention
-  tiling (fp8 + bf16/`auto` KV), fused RMSNorm+quant, and a P2P one-shot all-reduce for TP=2 (with an optional
-  fp8-quantized payload for large prefill messages, `RADIANCE_AR_QUANT`).
+  tiling (fp8 + bf16/`auto` KV), fused RMSNorm+quant, a fp16 matrix-core (WMMA) path for the gated-delta-net
+  gram of hybrid linear-attention models (`RADIANCE_GDN_WMMA`, big prefill + cold-start win vs the stock fp32
+  scalar path on RDNA4), and a P2P one-shot all-reduce for TP=2 (with an optional fp8-quantized payload for
+  large prefill messages, `RADIANCE_AR_QUANT`).
+- **Multimodal ViT attention** (`RADIANCE_VIT_FLASH`, on by default): a native head_dim-72 flash-attention
+  kernel for the vision encoder — the vendor flash kernels (CK / AITER) have no gfx1201 device code, so this
+  is ~1.5-2x faster than the SDPA fallback while preserving per-image / windowed attention. Only active when
+  serving a vision model.
 - **Dynamic MTP drafting** (`RADIANCE_DYNAMIC_DRAFT`): a per-request, per-slot confidence gate for speculative
   draft depth (draft while cumulative confidence holds, take free-win verbatim n-grams, else verify), with a
   batch-size schedule that caps serial forwards at concurrency. Tune with `RADIANCE_DRAFT_SCHEDULE` /

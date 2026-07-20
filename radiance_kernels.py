@@ -161,6 +161,11 @@ def install_all():
         radiance_draft.install()                 # RADIANCE_DYNAMIC_DRAFT (default off)
     except Exception as e:
         sys.stderr.write(f"[radiance] radiance_draft install failed: {e!r}\n")
+    try:
+        import radiance_vit_attn
+        radiance_vit_attn.install()              # RADIANCE_VIT_FLASH (default on, gfx12x)
+    except Exception as e:
+        sys.stderr.write(f"[radiance] radiance_vit_attn install failed: {e!r}\n")
 
 
 def block_scaled_mm(kernel, A, B, As, Bs):

@@ -10,7 +10,7 @@
 # this file, e.g.:  MAX_NUM_SEQS=16 MAX_MODEL_LEN=32768 docker compose up -d
 services:
   vllm:
-    image: ${IMAGE:-vllm-radiance:0.2.3}
+    image: ${IMAGE:-vllm-radiance:0.2.7}
     container_name: vllm-radiance
     restart: unless-stopped
     command:
@@ -58,6 +58,12 @@ services:
       VLLM_ROCM_USE_AITER_RMSNORM: "0"
       # radiance rms+group-fp8-quant fusion coverage fix (also baked default 1; explicit here).
       RADIANCE_FUSE_RMS_QUANT: "1"
+      # gated-delta-net KKt gram on the fp16 matrix cores (WMMA) instead of the fp32 scalar path;
+      # much faster prefill + cold start on RDNA4. Baked default 1; set "0" for the stock fp32 dot.
+      RADIANCE_GDN_WMMA: "1"
+      # native head_dim-72 flash attention for the vision encoder (multimodal). ~1.5-2x vs SDPA on
+      # RDNA4; only used when serving vision (no effect under --language-model-only). Default 1.
+      RADIANCE_VIT_FLASH: "1"
       # fp8 all-reduce payload for large (prefill) messages; baked ON. Not bit-identical to RCCL;
       # set "0" for the exact bf16 all-reduce.
       RADIANCE_AR_QUANT: "1"

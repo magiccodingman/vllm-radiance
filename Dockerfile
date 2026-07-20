@@ -165,6 +165,30 @@ RUN python /opt/patch_radiance_dispatch.py
 COPY patch_unified_attention_bf16.py /opt/patch_unified_attention_bf16.py
 RUN python /opt/patch_unified_attention_bf16.py
 
+# --- gfx1201 gated-delta-net fp16 matrix-core (WMMA) dots ---
+# The linear-attention (gated delta net) prefill runs two fp32-operand tl.dots that RDNA4 (no fp32
+# matrix-core path) lowers to a scalar/vector loop -- slow to run and very slow to compile (some
+# autotune configs take minutes, dominating cold start). (1) the beta-weighted K*K^T gram
+# (chunk_scaled_dot_kkt: keys bf16, beta fp32) and (2) the 16 block-inverse dots in the 64x64
+# triangular solve (solve_tril, input_precision="ieee"). Casting the operands to fp16 selects the WMMA
+# cores; operands are the L2-normalized-key gram and its unit-diagonal inverse (O(1), fp16-safe) and
+# the solve result is stored bf16 anyway. Both gated by RADIANCE_GDN_WMMA (default 1; 0 = stock fp32).
+COPY patch_gdn_wmma.py /opt/patch_gdn_wmma.py
+RUN python /opt/patch_gdn_wmma.py \
+    && python -c "import ast; ast.parse(open('${SP}/vllm/model_executor/layers/fla/ops/chunk_scaled_dot_kkt.py').read()); ast.parse(open('${SP}/vllm/model_executor/layers/fla/ops/solve_tril.py').read()); print('radiance gdn wmma patch parses OK')"
+ENV RADIANCE_GDN_WMMA=1
+
+# --- gfx1201 vision-encoder (ViT) flash attention (native head_dim 72) ---
+# On RDNA4 the CK/aiter flash kernels have no gfx12x device code and torch SDPA runs a non-tiled path
+# at a fraction of peak. radiance_vit_attn provides a dense non-causal bf16 flash kernel that handles
+# the vision tower's head_dim 72 without padding waste (a 64+16 split) and runs ~1.5-2x faster. It is
+# installed per-process by install_all() as a drop-in for the ViT SDPA per-segment apply; per-image /
+# windowed (block-diagonal) attention is preserved by the caller's cu_seqlens chunking. Only bf16/fp16
+# head_dim-72 MHA is handled, else the original SDPA path runs. Gated RADIANCE_VIT_FLASH (default on).
+COPY radiance_vit_attn.py ${SP}/
+RUN python -c "import ast; ast.parse(open('${SP}/radiance_vit_attn.py').read()); print('radiance vit attn module parses OK')"
+ENV RADIANCE_VIT_FLASH=1
+
 # Preshuffle (AITER gemm_a8w8_blockscale_preshuffle) + tuned attention config, both e2e-validated.
 #  - patch_preshuffle.py: BlockScaledMMLinearKernel.apply_weights output_shape fix (the shuffle
 #    rewrites weight.shape[0] to N//16). radiance_kernels.py (above) carries the preshuffle
@@ -237,6 +261,17 @@ COPY patch_unpad.py /opt/patch_unpad.py
 RUN python /opt/patch_unpad.py \
     && python -c "import ast; ast.parse(open('${SP}/vllm/v1/attention/backend.py').read()); print('radiance unpad patch parses OK')"
 
+# --- radiance MTP + multimodal mask fix (align placeholder mask with the compacted drafter batch) ---
+# The MTP drafter embeds input_ids[:num_tokens] and overwrites image-placeholder positions using a
+# mask sized to the target's scheduled-token count. Under disable_padded_drafter_batch the drafter
+# tokens are gathered by token_indices (rejected tokens dropped), so the mask outlives the draft
+# buffer -> IndexError in _merge_multimodal_embeddings -> EngineDeadError on any image request that
+# reaches the drafter. Re-indexes the mask by the same token_indices (placeholders are prompt tokens,
+# never rejected, so they survive 1:1). Pure correctness fix, always on. Enables multimodal + MTP.
+COPY patch_mtp_mm_mask.py /opt/patch_mtp_mm_mask.py
+RUN python /opt/patch_mtp_mm_mask.py \
+    && python -c "import ast; ast.parse(open('${SP}/vllm/v1/worker/gpu_model_runner.py').read()); print('radiance mtp mm-mask patch parses OK')"
+
 # --- radiance tool-parser truncation fix (vLLM #47137: streaming vs non-streaming divergence) ---
 # On a tool call truncated by max_tokens/stop INSIDE the <tool_call> opener, non-streaming leaked
 # the raw markup as assistant content while streaming dropped it; truncated mid-parameter,
@@ -292,7 +327,7 @@ RUN chmod +x /opt/vllm/bin/rocm-bandwidth-test /opt/vllm/bin/radiance_p2p_probe
 # in the BACKGROUND. Every check is non-fatal. The banner runs once in the launcher process, not
 # per TP worker. RADIANCE_VERSION is the source of truth for the version string the banner prints
 # (bump via --build-arg RADIANCE_VERSION=...).
-ARG RADIANCE_VERSION=0.2.3
+ARG RADIANCE_VERSION=0.2.7
 ENV RADIANCE_VERSION=${RADIANCE_VERSION}
 COPY radiance_preamble.py /opt/radiance_preamble.py
 COPY radiance_entrypoint.sh /opt/radiance_entrypoint.sh

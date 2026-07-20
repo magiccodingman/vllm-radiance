@@ -7,7 +7,7 @@
 # throwaway container:
 #
 #     make                 # build every kernel whose source is present, inside the image
-#     make IMAGE=vllm-radiance:0.2.0
+#     make IMAGE=vllm-radiance:0.2.7
 #     make radiance_ar_ext.so
 #     make verify          # import-check the built .so files inside the image
 #     make clean
@@ -21,7 +21,7 @@
 # radiance_p2p_probe is built only if its .cpp source is present.
 
 GFX_ARCH ?= gfx1201
-IMAGE    ?= vllm-radiance:0.2.0
+IMAGE    ?= vllm-radiance:0.2.7
 PYTHON   ?= python3
 
 # RUN takes a single shell-script string as its last argument. Default: run it inside the image

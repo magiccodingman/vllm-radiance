@@ -125,6 +125,8 @@ def section_opts():
     for name, dflt, desc in [
         ("RADIANCE_PRESHUFFLE",     "0", "preshuffled AITER FP8 blockscale GEMM"),
         ("RADIANCE_ATTN_TUNE",      "0", "RDNA4 unified-attention tiling (fp8 + bf16/auto KV)"),
+        ("RADIANCE_GDN_WMMA",       "1", "gated-delta-net KKt gram + triangular solve on the fp16 matrix cores (vs fp32 scalar path)"),
+        ("RADIANCE_VIT_FLASH",      "1", "native head_dim-72 flash attention for the vision encoder (multimodal)"),
         ("RADIANCE_FUSE_RMS_QUANT", "1", "fold group-FP8 quant into the RMSNorm epilogue"),
         ("RADIANCE_FAST_REDUCE",    "1", "P2P one-shot all-reduce for TP=2, byte-identical to RCCL"),
         ("RADIANCE_AR_QUANT",       "1", "fp8 all-reduce payload for large messages (on; not RCCL-identical)"),
@@ -147,7 +149,7 @@ def section_opts():
 
     print("\n  " + dim("all-reduce size gates (when RADIANCE_FAST_REDUCE=1):"))
     ar = [("RADIANCE_AR_MAX_KB", "32768"), ("RADIANCE_AR_QUANT_MIN_KB", "128")]
-    print("        " + "  ".join(f"{n[len('RADIANCE_'):]}={c(ACCENT, _val(n, d))}" for n, d in ar))
+    print("        " + "  ".join(f"{n}={c(ACCENT, _val(n, d))}" for n, d in ar))
 
     print("\n  " + dim("NUMA binding (RADIANCE_NUMA_BIND / --numa-bind):"))
     active = os.environ.get("RADIANCE_NUMA_ACTIVE", "")
