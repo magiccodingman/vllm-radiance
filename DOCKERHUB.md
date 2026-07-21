@@ -2,7 +2,7 @@
 
 vLLM inference server for the AMD Radeon AI PRO R9700 (gfx1201 / RDNA4). Bundles a working ROCm + PyTorch + Triton + AITER + vLLM stack with the RDNA4 patches and custom kernels needed to run vLLM on this card, so you don't have to build the stack yourself.
 
-> **Status: super early dev (v0.2.7). Experimental.**
+> **Status: super early dev (v0.2.8). Experimental.**
 > This is a very early build. The performance numbers here come from one exact configuration: Qwen3.6-27B-FP8, fp8 KV cache, two R9700 GPUs (tensor parallel); bf16 / `auto` KV also works (see below). Other models, non-FP8 weights, single or 3+ GPUs, and non-R9700 hardware are untested. Expect rough edges, breaking changes between versions, and things that just don't work yet. Not production hardened. Use at your own risk.
 
 ## Tested so far
@@ -75,7 +75,7 @@ All of these are baked ON in the image. Set `RADIANCE_DYNAMIC_DRAFT=0` to turn d
 
 ## Run
 
-On start the image prints a RADIANCE banner and runs a quick preamble (GPU count, gfx1201 check, P2P, enabled optimizations, component versions, and a background bandwidth/topology sweep), then hands off to `vllm serve`. First argument is the model path, the rest are `vllm serve` flags. The `RADIANCE_*` vars below are the custom optimizations (see the table above). They are already baked ON in the image; they are listed here so they are visible and easy to flip off.
+On start the image prints a RADIANCE banner and runs a quick preamble (GPU count, gfx1201 check, P2P, enabled optimizations, component versions), then hands off to `vllm serve`. (An optional `rocm-bandwidth-test` topology/bandwidth sweep is available with `RADIANCE_RUN_BWTEST=1`; it is off by default.) First argument is the model path, the rest are `vllm serve` flags. The `RADIANCE_*` vars below are the custom optimizations (see the table above). They are already baked ON in the image; they are listed here so they are visible and easy to flip off.
 
 ```bash
 docker run --rm -it \
@@ -104,7 +104,7 @@ docker run --rm -it \
   -e VLLM_CACHE_ROOT=/cache/vllm -e TORCHINDUCTOR_CACHE_DIR=/cache/inductor \
   -e TRITON_CACHE_DIR=/cache/triton -e AITER_ROOT_DIR=/cache/aiter \
   -e TRITON_CACHE_AUTOTUNING=1 \
-  stilldeadcode/vllm-radiance:0.2.7 \
+  stilldeadcode/vllm-radiance:0.2.8 \
     /models/YourOrg/Your-Model-FP8 \
     --served-model-name my-model \
     --quantization fp8 --kv-cache-dtype fp8 \
@@ -129,7 +129,7 @@ curl http://localhost:8000/v1/chat/completions \
 ```yaml
 services:
   vllm:
-    image: stilldeadcode/vllm-radiance:0.2.7
+    image: stilldeadcode/vllm-radiance:0.2.8
     restart: unless-stopped
     command:
       - /models/YourOrg/Your-Model-FP8

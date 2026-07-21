@@ -2,8 +2,8 @@
 """RADIANCE startup preamble: print the banner and run environment prechecks before
 vLLM boots. Launched once by radiance_entrypoint.sh in the container's main process (not per
 TP worker), which then exec's `vllm serve`. Every check is best-effort: a failure prints a
-warning, never blocks the serve. The GPU bandwidth/topology sweep (rocm-bandwidth-test) runs
-in the background from the entrypoint; its report follows later.
+warning, never blocks the serve. The optional GPU bandwidth/topology sweep (rocm-bandwidth-test,
+RADIANCE_RUN_BWTEST=1) runs in the background from the entrypoint; its report follows later.
 
 Env knobs: NO_COLOR / RADIANCE_BANNER_PLAIN=1 disable ANSI color."""
 import os
@@ -123,8 +123,8 @@ def section_opts():
 
     print("  " + dim("feature toggles (set to 0 to disable):"))
     for name, dflt, desc in [
-        ("RADIANCE_PRESHUFFLE",     "0", "preshuffled AITER FP8 blockscale GEMM"),
-        ("RADIANCE_ATTN_TUNE",      "0", "RDNA4 unified-attention tiling (fp8 + bf16/auto KV)"),
+        ("RADIANCE_PRESHUFFLE",     "1", "preshuffled AITER FP8 blockscale GEMM"),
+        ("RADIANCE_ATTN_TUNE",      "1", "RDNA4 unified-attention tiling (fp8 + bf16/auto KV)"),
         ("RADIANCE_GDN_WMMA",       "1", "gated-delta-net KKt gram + triangular solve on the fp16 matrix cores (vs fp32 scalar path)"),
         ("RADIANCE_VIT_FLASH",      "1", "native head_dim-72 flash attention for the vision encoder (multimodal)"),
         ("RADIANCE_FUSE_RMS_QUANT", "1", "fold group-FP8 quant into the RMSNorm epilogue"),
@@ -163,7 +163,7 @@ def section_opts():
 
     print("\n  " + dim("startup:"))
     for name, dflt, desc in [
-        ("RADIANCE_SKIP_BWTEST",    "0", "skip the GPU bandwidth/topology sweep"),
+        ("RADIANCE_RUN_BWTEST",     "0", "run the GPU bandwidth/topology sweep at startup (off by default)"),
         ("RADIANCE_BWTEST_TIMEOUT", "150", "bandwidth sweep timeout, seconds"),
         ("RADIANCE_BANNER_PLAIN",   "0", "disable ANSI color (also NO_COLOR)"),
     ]:
@@ -248,7 +248,8 @@ def main():
             fn()
         except Exception as e:
             print("  " + bad(f"{fn.__name__} failed: {e!r}"))
-    print("\n  " + dim("GPU topology + bandwidth sweep runs in the background; report follows below."))
+    if os.environ.get("RADIANCE_RUN_BWTEST", "0") == "1":
+        print("\n  " + dim("GPU topology + bandwidth sweep runs in the background; report follows below."))
     print(c(ACCENT + ";1", "─" * 62) + "\n")
     sys.stdout.flush()
 

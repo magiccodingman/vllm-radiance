@@ -1,0 +1,11 @@
+# Keep the build context lean — none of this belongs in the image build.
+.git/
+.gitignore
+__pycache__/
+*.pyc
+*.swp
+.DS_Store
+# local deploy state (bind-mounted at runtime, never built in)
+.env
+models/
+vllm-cache/

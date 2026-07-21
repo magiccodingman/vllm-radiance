@@ -5,29 +5,11 @@ installed site-packages copies; re-running is safe.
 The amdsmi-enumeration failures (platform undetected, device_count==0, get_device_name IndexError,
 gcn-arch query) are not patched here: one root cause (amdsmi locked out after HIP init), fixed at
 interpreter startup by radiance_amdsmi (amdsmi_init before HIP)."""
-import ast
 import sysconfig
 from pathlib import Path
+from _patchlib import apply
 
 SP = Path(sysconfig.get_paths()["purelib"])
-
-
-def apply(path, anchor, new, sentinel, label):
-    """Idempotent one-shot source patch: replace the unique `anchor` with `new` in `path`. Skips if
-    `sentinel` is already present; a missing file or non-unique anchor is fatal."""
-    if not path.exists():
-        raise SystemExit(f"  FAIL  {label}: {path} missing")
-    s = path.read_text()
-    if sentinel in s:
-        print(f"  NOOP  {label} already applied")
-        return
-    n = s.count(anchor)
-    if n != 1:
-        raise SystemExit(f"  FAIL  {label}: anchor matched {n}x, expected 1 ({path})")
-    s = s.replace(anchor, new, 1)
-    ast.parse(s)  # never write a file that would not parse
-    path.write_text(s)
-    print(f"  OK    {label}")
 
 
 def main():

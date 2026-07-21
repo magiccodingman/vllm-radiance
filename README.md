@@ -5,7 +5,7 @@ ROCm + PyTorch + Triton + AITER + vLLM stack with the RDNA4 patches and custom k
 this card, plus RDNA4-tuned GEMM / attention / all-reduce paths and a dynamic MTP draft controller, so you
 don't have to build the stack yourself.
 
-> **Status: super early dev (v0.2.7). Experimental.** Everything here was built and measured on one exact
+> **Status: super early dev (v0.2.8). Experimental.** Everything here was built and measured on one exact
 > setup: Qwen3.6-27B-FP8, fp8 (or bf16/`auto`) KV cache, two R9700 GPUs (tensor parallel). Other models,
 > non-FP8 weights, single or 3+ GPUs, and non-R9700 hardware are untested. Expect rough edges and breaking
 > changes. Not production hardened. Use at your own risk.
@@ -16,16 +16,17 @@ reference, tested configuration, and stack versions.
 
 ## Build
 
-Everything the build needs is in this directory (a flat Docker build context):
+Everything the build needs is in this directory (a flat Docker build context). The version string lives in
+one place, the `VERSION` file, which the tag and the build-arg both read:
 
 ```bash
-docker build -t vllm-radiance:0.2.7 .
+docker build -t vllm-radiance:$(cat VERSION) --build-arg RADIANCE_VERSION=$(cat VERSION) .
 ```
 
 The build pins a working ROCm/PyTorch/Triton/vLLM combination, builds AITER from source for gfx1201, applies
 the RDNA4 correctness patches, and bakes in the tuned kernels. `radiance_ar_ext.so`, `radiance_ar_quant_ext.so`,
-`rocm-bandwidth-test`, and `radiance_p2p_probe` are prebuilt binaries; `radiance_ar_ext.hip` /
-`radiance_ar_quant_ext.hip` are the all-reduce extension sources, kept here for transparency.
+and `rocm-bandwidth-test` are prebuilt binaries; `radiance_ar_ext.hip` / `radiance_ar_quant_ext.hip` are the
+all-reduce extension sources, kept here for transparency.
 
 > ### ⚠️ Wheel pins rotate: bump them before building
 > The vLLM and ROCm-SDK wheels come from prebuilt indexes (`wheels.vllm.ai/rocm`, `rocm.nightlies.amd.com`)
@@ -61,25 +62,17 @@ editing it. The full knob list (kernel toggles, draft controller, AITER routing,
 
 ## What's inside
 
-- **Correctness patches** to make vLLM run on gfx1201 (GPU enumeration, AITER enablement, native sampler
-  fallback, MTP drafter unpad + multimodal draft-mask alignment, tool-parser + `from_json` filter). Always on.
-- **Tuned kernels** (env-gated, on by default): preshuffled FP8 blockscale GEMM, RDNA4 unified-attention
-  tiling (fp8 + bf16/`auto` KV), fused RMSNorm+quant, a fp16 matrix-core (WMMA) path for the gated-delta-net
-  gram of hybrid linear-attention models (`RADIANCE_GDN_WMMA`, big prefill + cold-start win vs the stock fp32
-  scalar path on RDNA4), and a P2P one-shot all-reduce for TP=2 (with an optional fp8-quantized payload for
-  large prefill messages, `RADIANCE_AR_QUANT`).
-- **Multimodal ViT attention** (`RADIANCE_VIT_FLASH`, on by default): a native head_dim-72 flash-attention
-  kernel for the vision encoder — the vendor flash kernels (CK / AITER) have no gfx1201 device code, so this
-  is ~1.5-2x faster than the SDPA fallback while preserving per-image / windowed attention. Only active when
-  serving a vision model.
-- **Dynamic MTP drafting** (`RADIANCE_DYNAMIC_DRAFT`): a per-request, per-slot confidence gate for speculative
-  draft depth (draft while cumulative confidence holds, take free-win verbatim n-grams, else verify), with a
-  batch-size schedule that caps serial forwards at concurrency. Tune with `RADIANCE_DRAFT_SCHEDULE` /
-  `RADIANCE_DRAFT_TAU`. Lossless (changes only how many tokens are drafted, never what the model verifies).
-- **Optional NUMA pinning** (`RADIANCE_NUMA_BIND` / `--numa-bind`, off by default): on multi-socket or
-  multi-NUMA-node hosts, pin the server and its TP workers to the NUMA node(s) local to the GPUs (`auto`
-  detects from the visible GPUs; or give explicit nodes / `interleave` / `preferred=`). A no-op on single-node
-  hosts; needs `--cap-add SYS_NICE` under Docker's default seccomp. See [DOCKERHUB.md](DOCKERHUB.md).
+Everything below is baked into the image; the tuned paths are env-gated and on by default. See
+**[DOCKERHUB.md](DOCKERHUB.md)** for the per-knob reference — every flag, its default, and what it does.
+
+- **gfx1201 correctness patches** (always on): GPU enumeration, AITER enablement, native sampler fallback,
+  MTP drafter unpad + multimodal draft-mask alignment, tool-parser + `from_json` chat-template filter.
+- **RDNA4-tuned kernels**: preshuffled FP8 blockscale GEMM, unified-attention tiling (fp8 + bf16/`auto` KV),
+  fused RMSNorm+quant, an fp16 matrix-core (WMMA) gated-delta-net path, a TP=2 P2P one-shot all-reduce
+  (optional fp8 payload), and a native head_dim-72 ViT flash kernel for multimodal vision encoders.
+- **Lossless dynamic MTP drafting**: a per-request confidence gate plus verbatim n-gram tail that varies
+  draft depth without changing what the model verifies.
+- **Optional NUMA pinning** (`--numa-bind`, off by default) for multi-NUMA-node hosts.
 
 ## Layout
 

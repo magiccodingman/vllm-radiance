@@ -3,6 +3,7 @@
 load_general_plugins() runs once per process (parent + engine-core + every TP worker) after
 torch/vllm/aiter are imported but before the model loads, which is exactly when the runtime hooks
 need to install. Idempotent, env-gated per hook."""
+import ast
 import sysconfig
 from pathlib import Path
 
@@ -28,7 +29,9 @@ def main():
         print("  NOOP  radiance plugin hook already installed"); return
     if ANCHOR not in s:
         raise SystemExit(f"  FAIL  anchor not found in {F} (vLLM version drift?)")
-    F.write_text(s.replace(ANCHOR, NEW, 1))
+    out = s.replace(ANCHOR, NEW, 1)
+    ast.parse(out)  # never write a file that would not parse
+    F.write_text(out)
     print(f"  OK    radiance install_all hook -> vllm/plugins/__init__.py")
 
 

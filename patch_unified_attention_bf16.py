@@ -11,9 +11,9 @@ aiter default (TILE 64, stages 2) needs 64*256*2B*2 + 256 = 65792 B > the R9700'
 LDS -> Triton OutOfResources at cudagraph capture. do_bench-optimal (head-256): TILE=16 warps=4
 stages=2 waves=2 (warps=4 the key lever); fits (16*256*2*2 = 16384 B).
 """
-import ast
 import sysconfig
 from pathlib import Path
+from _patchlib import apply
 
 SP = Path(sysconfig.get_paths()["purelib"])
 F = SP / "aiter/ops/triton/attention/unified_attention.py"
@@ -38,24 +38,6 @@ INSERT = (
     "            if TILE_SIZE * triton.next_power_of_2(head_size) * 2 * attn_stages + 256 > 65536:\n"
     "                attn_stages = 1  # LDS-fit fallback for head_size > 256\n"
 )
-
-
-def apply(path, anchor, new, sentinel, label):
-    """Idempotent one-shot source patch: replace the unique `anchor` with `new` in `path`. Skips if
-    `sentinel` is already present; a missing file or non-unique anchor is fatal."""
-    if not path.exists():
-        raise SystemExit(f"  FAIL  {label}: {path} missing")
-    s = path.read_text()
-    if sentinel in s:
-        print(f"  NOOP  {label} already applied")
-        return
-    n = s.count(anchor)
-    if n != 1:
-        raise SystemExit(f"  FAIL  {label}: anchor matched {n}x, expected 1 ({path})")
-    s = s.replace(anchor, new, 1)
-    ast.parse(s)  # never write a file that would not parse
-    path.write_text(s)
-    print(f"  OK    {label}")
 
 
 def main():

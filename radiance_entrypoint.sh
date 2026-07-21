@@ -80,11 +80,12 @@ if [ -n "$_numa_spec" ]; then
 fi
 [ "${#NUMACTL[@]}" -gt 0 ] && export RADIANCE_NUMA_ACTIVE="numactl ${NUMACTL[*]}"
 
-# Kick off the topology + bandwidth sweep in the BACKGROUND so it never delays startup.
+# Optional: kick off a topology + bandwidth sweep in the BACKGROUND so it never delays startup.
 # rocm-bandwidth-test (no args) prints: device list, inter-device access (P2P) matrix, NUMA
 # distance, and uni + bidirectional peak copy bandwidth (GB/s) for every agent pair (d2d, d2h,
-# h2d). It surfaces a few seconds into vLLM's startup logs. Opt out with RADIANCE_SKIP_BWTEST=1.
-if [ "${RADIANCE_SKIP_BWTEST:-0}" != "1" ] && command -v rocm-bandwidth-test >/dev/null 2>&1; then
+# h2d). It surfaces a few seconds into vLLM's startup logs. OFF by default (a diagnostic, not
+# needed to serve); opt IN with RADIANCE_RUN_BWTEST=1.
+if [ "${RADIANCE_RUN_BWTEST:-0}" = "1" ] && command -v rocm-bandwidth-test >/dev/null 2>&1; then
   (
     report=$(timeout "${RADIANCE_BWTEST_TIMEOUT:-150}" rocm-bandwidth-test 2>&1) \
       || report="${report}"$'\n'"(rocm-bandwidth-test exited non-zero / timed out)"

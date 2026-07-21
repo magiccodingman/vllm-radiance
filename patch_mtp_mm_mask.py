@@ -18,9 +18,9 @@ length and ordering match the draft inputs_embeds buffer. Image placeholders are
 and the number of set positions is preserved -> the vision embeddings still land 1:1. A no-op when
 the mask already matches (no rejection, or the padded drafter path where token_indices is a range).
 Idempotent. Enables multimodal serving with MTP speculative decoding + disable_padded_drafter_batch."""
-import ast
 import sysconfig
 from pathlib import Path
+from _patchlib import apply
 
 F = Path(sysconfig.get_paths()["purelib"]) / "vllm/v1/worker/gpu_model_runner.py"
 
@@ -55,24 +55,6 @@ MASK_NEW = (
     "                    is_mm_embed = is_mm_embed[token_indices.to(is_mm_embed.device)]\n"
     "                mm_embed_inputs = (mm_embeds, is_mm_embed)\n"
 )
-
-
-def apply(path, anchor, new, sentinel, label):
-    """Idempotent one-shot source patch: replace the unique `anchor` with `new` in `path`. Skips if
-    `sentinel` is already present; a missing file or non-unique anchor is fatal."""
-    if not path.exists():
-        raise SystemExit(f"  FAIL  {label}: {path} missing")
-    s = path.read_text()
-    if sentinel in s:
-        print(f"  NOOP  {label} already applied")
-        return
-    n = s.count(anchor)
-    if n != 1:
-        raise SystemExit(f"  FAIL  {label}: anchor matched {n}x, expected 1 ({path})")
-    s = s.replace(anchor, new, 1)
-    ast.parse(s)  # never write a file that would not parse
-    path.write_text(s)
-    print(f"  OK    {label}")
 
 
 def main():

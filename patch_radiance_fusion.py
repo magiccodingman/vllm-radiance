@@ -16,9 +16,9 @@ Numerically exact: match_aiter_quant only selects WHICH quant op is matched; the
 key.quant (per-128-group, symmetric, fp32 scale, fp8) and the fused replacement op
 (get_rmsnorm_group_fused_quant_op) are identical either way. Idempotent. Run once
 pre-serve / at image build."""
-import ast
 import sysconfig
 from pathlib import Path
+from _patchlib import apply
 
 F = (
     Path(sysconfig.get_paths()["purelib"])
@@ -63,24 +63,6 @@ NEW = (
 )
 
 MARKER = "RADIANCE: rms_norm(+fused_add) + group fp8 quant"
-
-
-def apply(path, anchor, new, sentinel, label):
-    """Idempotent one-shot source patch: replace the unique `anchor` with `new` in `path`. Skips if
-    `sentinel` is already present; a missing file or non-unique anchor is fatal."""
-    if not path.exists():
-        raise SystemExit(f"  FAIL  {label}: {path} missing")
-    s = path.read_text()
-    if sentinel in s:
-        print(f"  NOOP  {label} already applied")
-        return
-    n = s.count(anchor)
-    if n != 1:
-        raise SystemExit(f"  FAIL  {label}: anchor matched {n}x, expected 1 ({path})")
-    s = s.replace(anchor, new, 1)
-    ast.parse(s)  # never write a file that would not parse
-    path.write_text(s)
-    print(f"  OK    {label}")
 
 
 def main():

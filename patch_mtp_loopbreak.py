@@ -14,6 +14,7 @@ Idempotent; anchor-count-guarded; ast.parse guard before writing. NOOP once appl
 import ast
 import sysconfig
 from pathlib import Path
+from _patchlib import apply
 
 LIB = Path(sysconfig.get_paths()["purelib"])
 F = LIB / "vllm/v1/spec_decode/llm_base_proposer.py"
@@ -29,24 +30,6 @@ NEW = (
     "            # Update the inputs.\n"
 )
 SENTINEL = "radiance: controller stopped; skip the remaining draft forwards"
-
-
-def apply(path, anchor, new, sentinel, label):
-    """Idempotent one-shot source patch: replace the unique `anchor` with `new` in `path`. Skips if
-    `sentinel` is already present; a missing file or non-unique anchor is fatal."""
-    if not path.exists():
-        raise SystemExit(f"  FAIL  {label}: {path} missing")
-    s = path.read_text()
-    if sentinel in s:
-        print(f"  NOOP  {label} already applied")
-        return
-    n = s.count(anchor)
-    if n != 1:
-        raise SystemExit(f"  FAIL  {label}: anchor matched {n}x, expected 1 ({path})")
-    s = s.replace(anchor, new, 1)
-    ast.parse(s)  # never write a file that would not parse
-    path.write_text(s)
-    print(f"  OK    {label}")
 
 
 def main():

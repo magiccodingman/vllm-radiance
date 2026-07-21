@@ -7,7 +7,7 @@
 # throwaway container:
 #
 #     make                 # build every kernel whose source is present, inside the image
-#     make IMAGE=vllm-radiance:0.2.7
+#     make IMAGE=vllm-radiance:dev   # override the image (default tag reads ./VERSION)
 #     make radiance_ar_ext.so
 #     make verify          # import-check the built .so files inside the image
 #     make clean
@@ -18,10 +18,9 @@
 #     make RUN='bash -c'
 #
 # Note: rocm-bandwidth-test is AMD's upstream tool (shipped prebuilt, not built here).
-# radiance_p2p_probe is built only if its .cpp source is present.
 
 GFX_ARCH ?= gfx1201
-IMAGE    ?= vllm-radiance:0.2.7
+IMAGE    ?= vllm-radiance:$(shell cat VERSION 2>/dev/null || echo latest)
 PYTHON   ?= python3
 
 # RUN takes a single shell-script string as its last argument. Default: run it inside the image
@@ -38,20 +37,17 @@ BASE_FLAGS = -O3 -std=c++17 -fPIC -shared --offload-arch=$(GFX_ARCH) -Wno-unused
 # bf16 all-reduce is a plain sum (no products) and does not need this flag.
 radiance_ar_quant_ext.so: EXTRA_FLAGS = -ffp-contract=off
 
-# Kernel extensions with source in this repo (radiance_ar_quant_ext is optional / forward-looking).
+# Kernel extensions with source in this repo (both are baked into the image and enabled by default).
 KERNELS := radiance_ar_ext.so
 ifneq ($(wildcard radiance_ar_quant_ext.hip),)
 KERNELS += radiance_ar_quant_ext.so
-endif
-ifneq ($(wildcard radiance_p2p_probe.cpp),)
-PROBES := radiance_p2p_probe
 endif
 
 .DEFAULT_GOAL := all
 .PHONY: all verify clean
 
-all: $(KERNELS) $(PROBES)
-	@echo "[make] built: $(KERNELS) $(PROBES)"
+all: $(KERNELS)
+	@echo "[make] built: $(KERNELS)"
 
 # pybind11 + HIP extension -> importable .so. `python3 -m pybind11 --includes` emits the two
 # -I flags (python + pybind11 headers) with no shell-quoting headaches.
@@ -60,14 +56,10 @@ all: $(KERNELS) $(PROBES)
 	  echo "[hipcc] $@ (arch $(GFX_ARCH))$(if $(EXTRA_FLAGS), $(EXTRA_FLAGS),)"; \
 	  hipcc $(BASE_FLAGS) $(EXTRA_FLAGS) $$INC $< -o $@'
 
-# plain HIP executable (in-kernel PCIe P2P probe), if its source is present
-radiance_p2p_probe: radiance_p2p_probe.cpp
-	@$(RUN) 'set -e; echo "[hipcc] $@"; hipcc -O3 -std=c++17 --offload-arch=$(GFX_ARCH) $< -o $@'
-
 # import each built extension to confirm it loads against the image's ROCm/python
 verify:
 	@$(foreach m,$(basename $(KERNELS)),$(RUN) 'PYTHONPATH=$$PWD $(PYTHON) -c "import $(m)"' \
 	  && echo "[verify] import OK: $(m)" || { echo "[verify] FAILED: $(m)"; exit 1; };)
 
 clean:
-	rm -f $(KERNELS) $(PROBES)
+	rm -f $(KERNELS)

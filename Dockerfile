@@ -33,9 +33,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN python3.12 -m venv /opt/vllm \
     && python -m pip install --upgrade pip setuptools wheel uv
 
-# vLLM ROCm wheel + the exact torch/triton/aiter/flash-attn stack it was built
-# against, all from the single vLLM rocm index via --find-links.
-RUN uv pip install \
+# vLLM ROCm wheel + the exact torch/triton/aiter/flash-attn stack it was built against, all from
+# the single vLLM rocm index via --find-links. --no-cache keeps uv from leaving its (~15 GB,
+# hardlinked) download cache in the layer. The trailing RM strips build/CUDA-only bloat IN THIS
+# LAYER (so the image actually shrinks; a later RM only whiteouts): the Triton NVIDIA backend
+# (CUDA-only, dead on ROCm; also ~74 MB of cupti static libs) and xgrammar's link-time static
+# archive (the runtime uses xgrammar's .so).
+RUN uv pip install --no-cache \
     --find-links ${VLLM_WHEEL_URL}/vllm/ \
     --find-links ${VLLM_WHEEL_URL}/torch/ \
     --find-links ${VLLM_WHEEL_URL}/torchvision/ \
@@ -47,47 +51,37 @@ RUN uv pip install \
     --find-links ${VLLM_WHEEL_URL}/flash-attn/ \
     vllm==${VLLM_VERSION} flash-attn==${FLASH_ATTN_VERSION} \
     "fastapi[standard]<0.137" \
-    && uv pip install --no-deps torch-c-dlpack-ext
+    && uv pip install --no-cache --no-deps torch-c-dlpack-ext \
+    && rm -rf /opt/vllm/lib/python3.12/site-packages/triton/backends/nvidia \
+              /opt/vllm/lib/python3.12/site-packages/xgrammar/lib/libxgrammar.a
 
-# ROCm userspace libraries (TheRock, packaged as wheels). --no-deps so they don't
-# replace torch/vLLM. rocm-sdk-devel ships a _devel.tar we unpack in place.
-RUN uv pip install --no-deps \
+# ROCm userspace libraries (TheRock, packaged as wheels). --no-deps so they don't replace
+# torch/vLLM. We deliberately DO NOT install rocm-sdk-devel: its only payload is a ~2.7 GB
+# _devel.tar of headers/static libs that aiter's runtime JIT never uses (JIT compiles against
+# _rocm_sdk_core's hip headers), so it is pure image bloat.
+RUN uv pip install --no-cache --no-deps \
     --index-url ${ROCM_WHEEL_INDEX_URL} \
     rocm-sdk-core==${ROCM_SDK_VERSION} \
     ${ROCM_SDK_LIBRARIES_PACKAGE}==${ROCM_SDK_VERSION} \
-    ${ROCM_SDK_DEVICE_PACKAGE}==${ROCM_SDK_VERSION} \
-    rocm-sdk-devel==${ROCM_SDK_VERSION} \
-    && python - <<'PY'
-import os, site, tarfile
-sp = next((p for p in site.getsitepackages() if p.endswith("site-packages")), site.getsitepackages()[0])
-tar_path = os.path.join(sp, "rocm_sdk_devel", "_devel.tar")
-with tarfile.open(tar_path) as ar:
-    root = os.path.abspath(sp)
-    for m in ar.getmembers():
-        t = os.path.abspath(os.path.join(root, m.name))
-        if not t.startswith(root + os.sep):
-            raise RuntimeError(f"unsafe ROCm SDK member path: {m.name}")
-    ar.extractall(root)
-os.remove(tar_path)
-PY
+    ${ROCM_SDK_DEVICE_PACKAGE}==${ROCM_SDK_VERSION}
 
 # Point ROCm/HIP + the dynamic loader at the in-venv SDK dirs.
 ENV SP=/opt/vllm/lib/python3.12/site-packages
-# _rocm_sdk_core is the real ROCm root (has bin/, .info/version, bitcode);
-# _rocm_sdk_devel's bin/ is empty in this SDK version, so point HIP/ROCm at core.
+# _rocm_sdk_core is the real ROCm root (has bin/, .info/version, bitcode, hip headers); HIP/ROCm,
+# the JIT include path (CPATH) and the linker path (LIBRARY_PATH) all point at it.
 ENV ROCM_PATH=${SP}/_rocm_sdk_core \
     ROCM_HOME=${SP}/_rocm_sdk_core \
     HIP_PATH=${SP}/_rocm_sdk_core \
     HIP_HOME=${SP}/_rocm_sdk_core \
     HIP_DEVICE_LIB_PATH=${SP}/_rocm_sdk_core/lib/llvm/amdgcn/bitcode \
     DEVICE_LIB_PATH=${SP}/_rocm_sdk_core/lib/llvm/amdgcn/bitcode \
-    CPATH=${SP}/_rocm_sdk_devel/include \
-    LIBRARY_PATH=${SP}/_rocm_sdk_devel/lib \
+    CPATH=${SP}/_rocm_sdk_core/include \
+    LIBRARY_PATH=${SP}/_rocm_sdk_core/lib \
     PYTHONPATH=${SP}/_rocm_sdk_core/share/amd_smi \
     HIPBLASLT_TENSILE_LIBPATH=${SP}/${ROCM_SDK_LIBRARIES_DIR}/lib/hipblaslt/library/${GFX_ARCH} \
     ROCBLAS_TENSILE_LIBPATH=${SP}/${ROCM_SDK_LIBRARIES_DIR}/lib/rocblas/library
 ENV PATH=${SP}/_rocm_sdk_core/bin:${PATH}
-ENV LD_LIBRARY_PATH=${SP}/torch/lib:${SP}/_rocm_sdk_devel/lib:${SP}/_rocm_sdk_core/lib:${SP}/_rocm_sdk_core/lib/llvm/lib:${SP}/_rocm_sdk_core/lib/rocm_sysdeps/lib:${SP}/_rocm_sdk_core/lib/host-math/lib:${SP}/_rocm_sdk_libraries/lib
+ENV LD_LIBRARY_PATH=${SP}/torch/lib:${SP}/_rocm_sdk_core/lib:${SP}/_rocm_sdk_core/lib/llvm/lib:${SP}/_rocm_sdk_core/lib/rocm_sysdeps/lib:${SP}/_rocm_sdk_core/lib/host-math/lib:${SP}/_rocm_sdk_libraries/lib
 
 ENV HIP_PLATFORM=amd \
     VLLM_TARGET_DEVICE=rocm \
@@ -118,6 +112,10 @@ RUN cd ${SP}/_rocm_sdk_core/lib \
 # any version), so VLLM_ROCM_USE_AITER_LINEAR stays 0 permanently (LINEAR=1 ->
 # module_quant -> invalid device function). Block-FP8 GEMM routes on the LINEAR=0
 # path via the radiance dispatcher (patch_radiance_dispatch.py / radiance_kernels.py).
+# The final `&& rm/uninstall` strip build-only bloat IN THIS LAYER (so it shrinks the
+# image): the aiter source clone (aiter installs into site-packages; /opt/aiter is
+# unused at runtime), cmake (aiter JIT uses ninja, not cmake), the CDNA (MI3xx) code
+# objects gfx1201 never loads, and the pip/uv caches.
 ARG AITER_VERSION=v0.1.16.post3
 RUN pip install --no-cache-dir cmake \
     && git clone --depth 1 --recurse-submodules --shallow-submodules \
@@ -126,175 +124,87 @@ RUN pip install --no-cache-dir cmake \
     && printf 'triton==3.6.0\n' > /opt/aiter-constraints.txt \
     && cd /opt/aiter \
     && PIP_CONSTRAINT=/opt/aiter-constraints.txt GPU_ARCHS=${GFX_ARCH} \
-       PREBUILD_KERNELS=0 MAX_JOBS=6 pip install --no-build-isolation . \
+       PREBUILD_KERNELS=0 MAX_JOBS=6 pip install --no-cache-dir --no-build-isolation . \
     # aiter's deps pull a triton_kernels build (1.0.0+amd...) that LACKS the
     # matmul_ogs submodule vLLM imports (non-fatal ERROR + MoE-OGS fallback).
     # Restore vLLM's triton_kernels (has matmul_ogs) from the vLLM index.
     && pip install --no-deps --force-reinstall --no-cache-dir \
        --find-links ${VLLM_WHEEL_URL}/triton-kernels/ triton_kernels \
     && python -c "import triton, triton_kernels.matmul_ogs, importlib.metadata as m; \
-print('aiter', m.version('amd-aiter'), '| triton', triton.__version__, '| triton_kernels.matmul_ogs OK')"
+print('aiter', m.version('amd-aiter'), '| triton', triton.__version__, '| triton_kernels.matmul_ogs OK')" \
+    && pip uninstall -y cmake \
+    && rm -rf /opt/aiter /opt/aiter-constraints.txt \
+       ${SP}/aiter_meta/hsa/gfx942 ${SP}/aiter_meta/hsa/gfx950 \
+       /root/.cache/pip /root/.cache/uv
 
-# --- gfx1201 fix overlay ---
-# (1) amdsmi init-order fix: a .pth executed at site-init (before HIP, in every
-#     process) so amdsmi enumerates the GPUs and stays alive. Fixes platform
-#     detection, device_count, get_device_name.
-# (2) curated idempotent patches: gcn-arch env, AITER-enable-on-gfx12x, Triton
-#     is_active, AITER-sampler-gate. See patch_gfx1201.py.
-COPY radiance_amdsmi.py radiance_amdsmi.pth ${SP}/
-COPY patch_gfx1201.py /opt/patch_gfx1201.py
-RUN python /opt/patch_gfx1201.py
-
-# --- gfx1201 tuned block-FP8 GEMM configs (GATED) + custom kernel dispatcher ---
-# GATED set: default config @ M<=32 (no decode regression) + num_stages=1 @ M>=64
-# (faster prefill), end-to-end A/B validated. The generic kernel auto-loads these
-# device-named JSONs.
+# =====================================================================================
+# gfx1201 fix + tuned-kernel overlay (single consolidated block)
+# =====================================================================================
+# The full rationale for every fix lives in that patch's own module docstring; each patch
+# ast.parse()s the result before writing and exits nonzero on upstream source drift, so the
+# loop below needs no separate parse step. Patches are idempotent and order-independent (they
+# edit distinct files). Ordered/grouped by purpose: gfx1201-enablement, kernel-tuning,
+# correctness fixes, agentic serving.
+#
+# What each COPY'd runtime module / patch does:
+#   radiance_amdsmi.py + .pth  amdsmi init-order fix; the .pth execs `import radiance_amdsmi` at
+#                              site-init (before HIP, in every process) so amdsmi enumerates the
+#                              GPUs and stays alive -> platform detect / device_count / names.
+#   radiance_kernels.py        the block-FP8 GEMM dispatch table + install_all() runtime-hook
+#                              fan-out (called from vllm's plugin loader via install_radiance_hooks).
+#   fp8-configs/*.json         gfx1201 tuned block-FP8 GEMM configs (default @ M<=32, num_stages=1
+#                              @ M>=64), auto-loaded by the generic kernel.
+#   radiance_vit_attn.py       native head_dim-72 ViT flash attention (multimodal).
+#   radiance_ar_ext.so /       prebuilt P2P one-shot all-reduce extensions (bf16 exact + fp8
+#     radiance_ar_quant_ext.so payload); radiance_allreduce.py wraps CudaCommunicator.all_reduce.
+#   radiance_draft*.py         lossless per-request MTP draft-depth controller.
+#   patch_gfx1201              gcn-arch env, AITER-enable-on-gfx12x, Triton is_active, sampler gate.
+#   patch_radiance_dispatch    hooks apply_block_scaled_mm -> dispatcher (+ K=8704 splitk fix).
+#   patch_unified_attention_bf16  bf16/auto KV 3D-decode config (fits the R9700 64 KiB LDS @head256).
+#   patch_gdn_wmma             gated-delta-net gram + triangular solve on the fp16 matrix cores.
+#   patch_preshuffle           BlockScaledMM output_shape fix for the preshuffled weight layout.
+#   patch_radiance_fusion      folds native group-FP8 quant into the RMSNorm epilogue on gfx1201.
+#   install_radiance_hooks     appends radiance_kernels.install_all() to vllm's plugin loader.
+#   patch_unpad                propagate seq_lens_cpu_upper_bound through unpadded() (MTP drafter).
+#   patch_mtp_mm_mask          align the image-placeholder mask with the compacted drafter batch.
+#   patch_mtp_loopbreak        injects the `break` the draft-depth controller uses to stop early.
+#   patch_qwen3_toolparse      tool-parser streaming vs non-streaming consistency (vLLM #47137).
+#   patch_from_json_filter     adds the `from_json` Jinja filter the fixed chat template needs.
+COPY radiance_amdsmi.py radiance_amdsmi.pth \
+     radiance_kernels.py radiance_vit_attn.py \
+     radiance_ar_ext.so radiance_ar_quant_ext.so radiance_allreduce.py \
+     radiance_draft.py radiance_draft_gpu.py ${SP}/
 COPY fp8-configs/ ${SP}/vllm/model_executor/layers/quantization/utils/configs/
-# Radiance dispatcher (baked): hooks the block-FP8 GEMM chokepoint (apply_block_scaled_mm)
-# -> radiance_kernels.block_scaled_mm, routed per-M: M<=8 -> AITER split-K (with the K=8704
-# NUM_KSPLIT scale-align crash-fix); M>=16 -> generic (reads the tuned JSONs above).
-# Dynamo-safe (plain shape branch -> registered torch.ops.*).
-COPY radiance_kernels.py patch_radiance_dispatch.py /opt/
-RUN python /opt/patch_radiance_dispatch.py
+COPY patch_*.py install_radiance_hooks.py _patchlib.py /opt/patches/
+RUN set -eu; cd /opt/patches; \
+    for p in \
+      patch_gfx1201 \
+      patch_radiance_dispatch patch_unified_attention_bf16 patch_gdn_wmma \
+      patch_preshuffle patch_radiance_fusion install_radiance_hooks \
+      patch_unpad patch_mtp_mm_mask patch_mtp_loopbreak \
+      patch_qwen3_toolparse patch_from_json_filter; do \
+        echo "== applying $p =="; python "$p.py"; \
+    done; \
+    python -c "import ast, glob; [ast.parse(open(f).read()) for f in glob.glob('${SP}/radiance_*.py')]; print('radiance runtime modules parse OK')"
 
-# bf16 / 2-byte (--kv-cache-dtype auto) KV attention config for the aiter unified-attention 3D
-# decode kernel. LDS-critical: a 2-byte KV cache overflows the R9700's 64 KiB shared memory at
-# head_size 256 with aiter's default (TILE 64, stages 2) -> Triton OutOfResources at cudagraph
-# capture. SOURCE patch of select_3d_config (not the RADIANCE_ATTN_TUNE _s3 wrapper, bypassed for
-# the bf16 3D path); do_bench-tuned for gfx1201 head-256. See the patch header.
-COPY patch_unified_attention_bf16.py /opt/patch_unified_attention_bf16.py
-RUN python /opt/patch_unified_attention_bf16.py
-
-# --- gfx1201 gated-delta-net fp16 matrix-core (WMMA) dots ---
-# The linear-attention (gated delta net) prefill runs two fp32-operand tl.dots that RDNA4 (no fp32
-# matrix-core path) lowers to a scalar/vector loop -- slow to run and very slow to compile (some
-# autotune configs take minutes, dominating cold start). (1) the beta-weighted K*K^T gram
-# (chunk_scaled_dot_kkt: keys bf16, beta fp32) and (2) the 16 block-inverse dots in the 64x64
-# triangular solve (solve_tril, input_precision="ieee"). Casting the operands to fp16 selects the WMMA
-# cores; operands are the L2-normalized-key gram and its unit-diagonal inverse (O(1), fp16-safe) and
-# the solve result is stored bf16 anyway. Both gated by RADIANCE_GDN_WMMA (default 1; 0 = stock fp32).
-COPY patch_gdn_wmma.py /opt/patch_gdn_wmma.py
-RUN python /opt/patch_gdn_wmma.py \
-    && python -c "import ast; ast.parse(open('${SP}/vllm/model_executor/layers/fla/ops/chunk_scaled_dot_kkt.py').read()); ast.parse(open('${SP}/vllm/model_executor/layers/fla/ops/solve_tril.py').read()); print('radiance gdn wmma patch parses OK')"
-ENV RADIANCE_GDN_WMMA=1
-
-# --- gfx1201 vision-encoder (ViT) flash attention (native head_dim 72) ---
-# On RDNA4 the CK/aiter flash kernels have no gfx12x device code and torch SDPA runs a non-tiled path
-# at a fraction of peak. radiance_vit_attn provides a dense non-causal bf16 flash kernel that handles
-# the vision tower's head_dim 72 without padding waste (a 64+16 split) and runs ~1.5-2x faster. It is
-# installed per-process by install_all() as a drop-in for the ViT SDPA per-segment apply; per-image /
-# windowed (block-diagonal) attention is preserved by the caller's cu_seqlens chunking. Only bf16/fp16
-# head_dim-72 MHA is handled, else the original SDPA path runs. Gated RADIANCE_VIT_FLASH (default on).
-COPY radiance_vit_attn.py ${SP}/
-RUN python -c "import ast; ast.parse(open('${SP}/radiance_vit_attn.py').read()); print('radiance vit attn module parses OK')"
-ENV RADIANCE_VIT_FLASH=1
-
-# Preshuffle (AITER gemm_a8w8_blockscale_preshuffle) + tuned attention config, both e2e-validated.
-#  - patch_preshuffle.py: BlockScaledMMLinearKernel.apply_weights output_shape fix (the shuffle
-#    rewrites weight.shape[0] to N//16). radiance_kernels.py (above) carries the preshuffle
-#    torch.op + dispatcher route.
-#  - install_radiance_hooks.py: appends radiance_kernels.install_all() to vllm's per-process
-#    load_general_plugins(): installs the weight-shuffle-at-load hook + select_2d/3d_config
-#    attention overrides BEFORE model load, in every worker. Both env-gated by the ENV below.
-COPY patch_preshuffle.py install_radiance_hooks.py /opt/
-RUN python /opt/patch_preshuffle.py && python /opt/install_radiance_hooks.py
+# Radiance feature flags — all baked ON (each set 0 to fall back to stock). Rationale for each
+# is in the corresponding patch/module docstring; the startup banner prints their live state.
+#   PRESHUFFLE/ATTN_TUNE/FUSE_RMS_QUANT  GEMM + attention + rmsnorm kernel paths
+#   GDN_WMMA/VIT_FLASH                    fp16 matrix-core GDN gram; native-72 ViT flash
+#   FAST_REDUCE/AR_*                      P2P all-reduce + fp8-payload size gates (TP=2)
+#   DYNAMIC_DRAFT/DRAFT_*                 lossless per-request MTP draft-depth controller
 ENV RADIANCE_PRESHUFFLE=1 \
     RADIANCE_ATTN_TUNE=1 \
-    RADIANCE_FUSE_RMS_QUANT=1
-
-# --- radiance rms_norm(+fused_add) + group-fp8-quant fusion coverage fix ---
-# Stock RocmAiterRMSNormQuantFusionPass registers the group rms+quant patterns with
-# only the aiter-quant matcher; on gfx1201 our graph emits the NATIVE
-# _C.per_token_group_fp8_quant, so it matched 0 and the standalone bf16->fp8
-# group-quant kernels never folded into the rms epilogue. This registers the native
-# variant too, reusing vLLM's own is_quant_fp8_enabled duplicate-pattern guard.
-# Numerically exact (same fused replacement op). Gated by RADIANCE_FUSE_RMS_QUANT
-# (default 1 above; set 0 for stock behaviour).
-COPY patch_radiance_fusion.py /opt/patch_radiance_fusion.py
-RUN python /opt/patch_radiance_fusion.py \
-    && python -c "import ast; ast.parse(open('${SP}/vllm/compilation/passes/fusion/rocm_aiter_fusion.py').read()); print('radiance fusion patch parses OK')"
-
-# --- radiance fast-reduce (multi-block one-shot P2P-BAR all-reduce, gfx1201 / TP=2 / PCIe) ---
-# Prebuilt pybind11+HIP extensions: radiance_ar_ext.so (bf16 payload, byte-identical to RCCL) and
-# radiance_ar_quant_ext.so (optional fp8 payload). The .hip sources are kept at the repo root and
-# build with `make` for reproducibility. RadianceAllreduce wraps CudaCommunicator.all_reduce
-# (size-gated; auto RCCL fallback above the gate). Installed per-process by install_custom_ar().
-# ON by default (RADIANCE_FAST_REDUCE=1); byte-identical to RCCL (bit-checked). Set 0 for RCCL.
-# Gate RADIANCE_AR_MAX_KB=32768 (32MB): the kernel wins at every size to 48MB (buffer 2*gate/rank).
-# RADIANCE_AR_QUANT=1 quantizes the payload to block-scaled fp8 for messages >= RADIANCE_AR_QUANT_MIN_KB
-# (halves the PCIe bytes; faster for large/prefill messages; not bit-identical to RCCL). On by default;
-# set 0 for the exact bf16 all-reduce.
-COPY radiance_ar_ext.so radiance_ar_quant_ext.so radiance_allreduce.py ${SP}/
-ENV RADIANCE_FAST_REDUCE=1 \
+    RADIANCE_FUSE_RMS_QUANT=1 \
+    RADIANCE_GDN_WMMA=1 \
+    RADIANCE_VIT_FLASH=1 \
+    RADIANCE_FAST_REDUCE=1 \
     RADIANCE_AR_MAX_KB=32768 \
     RADIANCE_AR_QUANT=1 \
-    RADIANCE_AR_QUANT_MIN_KB=128
-
-# --- radiance dynamic drafting (RADIANCE_DYNAMIC_DRAFT) ---
-# Runtime module (radiance_draft.py) installed per-process by install_all() -> install().
-# LOSSLESS per-request MTP draft-depth control (changes only DRAFT LENGTH + whether tokens come
-# from MTP or a verbatim copy of earlier text; greedy draft => any drafted token verifies
-# identically through the unchanged rejection sampler -> outputs cannot change, throughput only).
-# A per-request, per-slot confidence-threshold controller decides A=another MTP pass / B=take a verbatim
-# n-gram / C=verify, all on-device (Triton confidence capture + n-gram matcher, radiance_draft_gpu.py).
-# Baked ON below; set RADIANCE_DYNAMIC_DRAFT=0 for byte-identical stock MTP. Tune with the two knobs
-# RADIANCE_DRAFT_SCHEDULE / RADIANCE_DRAFT_TAU. Details in the radiance_draft.py module docstring.
-COPY radiance_draft.py radiance_draft_gpu.py ${SP}/
-RUN python -c "import ast; ast.parse(open('${SP}/radiance_draft.py').read()); ast.parse(open('${SP}/radiance_draft_gpu.py').read()); print('radiance_draft modules parse OK')"
-# The per-slot controller decides A=another MTP pass / B=take n-gram / C=verify, and short-circuits
-# the draft loop; this patch injects the one `break` into SpecDecodeBaseProposer.propose that honours
-# it (skips the remaining draft forwards). Without it the controller can only trim post-hoc.
-COPY patch_mtp_loopbreak.py /opt/patch_mtp_loopbreak.py
-RUN python /opt/patch_mtp_loopbreak.py \
-    && python -c "import ast; ast.parse(open('${SP}/vllm/v1/spec_decode/llm_base_proposer.py').read()); print('radiance mtp loop-break patch parses OK')"
-ENV RADIANCE_DYNAMIC_DRAFT=1 \
+    RADIANCE_AR_QUANT_MIN_KB=128 \
+    RADIANCE_DYNAMIC_DRAFT=1 \
     RADIANCE_DRAFT_SCHEDULE=1:8,2:7,4:6,8:5,16:4 \
     RADIANCE_DRAFT_TAU=0.35
-
-# --- radiance unpad fix (propagate seq_lens_cpu_upper_bound through CommonAttentionMetadata.unpadded) ---
-# vLLM's unpadded() drops seq_lens_cpu_upper_bound; under MTP disable_padded_drafter_batch, when the
-# real batch != padded cudagraph batch (chunked prefill / mixed), the drafter's prepare_inputs asserts
-# on it -> EngineDeadError at >= 16 concurrent sequences. Restores the optimistic bound (sliced like the other per-req
-# fields). Pure correctness fix, always on. Enables the MTP single-stream decode win
-# (docker-compose.yml sets num_speculative_tokens=8 + disable_padded_drafter_batch:true).
-COPY patch_unpad.py /opt/patch_unpad.py
-RUN python /opt/patch_unpad.py \
-    && python -c "import ast; ast.parse(open('${SP}/vllm/v1/attention/backend.py').read()); print('radiance unpad patch parses OK')"
-
-# --- radiance MTP + multimodal mask fix (align placeholder mask with the compacted drafter batch) ---
-# The MTP drafter embeds input_ids[:num_tokens] and overwrites image-placeholder positions using a
-# mask sized to the target's scheduled-token count. Under disable_padded_drafter_batch the drafter
-# tokens are gathered by token_indices (rejected tokens dropped), so the mask outlives the draft
-# buffer -> IndexError in _merge_multimodal_embeddings -> EngineDeadError on any image request that
-# reaches the drafter. Re-indexes the mask by the same token_indices (placeholders are prompt tokens,
-# never rejected, so they survive 1:1). Pure correctness fix, always on. Enables multimodal + MTP.
-COPY patch_mtp_mm_mask.py /opt/patch_mtp_mm_mask.py
-RUN python /opt/patch_mtp_mm_mask.py \
-    && python -c "import ast; ast.parse(open('${SP}/vllm/v1/worker/gpu_model_runner.py').read()); print('radiance mtp mm-mask patch parses OK')"
-
-# --- radiance tool-parser truncation fix (vLLM #47137: streaming vs non-streaming divergence) ---
-# On a tool call truncated by max_tokens/stop INSIDE the <tool_call> opener, non-streaming leaked
-# the raw markup as assistant content while streaming dropped it; truncated mid-parameter,
-# non-streaming returned '{}' while streaming had accumulated the partial args. Two surgical edits
-# (engine-based parsers only: qwen3_coder/qwen3_xml, gemma4, ...) make non-streaming match streaming:
-# return the parser's stripped content when no call is promoted, and reuse the streamed args on a
-# truncated call. Enable via --enable-auto-tool-choice --tool-call-parser qwen3_coder (see docker-compose.yml).
-COPY patch_qwen3_toolparse.py /opt/patch_qwen3_toolparse.py
-RUN python /opt/patch_qwen3_toolparse.py \
-    && python -c "import ast; ast.parse(open('${SP}/vllm/parser/abstract_parser.py').read()); ast.parse(open('${SP}/vllm/parser/engine/parser_engine.py').read()); print('radiance tool-parser patch parses OK')"
-
-# --- radiance from_json Jinja filter (unblocks the "fixed" Qwen3.6 chat template) ---
-# The stock Qwen3.6 chat template crashes multi-turn tool loops: `tool_call.arguments | items`
-# hits the JSON *string* vLLM replays for an assistant tool call -> "Can only get item pairs from
-# a mapping", stalling any agent after its first tool call. This image bundles the community fix
-# qwen3.6-enhanced.jinja (--chat-template /work/qwen3.6-enhanced.jinja) which parses string args
-# via `arguments | from_json`, but transformers' sandboxed jinja env registers only tojson /
-# raise_exception / strftime_now, so the template raises "No filter named 'from_json'". This adds
-# the one missing filter (json.loads on a string, NOOP otherwise). Superset-safe: no existing
-# template references from_json.
-COPY patch_from_json_filter.py /opt/patch_from_json_filter.py
-RUN python /opt/patch_from_json_filter.py \
-    && python -c "import ast; ast.parse(open('${SP}/transformers/utils/chat_template_utils.py').read()); print('radiance from_json filter patch parses OK')"
 
 # Fail the build early if the native stack doesn't import.
 RUN python -c 'import importlib.metadata as md, torch, vllm, vllm._C, vllm._rocm_C, flash_attn; \
@@ -310,24 +220,22 @@ print("native ext OK")'
 ENV PYTHONDONTWRITEBYTECODE=1
 RUN find /opt/vllm -name '__pycache__' -type d -prune -exec rm -rf {} + || true
 
-# --- P2P measurement tooling (PREBUILT binaries, no build deps baked into the image) ---
-# rocm-bandwidth-test (rocm-6.4.4 classic tag, built ONCE against this image's exact libhsa)
-# + radiance_p2p_probe (in-kernel direct-BAR P2P latency/bandwidth probe). Both link only in-image
-# libs (ldd fully resolves) and are used to measure/validate the PCIe P2P path the all-reduce uses.
-# Both land on PATH (/opt/vllm/bin): run as `rocm-bandwidth-test -t` or `radiance_p2p_probe`
-# (needs both GPUs).
-COPY rocm-bandwidth-test radiance_p2p_probe /opt/vllm/bin/
-RUN chmod +x /opt/vllm/bin/rocm-bandwidth-test /opt/vllm/bin/radiance_p2p_probe
+# --- P2P bandwidth measurement (rocm-bandwidth-test, PREBUILT; no build deps in the image) ---
+# AMD's upstream tool (rocm-6.4.4 classic tag, built once against this image's exact libhsa; ldd
+# fully resolves). Lands on PATH (/opt/vllm/bin): run as `rocm-bandwidth-test -t`. The entrypoint
+# can run it as an OPTIONAL startup topology/bandwidth sweep (off by default; RADIANCE_RUN_BWTEST=1).
+COPY rocm-bandwidth-test /opt/vllm/bin/
+RUN chmod +x /opt/vllm/bin/rocm-bandwidth-test
 
 # --- RADIANCE startup banner + environment preamble ---
 # A thin entrypoint (radiance_entrypoint.sh) that prints the RADIANCE ASCII banner and runs
 # best-effort prechecks (GPU count, gfx1201-only verification, P2P access, the enabled/baked
 # radiance optimizations, component versions), then exec's `vllm serve "$@"` so vLLM becomes
-# PID 1 and the container `command:` args pass through verbatim. Also kicks off rocm-bandwidth-test
-# in the BACKGROUND. Every check is non-fatal. The banner runs once in the launcher process, not
-# per TP worker. RADIANCE_VERSION is the source of truth for the version string the banner prints
-# (bump via --build-arg RADIANCE_VERSION=...).
-ARG RADIANCE_VERSION=0.2.7
+# PID 1 and the container `command:` args pass through verbatim. Every check is non-fatal. The
+# banner runs once in the launcher process, not per TP worker. RADIANCE_VERSION is the source of
+# truth for the version string the banner prints (bump via --build-arg RADIANCE_VERSION=... or the
+# VERSION file that the Makefile / build command reads).
+ARG RADIANCE_VERSION=0.2.8
 ENV RADIANCE_VERSION=${RADIANCE_VERSION}
 COPY radiance_preamble.py /opt/radiance_preamble.py
 COPY radiance_entrypoint.sh /opt/radiance_entrypoint.sh
