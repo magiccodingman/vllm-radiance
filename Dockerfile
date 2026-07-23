@@ -154,10 +154,17 @@ print('aiter', m.version('amd-aiter'), '| triton', triton.__version__, '| triton
 #                              fan-out (called from vllm's plugin loader via install_radiance_hooks).
 #   fp8-configs/*.json         gfx1201 tuned block-FP8 GEMM configs (default @ M<=32, num_stages=1
 #                              @ M>=64), auto-loaded by the generic kernel.
+#   moe-configs/*.json         R9700 tuned fused-MoE Triton configs (fine-grained MoE models, e.g.
+#                              Qwen3.6-35B-A3B: E=256,N=256 block-fp8). Removes the stock default's
+#                              M>=96 cliff -> ~1.6x MoE GEMM / ~-12% TTFT at prefill; lossless, free at
+#                              decode. Auto-loaded by fused_moe (LDS-safe for the 64 KiB RDNA4 limit).
 #   radiance_vit_attn.py       native head_dim-72 ViT flash attention (multimodal).
 #   radiance_ar_ext.so /       prebuilt P2P one-shot all-reduce extensions (bf16 exact + fp8
 #     radiance_ar_quant_ext.so payload); radiance_allreduce.py wraps CudaCommunicator.all_reduce.
 #   radiance_draft*.py         lossless per-request MTP draft-depth controller.
+#   router_gemm.so /           custom gfx1201 bf16 MoE-gate GEMM (x[n,2048]@W[256,2048]^T) for the
+#     radiance_router.py       n in [6,16] band rocBLAS serves poorly (2.5x cold, bit-identical); built
+#                              from router_gemm.hip below, gated by RADIANCE_MOE_ROUTER.
 #   patch_gfx1201              gcn-arch env, AITER-enable-on-gfx12x, Triton is_active, sampler gate.
 #   patch_radiance_dispatch    hooks apply_block_scaled_mm -> dispatcher (+ K=8704 splitk fix).
 #   patch_unified_attention_bf16  bf16/auto KV 3D-decode config (fits the R9700 64 KiB LDS @head256).
@@ -170,16 +177,18 @@ print('aiter', m.version('amd-aiter'), '| triton', triton.__version__, '| triton
 #   patch_mtp_loopbreak        injects the `break` the draft-depth controller uses to stop early.
 #   patch_qwen3_toolparse      tool-parser streaming vs non-streaming consistency (vLLM #47137).
 #   patch_from_json_filter     adds the `from_json` Jinja filter the fixed chat template needs.
+#   patch_router_gemm          routes the bf16 MoE-gate GEMM (n in [6,16]) to router_gemm.so.
 COPY radiance_amdsmi.py radiance_amdsmi.pth \
      radiance_kernels.py radiance_vit_attn.py \
      radiance_ar_ext.so radiance_ar_quant_ext.so radiance_allreduce.py \
-     radiance_draft.py radiance_draft_gpu.py ${SP}/
+     radiance_draft.py radiance_draft_gpu.py radiance_router.py ${SP}/
 COPY fp8-configs/ ${SP}/vllm/model_executor/layers/quantization/utils/configs/
+COPY moe-configs/ ${SP}/vllm/model_executor/layers/fused_moe/configs/
 COPY patch_*.py install_radiance_hooks.py _patchlib.py /opt/patches/
 RUN set -eu; cd /opt/patches; \
     for p in \
       patch_gfx1201 \
-      patch_radiance_dispatch patch_unified_attention_bf16 patch_gdn_wmma \
+      patch_radiance_dispatch patch_router_gemm patch_unified_attention_bf16 patch_gdn_wmma \
       patch_preshuffle patch_radiance_fusion install_radiance_hooks \
       patch_unpad patch_mtp_mm_mask patch_mtp_loopbreak \
       patch_qwen3_toolparse patch_from_json_filter; do \
@@ -187,12 +196,25 @@ RUN set -eu; cd /opt/patches; \
     done; \
     python -c "import ast, glob; [ast.parse(open(f).read()) for f in glob.glob('${SP}/radiance_*.py')]; print('radiance runtime modules parse OK')"
 
+# --- RADIANCE MoE-router GEMM kernel (custom gfx1201 HIP, built here against the image's ROCm) ---
+# Skinny bf16 gate GEMM C[n,256] = x[n,2048] @ W[256,2048]^T for the n in [6,16] band that rocBLAS
+# serves poorly (2.5x cold vs Tensile, bit-identical). pybind11 + HIP, no torch/extension.h (dodges
+# the rocThrust/hipSPARSE header gap). -DTEMPORAL keeps the 1 MB weight cache-resident (measured best).
+# Loaded by radiance_router.py, hooked into rocm_unquantized_gemm_impl by patch_router_gemm above;
+# gated by RADIANCE_MOE_ROUTER (inert for models whose gate is not [256,2048]). GPU-free build.
+COPY router_gemm.hip /opt/patches/router_gemm.hip
+RUN INC=$(python -m pybind11 --includes) \
+    && hipcc -O3 -std=c++17 -fPIC -shared --offload-arch=${GFX_ARCH} -Wno-unused-result -DTEMPORAL \
+       $INC /opt/patches/router_gemm.hip -o ${SP}/router_gemm.so \
+    && test -f ${SP}/router_gemm.so && echo "router_gemm.so built"
+
 # Radiance feature flags — all baked ON (each set 0 to fall back to stock). Rationale for each
 # is in the corresponding patch/module docstring; the startup banner prints their live state.
 #   PRESHUFFLE/ATTN_TUNE/FUSE_RMS_QUANT  GEMM + attention + rmsnorm kernel paths
 #   GDN_WMMA/VIT_FLASH                    fp16 matrix-core GDN gram; native-72 ViT flash
 #   FAST_REDUCE/AR_*                      P2P all-reduce + fp8-payload size gates (TP=2)
 #   DYNAMIC_DRAFT/DRAFT_*                 lossless per-request MTP draft-depth controller
+#   MOE_ROUTER                            custom bf16 MoE-gate GEMM (fine-grained MoE, e.g. 35B-A3B)
 ENV RADIANCE_PRESHUFFLE=1 \
     RADIANCE_ATTN_TUNE=1 \
     RADIANCE_FUSE_RMS_QUANT=1 \
@@ -204,7 +226,8 @@ ENV RADIANCE_PRESHUFFLE=1 \
     RADIANCE_AR_QUANT_MIN_KB=128 \
     RADIANCE_DYNAMIC_DRAFT=1 \
     RADIANCE_DRAFT_SCHEDULE=1:8,2:7,4:6,8:5,16:4 \
-    RADIANCE_DRAFT_TAU=0.35
+    RADIANCE_DRAFT_TAU=0.35 \
+    RADIANCE_MOE_ROUTER=1
 
 # Fail the build early if the native stack doesn't import.
 RUN python -c 'import importlib.metadata as md, torch, vllm, vllm._C, vllm._rocm_C, flash_attn; \
@@ -235,7 +258,7 @@ RUN chmod +x /opt/vllm/bin/rocm-bandwidth-test
 # banner runs once in the launcher process, not per TP worker. RADIANCE_VERSION is the source of
 # truth for the version string the banner prints (bump via --build-arg RADIANCE_VERSION=... or the
 # VERSION file that the Makefile / build command reads).
-ARG RADIANCE_VERSION=0.2.8
+ARG RADIANCE_VERSION=0.3.0
 ENV RADIANCE_VERSION=${RADIANCE_VERSION}
 COPY radiance_preamble.py /opt/radiance_preamble.py
 COPY radiance_entrypoint.sh /opt/radiance_entrypoint.sh

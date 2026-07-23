@@ -131,6 +131,7 @@ def section_opts():
         ("RADIANCE_FAST_REDUCE",    "1", "P2P one-shot all-reduce for TP=2, byte-identical to RCCL"),
         ("RADIANCE_AR_QUANT",       "1", "fp8 all-reduce payload for large messages (on; not RCCL-identical)"),
         ("RADIANCE_DYNAMIC_DRAFT",  "1", "per-request MTP draft-depth controller (needs speculative mtp)"),
+        ("RADIANCE_MOE_ROUTER",     "1", "custom bf16 MoE-gate GEMM for the n in [6,16] band (fine-grained MoE, e.g. Qwen3.6-35B-A3B)"),
     ]:
         badge = ok("ON ") if _val(name, dflt) == "1" else warn("OFF")
         print(f"    {badge} {name:<24} " + dim(desc))
@@ -172,6 +173,7 @@ def section_opts():
     print("\n  " + dim("baked-in (always on; correctness + GEMM path):"))
     baked = [
         "block-FP8 GEMM dispatcher; preshuffle / AITER split-K / generic + tuned fp8-configs",
+        "tuned fused-MoE Triton configs for fine-grained MoE (Qwen3.6-35B-A3B E=256,N=256; ~-12% TTFT prefill)",
         "bf16 / auto KV cache attention fit + tune (fits the RDNA4 64 KiB LDS at head_size 256)",
         "amdsmi gfx1201 GPU enumeration fix (device_count / platform detect)",
         "AITER enablement for gfx12x (upstream gates it to MI3xx / CDNA)",

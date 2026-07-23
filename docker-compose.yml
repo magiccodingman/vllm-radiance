@@ -10,7 +10,7 @@
 # this file, e.g.:  MAX_NUM_SEQS=16 MAX_MODEL_LEN=32768 docker compose up -d
 services:
   vllm:
-    image: ${IMAGE:-vllm-radiance:0.2.8}
+    image: ${IMAGE:-vllm-radiance:0.3.0}
     container_name: vllm-radiance
     restart: unless-stopped
     command:
@@ -27,6 +27,19 @@ services:
       - --max-num-batched-tokens=${MAX_NUM_BATCHED_TOKENS:-2048}
       - --kv-cache-dtype=fp8
       - --attention-backend=ROCM_AITER_UNIFIED_ATTN
+      # Automatic prefix caching (APC) for shared prefixes (system prompts, RAG / agentic context).
+      # Both flags are required and ON here: this is a GDN hybrid, and hybrid models default their APC
+      # support flag off ("experimental"), so vLLM SILENTLY disables prefix caching unless
+      # --enable-prefix-caching is passed explicitly. --mamba-cache-mode=align makes the linear-attention
+      # (GDN) layers prefix-cacheable too, snapshotting + restoring their conv + recurrent state at block
+      # boundaries; this is verified bit-identical to full recompute (including under MTP). Effect:
+      # large TTFT drop on shared prefixes (~3.6x measured). Note: align reconciles the mamba/attention
+      # page sizes, which raises the attention block size to 1664 tokens and uses one extra state block
+      # per linear-attn layer (slightly lower max concurrency at full context). Remove both flags to
+      # disable. Do NOT use --mamba-cache-mode=all (unsupported by this model) and do NOT set
+      # VLLM_SSM_CONV_STATE_LAYOUT=DS (asserts under MTP + align).
+      - --enable-prefix-caching
+      - --mamba-cache-mode=align
       # MTP self-speculation. nspec=8 default: RADIANCE dynamic-draft caps the actual MTP depth
       # by confidence, so 8 is the ceiling not a fixed cost. nspec=16 is an option for more verbatim
       # upside (editing/RAG) but needs GPU_UTIL=0.90 to stay safe at 8 concurrent sequences (else CUDA OOM).
@@ -78,6 +91,9 @@ services:
       RADIANCE_DYNAMIC_DRAFT: "1"
       RADIANCE_DRAFT_SCHEDULE: "1:8,2:7,4:6,8:5,16:4"
       RADIANCE_DRAFT_TAU: "0.35"
+      # custom bf16 MoE-gate GEMM for the n in [6,16] band rocBLAS serves poorly (fine-grained MoE,
+      # e.g. Qwen3.6-35B-A3B). Baked ON; inert for models whose gate is not [256,2048]. Set "0" for rocBLAS.
+      RADIANCE_MOE_ROUTER: "1"
       NCCL_PROTO: Simple
       # throttle inductor compile workers to limit peak compile-time RAM (defensive).
       TORCHINDUCTOR_COMPILE_THREADS: "4"

@@ -70,12 +70,21 @@ Everything below is baked into the image; the tuned paths are env-gated and on b
 - **RDNA4-tuned kernels**: preshuffled FP8 blockscale GEMM, unified-attention tiling (fp8 + bf16/`auto` KV),
   fused RMSNorm+quant, an fp16 matrix-core (WMMA) gated-delta-net path, a TP=2 P2P one-shot all-reduce
   (optional fp8 payload), and a native head_dim-72 ViT flash kernel for multimodal vision encoders.
+- **Fine-grained MoE support** (e.g. Qwen3.6-35B-A3B): RDNA4-tuned fused-MoE Triton configs (always on;
+  removes the stock config's `M>=96` cliff for a lower prefill TTFT, lossless), plus a custom bf16 MoE-gate
+  GEMM (`RADIANCE_MOE_ROUTER`) for the `n` in `[6,16]` band that rocBLAS serves poorly. Both inert on
+  models they do not apply to.
 - **Lossless dynamic MTP drafting**: a per-request confidence gate plus verbatim n-gram tail that varies
   draft depth without changing what the model verifies.
+- **Prefix caching that works on the GDN hybrid** (enabled in the compose): hybrid models leave automatic
+  prefix caching off by default, so it is turned on explicitly with `--enable-prefix-caching
+  --mamba-cache-mode=align`. Align mode snapshots and restores the linear-attention (GDN) recurrent state at
+  block boundaries — verified bit-identical to full recompute, including under MTP — giving a large TTFT drop
+  on shared prefixes (system prompts, RAG, agentic context).
 - **Optional NUMA pinning** (`--numa-bind`, off by default) for multi-NUMA-node hosts.
 
 ## Layout
 
 Flat build context: the runtime Python modules (`radiance_*.py`), the `patch_*.py` fixes, the `fp8-configs/`
-GEMM configs, the prebuilt binaries, the chat template, `Dockerfile`, and `docker-compose.yml` all live at the
-repo root so `docker build .` works directly.
+and `moe-configs/` GEMM configs, the `router_gemm.hip` kernel source, the prebuilt binaries, the chat template,
+`Dockerfile`, and `docker-compose.yml` all live at the repo root so `docker build .` works directly.
