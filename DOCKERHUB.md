@@ -2,20 +2,22 @@
 
 vLLM inference server for the AMD Radeon AI PRO R9700 (gfx1201 / RDNA4). Bundles a working ROCm + PyTorch + Triton + AITER + vLLM stack with the RDNA4 patches and custom kernels needed to run vLLM on this card, so you don't have to build the stack yourself.
 
-> **Status: super early dev (v0.2.8). Experimental.**
-> This is a very early build. The performance numbers here come from one exact configuration: Qwen3.6-27B-FP8, fp8 KV cache, two R9700 GPUs (tensor parallel); bf16 / `auto` KV also works (see below). Other models, non-FP8 weights, single or 3+ GPUs, and non-R9700 hardware are untested. Expect rough edges, breaking changes between versions, and things that just don't work yet. Not production hardened. Use at your own risk.
+> **Status: super early dev (v0.3.0). Experimental.**
+> This is a very early build. The performance numbers here come from two exact configurations: Qwen3.6-27B-FP8 and Qwen3.6-35B-A3B-FP8 (fine-grained MoE), both with fp8 KV cache on two R9700 GPUs (tensor parallel); bf16 / `auto` KV also works (see below). Other models, non-FP8 weights, single or 3+ GPUs, and non-R9700 hardware are untested. Expect rough edges, breaking changes between versions, and things that just don't work yet. Not production hardened. Use at your own risk.
 
 ## Tested so far
 
-Only one setup has been run and measured:
+Two setups have been run and measured:
 
 | | |
 |---|---|
-| Model | Qwen3.6-27B-FP8 |
+| Models | **Qwen3.6-27B-FP8** (dense) and **Qwen3.6-35B-A3B-FP8** (fine-grained MoE: 256 experts, top-8) |
 | KV cache | FP8 (bf16 / `auto` also supported) |
 | GPUs | 2x R9700, tensor parallel (TP=2) |
 
-Untested (may or may not work): any other model, non-FP8 weights, single GPU, more than two GPUs, non-R9700 hardware. Treat the defaults below as a starting point for that one setup, not a general recommendation.
+Untested (may or may not work): any other model, non-FP8 weights, single GPU, more than two GPUs, non-R9700 hardware. Treat the defaults below as a starting point for these two setups, not a general recommendation.
+
+**Fine-grained MoE (Qwen3.6-35B-A3B-FP8).** Supported and tuned. Two MoE paths are baked in and activate automatically for it: RDNA4-tuned fused-MoE Triton configs (removes the stock config's `M>=96` cliff, lower prefill TTFT, lossless) and a custom bf16 MoE-gate GEMM (`RADIANCE_MOE_ROUTER`, on by default) for the skinny `n` in `[6,16]` band that rocBLAS serves poorly. One serving requirement: with `--mamba-cache-mode=align` this model's attention block size is 2240, and align asserts `block_size <= max_num_batched_tokens`, so pass **`--max-num-batched-tokens >= 2240`** (2560 is a clean default; the compose ships 2048, which is fine for the 27B but must be raised for the 35B).
 
 **bf16 / `auto` KV cache is supported** (0.1.5). Earlier builds crashed at startup with a Triton shared-memory (`OutOfResources`) error on any 2-byte KV cache (including the `--kv-cache-dtype auto` default), because the attention decode kernel's tile didn't fit the R9700's 64 KiB LDS at head_size 256. That kernel is now fixed and tuned for RDNA4, so fp8, bf16, and `auto` KV caches all work. fp8 packs more KV per GB of VRAM; bf16 / `auto` keeps full KV precision.
 

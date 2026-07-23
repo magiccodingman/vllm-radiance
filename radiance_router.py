@@ -23,6 +23,6 @@ def router_gemm(x: torch.Tensor, weight: torch.Tensor) -> torch.Tensor:
     n, K = int(x.shape[0]), int(x.shape[1])
     N = int(weight.shape[0])
     c = torch.empty((n, N), device=x.device, dtype=torch.bfloat16)
-    _rg.launch_v7(x.data_ptr(), weight.data_ptr(), c.data_ptr(), n, K, N, _WV, _SK,
-                  torch.cuda.current_stream().cuda_stream)
+    _rg.launch(x.data_ptr(), weight.data_ptr(), c.data_ptr(), n, K, N, _WV, _SK,
+               torch.cuda.current_stream().cuda_stream)
     return c

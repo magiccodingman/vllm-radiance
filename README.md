@@ -5,10 +5,11 @@ ROCm + PyTorch + Triton + AITER + vLLM stack with the RDNA4 patches and custom k
 this card, plus RDNA4-tuned GEMM / attention / all-reduce paths and a dynamic MTP draft controller, so you
 don't have to build the stack yourself.
 
-> **Status: super early dev (v0.2.8). Experimental.** Everything here was built and measured on one exact
-> setup: Qwen3.6-27B-FP8, fp8 (or bf16/`auto`) KV cache, two R9700 GPUs (tensor parallel). Other models,
-> non-FP8 weights, single or 3+ GPUs, and non-R9700 hardware are untested. Expect rough edges and breaking
-> changes. Not production hardened. Use at your own risk.
+> **Status: super early dev (v0.3.0). Experimental.** Everything here was built and measured on two exact
+> setups: **Qwen3.6-27B-FP8** and **Qwen3.6-35B-A3B-FP8** (fine-grained MoE, 256 experts / top-8), both with
+> fp8 (or bf16/`auto`) KV cache on two R9700 GPUs (tensor parallel). Other models, non-FP8 weights, single or
+> 3+ GPUs, and non-R9700 hardware are untested. Expect rough edges and breaking changes. Not production
+> hardened. Use at your own risk.
 
 This repository is the **source** for the image published as `stilldeadcode/vllm-radiance` on Docker Hub.
 See **[DOCKERHUB.md](DOCKERHUB.md)** for the full description, the complete environment-variable / knob
@@ -55,6 +56,11 @@ then:
 docker compose up -d          # start; follow with: docker compose logs -f
 docker compose down           # stop
 ```
+
+The compose defaults target Qwen3.6-27B-FP8. To serve the fine-grained-MoE **Qwen3.6-35B-A3B-FP8**, point it
+at that model and raise the batch-token budget: `--max-num-batched-tokens` must be **≥ 2240** (align mode
+reconciles the GDN state to attention block size 2240; the 27B default of 2048 asserts otherwise). Its tuned
+MoE config and the `RADIANCE_MOE_ROUTER` gate GEMM are baked in and turn on automatically.
 
 All tunables are `${VAR:-default}` in the compose file; override via the shell or a `.env` file without
 editing it. The full knob list (kernel toggles, draft controller, AITER routing, …) is in
