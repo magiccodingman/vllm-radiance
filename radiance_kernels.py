@@ -94,14 +94,30 @@ def install_load_hook():
     sys.stderr.flush()
 
 
+# Tuned large-prefill 2D attention config, keyed by attention head size. Like the block-FP8 GEMM
+# configs, each entry only ever applies to the shape it was measured on, so adding a head size can
+# never move a head size that is already tuned.
+#
+#   head_size 256 (Qwen3.6): AITER's BLOCK_M of 64 is already right. Forcing 32 here was measured at
+#     +8% TTFT @32K and +14% @64K, i.e. a clear regression; do not "unify" these two entries.
+#   head_size 512 (Gemma4 global-attention layers): BLOCK_M 32 instead of 64 is worth -30% TTFT @32K,
+#     -38% @64K and -46% @120K. The kernel is occupancy-limited at this head size, not matmul-shape
+#     limited: the optimum sits at 8 query rows per warp (BLOCK_M/num_warps), and the same 8 is
+#     reached either by halving BLOCK_M or doubling num_warps (64/8 measured -27%). Raising TILE_SIZE
+#     does not help at any context length: 32 and 64 both measured slower than 16.
+_PREFILL_2D_BY_HEAD = {
+    512: {"TILE_SIZE": 16, "BLOCK_M": 32, "num_warps": 4, "waves_per_eu": 1},
+}
+
+
 def install_attn_config_hook():
-    """Override AITER's unified-attention config with the gfx1201-tuned one, per dtype and phase:
+    """Override AITER's unified-attention config with the gfx1201-tuned one, per dtype, phase and
+    head size:
        decode fp8 3D   TILE=16 warps4 stages1 waves6  (reduce warps8/stages1/waves2)
-       prefill 2D fp8  TILE=16 waves1  (large prefill only)
+       prefill 2D fp8  TILE=16 waves1  (large prefill only) + the per-head-size table above
        prefill 2D bf16 TILE=16 warps4 stages1 waves1
-    The bf16 3D-decode config is applied at build time in patch_unified_attention_bf16.py, not here: this
-    runtime wrapper is bypassed for that path, and the config is LDS-critical (the aiter default overflows
-    the R9700's 64 KiB LDS at head_size 256, OOMing 2-byte KV at cudagraph capture). Gated RADIANCE_ATTN_TUNE=1."""
+    Purely a tune: every LDS-fit (correctness) clamp lives in patch_unified_attention_lds.py instead,
+    so turning this off cannot make a model fail to start. Gated RADIANCE_ATTN_TUNE=1."""
     if os.environ.get("RADIANCE_ATTN_TUNE", "0") != "1":
         return
     try:
@@ -125,12 +141,19 @@ def install_attn_config_hook():
 
     def _s2(*a, **k):   # prefill / MTP decode-via-2D
         c = _o2(*a, **k)
+        head_size = a[1] if len(a) > 1 else k.get("head_size", 0)
         max_seqlen_q = a[4] if len(a) > 4 else k.get("max_seqlen_q", 0)
+        num_queries_per_kv = a[6] if len(a) > 6 else k.get("num_queries_per_kv", 1)
         kv_dtype = a[9] if len(a) > 9 else k.get("kv_cache_dtype")
         if kv_dtype in TWO_BYTE:                 # bf16/auto KV: warps=4 is decisive on large prefill
             c["TILE_SIZE"] = 16; c["num_warps"] = 4; c["num_stages"] = 1; c["waves_per_eu"] = 1
         elif max_seqlen_q >= 256:                # fp8 large prefill
             c["TILE_SIZE"] = 16; c["waves_per_eu"] = 1
+            tuned = _PREFILL_2D_BY_HEAD.get(head_size)
+            if tuned is not None:
+                c.update(tuned)
+                # BLOCK_Q is derived from BLOCK_M upstream, so it has to follow it here too.
+                c["BLOCK_Q"] = max(1, c["BLOCK_M"] // max(1, num_queries_per_kv))
         return c
 
     UA.select_3d_config = _s3

@@ -152,8 +152,11 @@ print('aiter', m.version('amd-aiter'), '| triton', triton.__version__, '| triton
 #                              GPUs and stays alive -> platform detect / device_count / names.
 #   radiance_kernels.py        the block-FP8 GEMM dispatch table + install_all() runtime-hook
 #                              fan-out (called from vllm's plugin loader via install_radiance_hooks).
-#   fp8-configs/*.json         gfx1201 tuned block-FP8 GEMM configs (default @ M<=32, num_stages=1
-#                              @ M>=64), auto-loaded by the generic kernel.
+#   fp8-configs/*.json         gfx1201 tuned block-FP8 GEMM configs, auto-loaded by the generic kernel
+#                              and keyed by exact N,K,device so each file only ever applies to the
+#                              shape it was tuned for. K=5120 = Qwen3.6-27B; K=5376/N=5376 = Gemma4-31B
+#                              at TP=2 (tuned @ M>=64 only, i.e. prefill: the sweep's small-M picks
+#                              measured -5% TTFT but +13% TPOT in-serve, so decode keeps the default).
 #   moe-configs/*.json         R9700 tuned fused-MoE Triton configs (fine-grained MoE models, e.g.
 #                              Qwen3.6-35B-A3B: E=256,N=256 block-fp8). Removes the stock default's
 #                              M>=96 cliff -> ~1.6x MoE GEMM / ~-12% TTFT at prefill; lossless, free at
@@ -167,7 +170,10 @@ print('aiter', m.version('amd-aiter'), '| triton', triton.__version__, '| triton
 #                              from router_gemm.hip below, gated by RADIANCE_MOE_ROUTER.
 #   patch_gfx1201              gcn-arch env, AITER-enable-on-gfx12x, Triton is_active, sampler gate.
 #   patch_radiance_dispatch    hooks apply_block_scaled_mm -> dispatcher (+ K=8704 splitk fix).
-#   patch_unified_attention_bf16  bf16/auto KV 3D-decode config (fits the R9700 64 KiB LDS @head256).
+#   patch_unified_attention_lds   shrinks the staged K/V tile into the R9700's 64 KiB LDS for any
+#                              head_size / KV dtype (AITER sizes it for a larger LDS and overflows at
+#                              head 256 + 2-byte KV, and at head 512 + fp8 KV), plus the bf16/auto-KV
+#                              3D-decode tune.
 #   patch_gdn_wmma             gated-delta-net gram + triangular solve on the fp16 matrix cores.
 #   patch_preshuffle           BlockScaledMM output_shape fix for the preshuffled weight layout.
 #   patch_radiance_fusion      folds native group-FP8 quant into the RMSNorm epilogue on gfx1201.
@@ -188,7 +194,7 @@ COPY patch_*.py install_radiance_hooks.py _patchlib.py /opt/patches/
 RUN set -eu; cd /opt/patches; \
     for p in \
       patch_gfx1201 \
-      patch_radiance_dispatch patch_router_gemm patch_unified_attention_bf16 patch_gdn_wmma \
+      patch_radiance_dispatch patch_router_gemm patch_unified_attention_lds patch_gdn_wmma \
       patch_preshuffle patch_radiance_fusion install_radiance_hooks \
       patch_unpad patch_mtp_mm_mask patch_mtp_loopbreak \
       patch_qwen3_toolparse patch_from_json_filter; do \
@@ -208,7 +214,7 @@ RUN INC=$(python -m pybind11 --includes) \
        $INC /opt/patches/router_gemm.hip -o ${SP}/router_gemm.so \
     && test -f ${SP}/router_gemm.so && echo "router_gemm.so built"
 
-# Radiance feature flags — all baked ON (each set 0 to fall back to stock). Rationale for each
+# Radiance feature flags: all baked ON (each set 0 to fall back to stock). Rationale for each
 # is in the corresponding patch/module docstring; the startup banner prints their live state.
 #   PRESHUFFLE/ATTN_TUNE/FUSE_RMS_QUANT  GEMM + attention + rmsnorm kernel paths
 #   GDN_WMMA/VIT_FLASH                    fp16 matrix-core GDN gram; native-72 ViT flash
@@ -258,7 +264,7 @@ RUN chmod +x /opt/vllm/bin/rocm-bandwidth-test
 # banner runs once in the launcher process, not per TP worker. RADIANCE_VERSION is the source of
 # truth for the version string the banner prints (bump via --build-arg RADIANCE_VERSION=... or the
 # VERSION file that the Makefile / build command reads).
-ARG RADIANCE_VERSION=0.3.0
+ARG RADIANCE_VERSION=0.4.0
 ENV RADIANCE_VERSION=${RADIANCE_VERSION}
 COPY radiance_preamble.py /opt/radiance_preamble.py
 COPY radiance_entrypoint.sh /opt/radiance_entrypoint.sh

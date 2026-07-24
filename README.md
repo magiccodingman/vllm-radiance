@@ -5,9 +5,10 @@ ROCm + PyTorch + Triton + AITER + vLLM stack with the RDNA4 patches and custom k
 this card, plus RDNA4-tuned GEMM / attention / all-reduce paths and a dynamic MTP draft controller, so you
 don't have to build the stack yourself.
 
-> **Status: super early dev (v0.3.0). Experimental.** Everything here was built and measured on two exact
-> setups: **Qwen3.6-27B-FP8** and **Qwen3.6-35B-A3B-FP8** (fine-grained MoE, 256 experts / top-8), both with
-> fp8 (or bf16/`auto`) KV cache on two R9700 GPUs (tensor parallel). Other models, non-FP8 weights, single or
+> **Status: super early dev (v0.4.0). Experimental.** Everything here was built and measured on three exact
+> setups: **Qwen3.6-27B-FP8**, **Qwen3.6-35B-A3B-FP8** (fine-grained MoE, 256 experts / top-8), and
+> **Gemma-4-31B-it-FP8** (block-fp8, sliding + global attention, vision), all with fp8 (or bf16/`auto`) KV
+> cache on two R9700 GPUs (tensor parallel). Other models, non-FP8 weights, single or
 > 3+ GPUs, and non-R9700 hardware are untested. Expect rough edges and breaking changes. Not production
 > hardened. Use at your own risk.
 
@@ -62,6 +63,21 @@ at that model and raise the batch-token budget: `--max-num-batched-tokens` must 
 reconciles the GDN state to attention block size 2240; the 27B default of 2048 asserts otherwise). Its tuned
 MoE config and the `RADIANCE_MOE_ROUTER` gate GEMM are baked in and turn on automatically.
 
+To serve **Gemma-4-31B-it-FP8** (block-fp8, e.g. `RedHatAI/gemma-4-31B-it-FP8-block`), just point the compose
+at it: the quantization is auto-detected from `config.json` (compressed-tensors, 128x128 blocks), the tuned
+GEMM configs load by shape, and the long-context prefill attention path is tuned for its head-512 global
+layers. Drop the Qwen-specific `--mamba-cache-mode` and chat template / tool-reasoning parsers (it is not a
+GDN hybrid and uses its own template). Its vision tower works as-is. Note it is a *big-KV* model (60 layers,
+50 sliding + 10 global), so give it a smaller `--max-model-len` than the Qwen models at the same
+`--gpu-memory-utilization`.
+
+Gemma-4-31B also supports **MTP speculative decoding** for a large decode speedup, using Google's official
+drafter `google/gemma-4-31B-it-assistant` (vLLM loads it as an MTP model). It is lossless (the target
+verifies every drafted token) and the dynamic draft controller applies to it. Its one requirement on this
+card: the drafter has a head-512 layer, so pass `"attention_backend":"ROCM_AITER_UNIFIED_ATTN"` in the
+speculative config (the usual `flash_attn` caps at head 256). For example:
+`--speculative-config '{"method":"mtp","model":"/models/google/gemma-4-31B-it-assistant","num_speculative_tokens":8,"attention_backend":"ROCM_AITER_UNIFIED_ATTN","disable_padded_drafter_batch":true}' --no-async-scheduling`.
+
 All tunables are `${VAR:-default}` in the compose file; override via the shell or a `.env` file without
 editing it. The full knob list (kernel toggles, draft controller, AITER routing, …) is in
 [DOCKERHUB.md](DOCKERHUB.md).
@@ -69,13 +85,18 @@ editing it. The full knob list (kernel toggles, draft controller, AITER routing,
 ## What's inside
 
 Everything below is baked into the image; the tuned paths are env-gated and on by default. See
-**[DOCKERHUB.md](DOCKERHUB.md)** for the per-knob reference — every flag, its default, and what it does.
+**[DOCKERHUB.md](DOCKERHUB.md)** for the per-knob reference: every flag, its default, and what it does.
 
 - **gfx1201 correctness patches** (always on): GPU enumeration, AITER enablement, native sampler fallback,
-  MTP drafter unpad + multimodal draft-mask alignment, tool-parser + `from_json` chat-template filter.
-- **RDNA4-tuned kernels**: preshuffled FP8 blockscale GEMM, unified-attention tiling (fp8 + bf16/`auto` KV),
-  fused RMSNorm+quant, an fp16 matrix-core (WMMA) gated-delta-net path, a TP=2 P2P one-shot all-reduce
-  (optional fp8 payload), and a native head_dim-72 ViT flash kernel for multimodal vision encoders.
+  MTP drafter unpad + multimodal draft-mask alignment, tool-parser + `from_json` chat-template filter, and
+  an attention LDS fit that shrinks the staged K/V tile into the R9700's 64 KiB shared memory for any head
+  size and KV dtype (AITER sizes it for a larger LDS; without this, 2-byte KV at head 256 and fp8 KV at
+  head 512 both abort at CUDA-graph capture).
+- **RDNA4-tuned kernels**: preshuffled FP8 blockscale GEMM, unified-attention tiling (fp8 + bf16/`auto` KV,
+  plus a head-size-keyed long-context prefill config for models with large attention heads such as Gemma's
+  head-512 global layers), fused RMSNorm+quant, an fp16 matrix-core (WMMA) gated-delta-net path, a TP=2 P2P
+  one-shot all-reduce (optional fp8 payload), and a native head_dim-72 ViT flash kernel for multimodal
+  vision encoders.
 - **Fine-grained MoE support** (e.g. Qwen3.6-35B-A3B): RDNA4-tuned fused-MoE Triton configs (always on;
   removes the stock config's `M>=96` cliff for a lower prefill TTFT, lossless), plus a custom bf16 MoE-gate
   GEMM (`RADIANCE_MOE_ROUTER`) for the `n` in `[6,16]` band that rocBLAS serves poorly. Both inert on
@@ -85,7 +106,7 @@ Everything below is baked into the image; the tuned paths are env-gated and on b
 - **Prefix caching that works on the GDN hybrid** (enabled in the compose): hybrid models leave automatic
   prefix caching off by default, so it is turned on explicitly with `--enable-prefix-caching
   --mamba-cache-mode=align`. Align mode snapshots and restores the linear-attention (GDN) recurrent state at
-  block boundaries — verified bit-identical to full recompute, including under MTP — giving a large TTFT drop
+  block boundaries (verified bit-identical to full recompute, including under MTP), giving a large TTFT drop
   on shared prefixes (system prompts, RAG, agentic context).
 - **Optional NUMA pinning** (`--numa-bind`, off by default) for multi-NUMA-node hosts.
 
