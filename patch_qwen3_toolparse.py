@@ -38,18 +38,28 @@ LIB = Path(sysconfig.get_paths()["purelib"])
 
 # ── 1. content-leak fix (abstract_parser.py) ─────────────────────────────────
 F_ABS = LIB / "vllm/parser/abstract_parser.py"
+# 0.26.0 expanded the `else` block: a required/named tool-choice empty-content case now sits between
+# the `# No tool calls.` comment and the `return None, content`, so the old contiguous anchor no
+# longer matches. The anchor targets the tail of that block instead. The leak path (returning raw
+# `content`) is unchanged in 0.26.0, so this fix is still needed.
 ABS_ANCHOR = (
-    "            else:\n"
-    "                # No tool calls.\n"
+    "                if (is_required_tool_choice or is_named_tool_choice) and (\n"
+    "                    content is None\n"
+    "                    or (isinstance(content, str) and not content.strip())\n"
+    "                ):\n"
+    "                    return [], None\n"
     "                return None, content\n"
 )
 ABS_NEW = (
-    "            else:\n"
-    "                # No tool calls. Engine-based parsers already strip\n"
-    "                # incomplete / un-promoted tool-call markup from content,\n"
-    "                # so return that (which drops it) rather than the raw\n"
-    "                # input. Keeps non-streaming in agreement with streaming\n"
-    "                # on a truncated <tool_call> opener (vLLM #47137).\n"
+    "                if (is_required_tool_choice or is_named_tool_choice) and (\n"
+    "                    content is None\n"
+    "                    or (isinstance(content, str) and not content.strip())\n"
+    "                ):\n"
+    "                    return [], None\n"
+    "                # Engine-based parsers already strip incomplete / un-promoted\n"
+    "                # tool-call markup from content, so return that (drops it)\n"
+    "                # rather than the raw input. Keeps non-streaming in agreement\n"
+    "                # with streaming on a truncated <tool_call> opener (vLLM #47137).\n"
     "                if self._engine_based and tool_call_info is not None:\n"
     "                    return None, tool_call_info.content\n"
     "                return None, content\n"

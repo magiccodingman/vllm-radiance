@@ -14,6 +14,7 @@ is handled; anything else (GQA, other head sizes, batched >1) falls back to the 
 Gated by RADIANCE_VIT_FLASH (default on) and only active on gfx12x.
 """
 import os
+import sys
 
 import torch
 import triton
@@ -123,8 +124,90 @@ def apply_flash(q, k, v, scale=None, enable_gqa=False):
     return _orig_apply_sdpa(q, k, v, scale=scale, enable_gqa=enable_gqa)
 
 
+# --- transformers-native vision towers (e.g. Gemma4) -------------------------------------------
+# Some multimodal models (Gemma4) build their vision tower as a plain transformers module via
+# AutoModel.from_config rather than a vLLM ViT, so it never routes through vit_attn_wrappers above.
+# Those towers dispatch attention through transformers' ALL_ATTENTION_FUNCTIONS registry, keyed by
+# config._attn_implementation, with already-projected q/k/v in [batch, heads, seq, head_dim] layout.
+# We register a flash implementation there and point the head_dim-72 tower at it. Projections, norms
+# and RoPE are left entirely to stock transformers; only the attention math is swapped.
+
+
+def _flash_bhsd(q, k, v, scale):
+    """q, k, v: [B, H, S, D] (transformers layout). Returns [B, S, H, D] (what the attn interface
+    must hand back, i.e. eager's post-transpose layout)."""
+    B = q.shape[0]
+    outs = [
+        _flash_72(q[b].transpose(0, 1).contiguous(),   # [H,S,D] -> [S,H,D]
+                  k[b].transpose(0, 1).contiguous(),
+                  v[b].transpose(0, 1).contiguous(), scale)   # -> [S,H,D]
+        for b in range(B)
+    ]
+    return torch.stack(outs, 0)   # [B, S, H, D]
+
+
+def radiance_vit_flash_attn(module, query, key, value, attention_mask,
+                            dropout=0.0, scaling=None, softcap=None, **kwargs):
+    """A transformers ALL_ATTENTION_FUNCTIONS entry. Handles the dense, non-causal, head_dim-72 MHA
+    case with the flash kernel; everything else (a real attention_mask for packed/windowed images,
+    GQA, softcap, other head sizes/dtypes) falls back to the stock eager reference so behaviour is
+    unchanged there."""
+    if (
+        query.shape[-1] == _HEAD_DIM
+        and attention_mask is None
+        and softcap is None
+        and getattr(module, "num_key_value_groups", 1) == 1
+        and query.dtype in (torch.bfloat16, torch.float16)
+        and query.is_cuda
+    ):
+        s = scaling if scaling is not None else _HEAD_DIM ** -0.5
+        return _flash_bhsd(query, key, value, s), None
+    from transformers.models.gemma4.modeling_gemma4 import eager_attention_forward
+    return eager_attention_forward(module, query, key, value, attention_mask,
+                                   dropout=dropout, scaling=scaling, softcap=softcap, **kwargs)
+
+
+def install_gemma_vision():
+    """Point the Gemma4 vision tower's attention at the flash kernel via the transformers registry.
+    The tower is a transformers module (AutoModel.from_config), so it uses ALL_ATTENTION_FUNCTIONS
+    keyed by config._attn_implementation. Register our impl and flip the head_dim-72 tower to it on
+    first forward. Projections/RoPE stay in stock transformers. gfx12x + RADIANCE_VIT_FLASH only."""
+    if not _ENABLED:
+        return
+    try:
+        from vllm.platforms.rocm import on_gfx12x
+        if not on_gfx12x():
+            return
+    except Exception:
+        return
+    try:
+        from transformers.models.gemma4 import modeling_gemma4 as G
+    except Exception:
+        return
+    if getattr(G, "_radiance_vit_installed", False):
+        return
+    try:
+        G.ALL_ATTENTION_FUNCTIONS.register("radiance_vit_flash", radiance_vit_flash_attn)
+    except Exception:
+        G.ALL_ATTENTION_FUNCTIONS["radiance_vit_flash"] = radiance_vit_flash_attn
+    _orig_forward = G.Gemma4VisionAttention.forward
+
+    def _forward(self, *a, **k):
+        # flip only the head-72 tower; leave any other head size on its stock implementation
+        if getattr(self, "head_dim", None) == _HEAD_DIM \
+                and self.config._attn_implementation != "radiance_vit_flash":
+            self.config._attn_implementation = "radiance_vit_flash"
+        return _orig_forward(self, *a, **k)
+
+    G.Gemma4VisionAttention.forward = _forward
+    G._radiance_vit_installed = True
+    sys.stderr.write("[radiance.vit] Gemma4 vision flash attention installed (head_dim 72)\n")
+    sys.stderr.flush()
+
+
 def install():
-    """Swap the ViT SDPA per-segment apply for the head_dim-72 flash kernel on gfx12x."""
+    """Swap the ViT SDPA per-segment apply for the head_dim-72 flash kernel on gfx12x. Covers both
+    vLLM-native ViT wrappers and the transformers-native Gemma4 vision tower."""
     global _orig_apply_sdpa
     if not _ENABLED:
         return
@@ -136,10 +219,13 @@ def install():
         return
     try:
         import vllm.v1.attention.ops.vit_attn_wrappers as W
+        if not getattr(W, "_radiance_vit_installed", False):
+            _orig_apply_sdpa = W.apply_sdpa
+            W.apply_sdpa = apply_flash
+            W._radiance_vit_installed = True
     except Exception:
-        return
-    if getattr(W, "_radiance_vit_installed", False):
-        return
-    _orig_apply_sdpa = W.apply_sdpa
-    W.apply_sdpa = apply_flash
-    W._radiance_vit_installed = True
+        pass
+    try:
+        install_gemma_vision()
+    except Exception as e:
+        sys.stderr.write(f"[radiance.vit] Gemma vision install skipped: {e!r}\n")

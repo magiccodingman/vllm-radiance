@@ -1,273 +1,160 @@
-# vllm-radiance: from-scratch vLLM + ROCm image for dual Radeon AI PRO R9700 (gfx1201 / RDNA4).
-# Installs prebuilt vLLM/torch/ROCm wheels, builds aiter from source for gfx1201, applies
-# RDNA4 (gfx1201) fix patches, and bakes the radiance kernels.
-FROM ubuntu:24.04
-
+# vllm-radiance: vLLM/torch/triton/aiter stack for RDNA4 (gfx1201 / R9700), plus the radiance
+# patches and kernels. Single multistage build on the official AMD ROCm image. Stage 1 compiles
+# the stack from source into wheels; stage 2 installs them and applies the patches and kernels.
+# No prebuilt component wheels and no checked-in binaries.
+#
+# stack: torch 2.13.0, triton 3.7.1, torchvision 0.28.0, aiter v0.1.17, vLLM v0.26.0,
+# all compiled for PYTORCH_ROCM_ARCH=gfx1201 against the base image's ROCm 7.14.
+ARG ROCM_BASE=rocm/dev-ubuntu-24.04:7.14.0-full@sha256:439edaa8f0c4be4a3728e528f87b8a2ea1f051f34cf10b27caa4bd94f562eda7
 ARG GFX_ARCH=gfx1201
-# NOTE: VLLM_VERSION and ROCM_SDK_VERSION resolve from wheel indexes that keep only their newest
-# builds; an exact pin stops resolving within days. Both MUST still be listed at build time. Bump
-# to a current version first (see README "Building"):
-#   vLLM:     curl -sL https://wheels.vllm.ai/rocm/vllm/ | grep -oiE 'vllm-[0-9][^"<> ]*'
-#   ROCm SDK: curl -sL https://rocm.nightlies.amd.com/whl-multi-arch/rocm-sdk-libraries/ | grep -oE '7\.[0-9.]+a[0-9]+'
-ARG VLLM_WHEEL_URL=https://wheels.vllm.ai/rocm
-ARG VLLM_VERSION=0.25.1+rocm723
-ARG FLASH_ATTN_VERSION=2.8.3
-ARG ROCM_WHEEL_INDEX_URL=https://rocm.nightlies.amd.com/whl-multi-arch/
-ARG ROCM_SDK_VERSION=7.15.0a20260717
-ARG ROCM_SDK_LIBRARIES_PACKAGE=rocm-sdk-libraries
-ARG ROCM_SDK_DEVICE_PACKAGE=rocm-sdk-device-gfx1201
-ARG ROCM_SDK_LIBRARIES_DIR=_rocm_sdk_libraries
 
-ENV DEBIAN_FRONTEND=noninteractive
-ENV VIRTUAL_ENV=/opt/vllm
-ENV PATH=/opt/vllm/bin:$PATH
+# =====================================================================================
+# STAGE 1 builder: compile the stack from source into /wheels
+# =====================================================================================
+FROM ${ROCM_BASE} AS builder
+ARG GFX_ARCH
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTORCH_ROCM_ARCH=${GFX_ARCH} \
+    ROCM_PATH=/opt/rocm HIP_PATH=/opt/rocm \
+    USE_ROCM=1 USE_CUDA=0 MAX_JOBS=32 CMAKE_BUILD_PARALLEL_LEVEL=32
 
-# Runtime libs the ROCm userspace + torch wheels dlopen.
+# Build tooling the base dev image lacks (git/venv/pkg-config + the -dev packages torch's cmake
+# probes: libdrm for rocm_smi, libnuma, libelf).
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3.12 python3.12-dev python3.12-venv \
-    libatomic1 libdrm2 libdrm-amdgpu1 libelf1 libgfortran5 libgomp1 \
-    libjpeg-turbo8 libnuma1 numactl libopenmpi3t64 \
-    git curl ca-certificates gcc g++ \
+      git python3.12-venv build-essential ccache pkg-config \
+      libdrm-dev libnuma-dev libelf-dev \
+    && rm -rf /var/lib/apt/lists/*
+RUN python3 -m venv /opt/py
+ENV PATH=/opt/py/bin:$PATH
+RUN pip install -U pip wheel setuptools "cmake<4" ninja pybind11 numpy pyyaml typing_extensions cffi requests
+RUN mkdir -p /wheels
+
+# --- torch 2.13.0 (AOTriton off: its gfx1201 source-configure fails and vLLM never uses torch
+#     SDPA-flash; USE_MAGMA=0: base has no magma) ---
+RUN git clone --depth 1 -b v2.13.0 --recurse-submodules --shallow-submodules \
+        https://github.com/pytorch/pytorch.git /src/pytorch \
+    && cd /src/pytorch \
+    && pip install -r requirements.txt \
+    && python tools/amd_build/build_amd.py \
+    && USE_MAGMA=0 USE_MKLDNN=1 BUILD_TEST=0 USE_NCCL=1 USE_RCCL=1 \
+       USE_FLASH_ATTENTION=0 USE_MEM_EFF_ATTENTION=0 USE_AOTRITON=0 \
+       PYTORCH_BUILD_VERSION=2.13.0+rocm7.14 PYTORCH_BUILD_NUMBER=1 \
+       python setup.py bdist_wheel \
+    && cp dist/*.whl /wheels/ && pip install dist/*.whl && rm -rf /src/pytorch
+
+# --- triton 3.7.1 ---
+RUN git clone --depth 1 -b v3.7.1 https://github.com/triton-lang/triton.git /src/triton \
+    && cd /src/triton && pip wheel --no-build-isolation --no-deps . -w /wheels \
+    && pip install /wheels/triton-*.whl && rm -rf /src/triton
+
+# --- torchvision 0.28.0 ---
+# FORCE_CUDA=1 is REQUIRED: torchvision 0.28's BUILD_CUDA_SOURCES gates on torch.cuda.is_available(),
+# which is false in `docker build` (no GPU) -> it picks CppExtension, where torch's build-time hipify
+# double-compiles vision.cpp + vision_hip.cpp -> "multiple definition of vision::cuda_version()".
+# FORCE_CUDA=1 forces CUDAExtension (correct hipify source replacement); hipcc needs no GPU to compile.
+RUN git clone --depth 1 -b v0.28.0 https://github.com/pytorch/vision.git /src/vision \
+    && cd /src/vision && FORCE_CUDA=1 USE_ROCM=1 pip wheel --no-build-isolation --no-deps . -w /wheels \
+    && rm -rf /src/vision
+
+# --- aiter v0.1.17 (gfx1201; kernels JIT at runtime, PREBUILD_KERNELS=0) ---
+RUN git clone --recursive --shallow-submodules -b v0.1.17 https://github.com/ROCm/aiter.git /src/aiter \
+    && cd /src/aiter && GPU_ARCHS=${GFX_ARCH} PREBUILD_KERNELS=0 \
+       pip wheel --no-build-isolation --no-deps . -w /wheels \
+    && pip install /wheels/*aiter-*.whl && rm -rf /src/aiter
+
+# --- vLLM v0.26.0, built against the torch above. use_existing_torch drops the torch==2.11 pin;
+#     setuptools-scm and setuptools-rust are pyproject build requirements that --no-build-isolation
+#     does not install. ---
+RUN git clone --depth 1 -b v0.26.0 https://github.com/vllm-project/vllm.git /src/vllm \
+    && cd /src/vllm && python use_existing_torch.py \
+    && pip install "setuptools-scm>=8.0" "setuptools-rust>=1.9.0" \
+    && VLLM_TARGET_DEVICE=rocm pip wheel --no-build-isolation --no-deps . -w /wheels \
+    && rm -rf /src/vllm
+RUN ls -la /wheels
+
+# =====================================================================================
+# STAGE 2 final: install the wheels and apply the patches and kernels
+# =====================================================================================
+FROM ${ROCM_BASE} AS final
+ARG GFX_ARCH
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      python3.12-venv libnuma1 numactl git curl ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-RUN python3.12 -m venv /opt/vllm \
-    && python -m pip install --upgrade pip setuptools wheel uv
-
-# vLLM ROCm wheel + the exact torch/triton/aiter/flash-attn stack it was built against, all from
-# the single vLLM rocm index via --find-links. --no-cache keeps uv from leaving its (~15 GB,
-# hardlinked) download cache in the layer. The trailing RM strips build/CUDA-only bloat IN THIS
-# LAYER (so the image actually shrinks; a later RM only whiteouts): the Triton NVIDIA backend
-# (CUDA-only, dead on ROCm; also ~74 MB of cupti static libs) and xgrammar's link-time static
-# archive (the runtime uses xgrammar's .so).
-RUN uv pip install --no-cache \
-    --find-links ${VLLM_WHEEL_URL}/vllm/ \
-    --find-links ${VLLM_WHEEL_URL}/torch/ \
-    --find-links ${VLLM_WHEEL_URL}/torchvision/ \
-    --find-links ${VLLM_WHEEL_URL}/torchaudio/ \
-    --find-links ${VLLM_WHEEL_URL}/triton/ \
-    --find-links ${VLLM_WHEEL_URL}/triton-kernels/ \
-    --find-links ${VLLM_WHEEL_URL}/amdsmi/ \
-    --find-links ${VLLM_WHEEL_URL}/amd-aiter/ \
-    --find-links ${VLLM_WHEEL_URL}/flash-attn/ \
-    vllm==${VLLM_VERSION} flash-attn==${FLASH_ATTN_VERSION} \
-    "fastapi[standard]<0.137" \
-    && uv pip install --no-cache --no-deps torch-c-dlpack-ext \
-    && rm -rf /opt/vllm/lib/python3.12/site-packages/triton/backends/nvidia \
-              /opt/vllm/lib/python3.12/site-packages/xgrammar/lib/libxgrammar.a
-
-# ROCm userspace libraries (TheRock, packaged as wheels). --no-deps so they don't replace
-# torch/vLLM. We deliberately DO NOT install rocm-sdk-devel: its only payload is a ~2.7 GB
-# _devel.tar of headers/static libs that aiter's runtime JIT never uses (JIT compiles against
-# _rocm_sdk_core's hip headers), so it is pure image bloat.
-RUN uv pip install --no-cache --no-deps \
-    --index-url ${ROCM_WHEEL_INDEX_URL} \
-    rocm-sdk-core==${ROCM_SDK_VERSION} \
-    ${ROCM_SDK_LIBRARIES_PACKAGE}==${ROCM_SDK_VERSION} \
-    ${ROCM_SDK_DEVICE_PACKAGE}==${ROCM_SDK_VERSION}
-
-# Point ROCm/HIP + the dynamic loader at the in-venv SDK dirs.
+ENV VIRTUAL_ENV=/opt/vllm
+RUN python3 -m venv /opt/vllm
+ENV PATH=/opt/vllm/bin:$PATH
 ENV SP=/opt/vllm/lib/python3.12/site-packages
-# _rocm_sdk_core is the real ROCm root (has bin/, .info/version, bitcode, hip headers); HIP/ROCm,
-# the JIT include path (CPATH) and the linker path (LIBRARY_PATH) all point at it.
-ENV ROCM_PATH=${SP}/_rocm_sdk_core \
-    ROCM_HOME=${SP}/_rocm_sdk_core \
-    HIP_PATH=${SP}/_rocm_sdk_core \
-    HIP_HOME=${SP}/_rocm_sdk_core \
-    HIP_DEVICE_LIB_PATH=${SP}/_rocm_sdk_core/lib/llvm/amdgcn/bitcode \
-    DEVICE_LIB_PATH=${SP}/_rocm_sdk_core/lib/llvm/amdgcn/bitcode \
-    CPATH=${SP}/_rocm_sdk_core/include \
-    LIBRARY_PATH=${SP}/_rocm_sdk_core/lib \
-    PYTHONPATH=${SP}/_rocm_sdk_core/share/amd_smi \
-    HIPBLASLT_TENSILE_LIBPATH=${SP}/${ROCM_SDK_LIBRARIES_DIR}/lib/hipblaslt/library/${GFX_ARCH} \
-    ROCBLAS_TENSILE_LIBPATH=${SP}/${ROCM_SDK_LIBRARIES_DIR}/lib/rocblas/library
-ENV PATH=${SP}/_rocm_sdk_core/bin:${PATH}
-ENV LD_LIBRARY_PATH=${SP}/torch/lib:${SP}/_rocm_sdk_core/lib:${SP}/_rocm_sdk_core/lib/llvm/lib:${SP}/_rocm_sdk_core/lib/rocm_sysdeps/lib:${SP}/_rocm_sdk_core/lib/host-math/lib:${SP}/_rocm_sdk_libraries/lib
 
-ENV HIP_PLATFORM=amd \
-    VLLM_TARGET_DEVICE=rocm \
-    VLLM_ROCM_GCN_ARCH=${GFX_ARCH} \
-    PYTORCH_ROCM_ARCH=${GFX_ARCH} \
-    HIP_ARCHITECTURES=${GFX_ARCH} \
-    AMDGPU_TARGETS=${GFX_ARCH} \
-    GPU_ARCHS=${GFX_ARCH} \
-    SAFETENSORS_FAST_GPU=1 \
-    TOKENIZERS_PARALLELISM=false \
-    TRITON_CACHE_AUTOTUNING=1
-# ^ persist Triton autotune config selections (*.autotune.json). Only has effect
-#   when TRITON_CACHE_DIR is a persistent mount; without it the FLA/GDN kernels
-#   re-run do_bench (~20 min, looks like a hang) on every start.
+# --- install the wheels ---
+# torch/triton/vision/aiter with --no-deps so pip does not replace them; vLLM with its pure-python
+# dependencies. amdsmi (the ROCm python bindings the base image ships) is required for vLLM's ROCm
+# platform detection.
+COPY --from=builder /wheels /wheels
+RUN pip install --no-cache-dir -U pip wheel setuptools \
+ && pip install --no-cache-dir --no-deps \
+      /wheels/torch-*.whl /wheels/triton-*.whl /wheels/torchvision-*.whl /wheels/*aiter-*.whl \
+ && pip install --no-cache-dir /wheels/vllm-*.whl \
+ && pip install --no-cache-dir /opt/rocm/share/amd_smi pillow pybind11 \
+ && rm -rf /wheels /root/.cache
 
-# --- ROCm dev symlinks + aiter 0.1.16 (source build for gfx1201) ---
-# TheRock ROCm-SDK wheels ship runtime libX.so.N but NOT the unversioned linker
-# symlinks (libX.so) that aiter's runtime JIT needs (`ld -lamdhip64` else fails).
-RUN cd ${SP}/_rocm_sdk_core/lib \
-    && for f in *.so.*; do b="${f%%.so.*}.so"; [ -e "$b" ] || ln -s "$f" "$b"; done
+ENV ROCM_PATH=/opt/rocm HIP_PATH=/opt/rocm HIP_PLATFORM=amd \
+    VLLM_TARGET_DEVICE=rocm PYTORCH_ROCM_ARCH=${GFX_ARCH} VLLM_ROCM_GCN_ARCH=${GFX_ARCH} \
+    HIP_ARCHITECTURES=${GFX_ARCH} AMDGPU_TARGETS=${GFX_ARCH} GPU_ARCHS=${GFX_ARCH} \
+    SAFETENSORS_FAST_GPU=1 TOKENIZERS_PARALLELISM=false TRITON_CACHE_AUTOTUNING=1 \
+    PYTHONDONTWRITEBYTECODE=1
 
-# Replace the transitively-pulled amd-aiter 0.1.13 wheel (CDNA-only prebuilt .so,
-# no gfx1201) with aiter 0.1.16.post3 built FROM SOURCE for gfx1201 so its Triton
-# kernels (incl. the split-K block-FP8 GEMM) JIT for gfx1201. triton PINNED to
-# 3.6.0 so aiter can't bump it (vLLM 0.25 hard-pins ==3.6.0). PREBUILD_KERNELS=0:
-# HIP modules JIT at first use (cached in /cache/aiter); pip install stays GPU-free.
-# aiter's asm quant kernels (module_quant) are CDNA-only (no gfx1201 code objects at
-# any version), so VLLM_ROCM_USE_AITER_LINEAR stays 0 permanently (LINEAR=1 ->
-# module_quant -> invalid device function). Block-FP8 GEMM routes on the LINEAR=0
-# path via the radiance dispatcher (patch_radiance_dispatch.py / radiance_kernels.py).
-# The final `&& rm/uninstall` strip build-only bloat IN THIS LAYER (so it shrinks the
-# image): the aiter source clone (aiter installs into site-packages; /opt/aiter is
-# unused at runtime), cmake (aiter JIT uses ninja, not cmake), the CDNA (MI3xx) code
-# objects gfx1201 never loads, and the pip/uv caches.
-ARG AITER_VERSION=v0.1.16.post3
-RUN pip install --no-cache-dir cmake \
-    && git clone --depth 1 --recurse-submodules --shallow-submodules \
-        -b ${AITER_VERSION} https://github.com/ROCm/aiter.git /opt/aiter \
-    && pip uninstall -y amd-aiter aiter \
-    && printf 'triton==3.6.0\n' > /opt/aiter-constraints.txt \
-    && cd /opt/aiter \
-    && PIP_CONSTRAINT=/opt/aiter-constraints.txt GPU_ARCHS=${GFX_ARCH} \
-       PREBUILD_KERNELS=0 MAX_JOBS=6 pip install --no-cache-dir --no-build-isolation . \
-    # aiter's deps pull a triton_kernels build (1.0.0+amd...) that LACKS the
-    # matmul_ogs submodule vLLM imports (non-fatal ERROR + MoE-OGS fallback).
-    # Restore vLLM's triton_kernels (has matmul_ogs) from the vLLM index.
-    && pip install --no-deps --force-reinstall --no-cache-dir \
-       --find-links ${VLLM_WHEEL_URL}/triton-kernels/ triton_kernels \
-    && python -c "import triton, triton_kernels.matmul_ogs, importlib.metadata as m; \
-print('aiter', m.version('amd-aiter'), '| triton', triton.__version__, '| triton_kernels.matmul_ogs OK')" \
-    && pip uninstall -y cmake \
-    && rm -rf /opt/aiter /opt/aiter-constraints.txt \
-       ${SP}/aiter_meta/hsa/gfx942 ${SP}/aiter_meta/hsa/gfx950 \
-       /root/.cache/pip /root/.cache/uv
-
-# =====================================================================================
-# gfx1201 fix + tuned-kernel overlay (single consolidated block)
-# =====================================================================================
-# The full rationale for every fix lives in that patch's own module docstring; each patch
-# ast.parse()s the result before writing and exits nonzero on upstream source drift, so the
-# loop below needs no separate parse step. Patches are idempotent and order-independent (they
-# edit distinct files). Ordered/grouped by purpose: gfx1201-enablement, kernel-tuning,
-# correctness fixes, agentic serving.
-#
-# What each COPY'd runtime module / patch does:
-#   radiance_amdsmi.py + .pth  amdsmi init-order fix; the .pth execs `import radiance_amdsmi` at
-#                              site-init (before HIP, in every process) so amdsmi enumerates the
-#                              GPUs and stays alive -> platform detect / device_count / names.
-#   radiance_kernels.py        the block-FP8 GEMM dispatch table + install_all() runtime-hook
-#                              fan-out (called from vllm's plugin loader via install_radiance_hooks).
-#   fp8-configs/*.json         gfx1201 tuned block-FP8 GEMM configs, auto-loaded by the generic kernel
-#                              and keyed by exact N,K,device so each file only ever applies to the
-#                              shape it was tuned for. K=5120 = Qwen3.6-27B; K=5376/N=5376 = Gemma4-31B
-#                              at TP=2 (tuned @ M>=64 only, i.e. prefill: the sweep's small-M picks
-#                              measured -5% TTFT but +13% TPOT in-serve, so decode keeps the default).
-#   moe-configs/*.json         R9700 tuned fused-MoE Triton configs (fine-grained MoE models, e.g.
-#                              Qwen3.6-35B-A3B: E=256,N=256 block-fp8). Removes the stock default's
-#                              M>=96 cliff -> ~1.6x MoE GEMM / ~-12% TTFT at prefill; lossless, free at
-#                              decode. Auto-loaded by fused_moe (LDS-safe for the 64 KiB RDNA4 limit).
-#   radiance_vit_attn.py       native head_dim-72 ViT flash attention (multimodal).
-#   radiance_ar_ext.so /       prebuilt P2P one-shot all-reduce extensions (bf16 exact + fp8
-#     radiance_ar_quant_ext.so payload); radiance_allreduce.py wraps CudaCommunicator.all_reduce.
-#   radiance_draft*.py         lossless per-request MTP draft-depth controller.
-#   router_gemm.so /           custom gfx1201 bf16 MoE-gate GEMM (x[n,2048]@W[256,2048]^T) for the
-#     radiance_router.py       n in [6,16] band rocBLAS serves poorly (2.5x cold, bit-identical); built
-#                              from router_gemm.hip below, gated by RADIANCE_MOE_ROUTER.
-#   patch_gfx1201              gcn-arch env, AITER-enable-on-gfx12x, Triton is_active, sampler gate.
-#   patch_radiance_dispatch    hooks apply_block_scaled_mm -> dispatcher (+ K=8704 splitk fix).
-#   patch_unified_attention_lds   shrinks the staged K/V tile into the R9700's 64 KiB LDS for any
-#                              head_size / KV dtype (AITER sizes it for a larger LDS and overflows at
-#                              head 256 + 2-byte KV, and at head 512 + fp8 KV), plus the bf16/auto-KV
-#                              3D-decode tune.
-#   patch_gdn_wmma             gated-delta-net gram + triangular solve on the fp16 matrix cores.
-#   patch_preshuffle           BlockScaledMM output_shape fix for the preshuffled weight layout.
-#   patch_radiance_fusion      folds native group-FP8 quant into the RMSNorm epilogue on gfx1201.
-#   install_radiance_hooks     appends radiance_kernels.install_all() to vllm's plugin loader.
-#   patch_unpad                propagate seq_lens_cpu_upper_bound through unpadded() (MTP drafter).
-#   patch_mtp_mm_mask          align the image-placeholder mask with the compacted drafter batch.
-#   patch_mtp_loopbreak        injects the `break` the draft-depth controller uses to stop early.
-#   patch_qwen3_toolparse      tool-parser streaming vs non-streaming consistency (vLLM #47137).
-#   patch_from_json_filter     adds the `from_json` Jinja filter the fixed chat template needs.
-#   patch_router_gemm          routes the bf16 MoE-gate GEMM (n in [6,16]) to router_gemm.so.
+# --- runtime modules and configs ---
+# radiance_amdsmi.py and .pth: amdsmi init-order fix. amdsmi must init before HIP at site-init in
+# every process, otherwise it enumerates 0 devices and platform detection fails.
 COPY radiance_amdsmi.py radiance_amdsmi.pth \
-     radiance_kernels.py radiance_vit_attn.py \
-     radiance_ar_ext.so radiance_ar_quant_ext.so radiance_allreduce.py \
+     radiance_kernels.py radiance_vit_attn.py radiance_allreduce.py \
      radiance_draft.py radiance_draft_gpu.py radiance_router.py ${SP}/
 COPY fp8-configs/ ${SP}/vllm/model_executor/layers/quantization/utils/configs/
 COPY moe-configs/ ${SP}/vllm/model_executor/layers/fused_moe/configs/
+
+# --- gfx1201 fixes and tuned-kernel patches ---
+# Each patch edits a vLLM (or aiter/triton) source file in place and checks for source drift before
+# writing. patch_gdn_wmma covers the solve_tril triangular block-inverse only; the gated-delta-net
+# gram cast is handled in 0.26.0 upstream.
 COPY patch_*.py install_radiance_hooks.py _patchlib.py /opt/patches/
 RUN set -eu; cd /opt/patches; \
-    for p in \
-      patch_gfx1201 \
-      patch_radiance_dispatch patch_router_gemm patch_unified_attention_lds patch_gdn_wmma \
-      patch_preshuffle patch_radiance_fusion install_radiance_hooks \
-      patch_unpad patch_mtp_mm_mask patch_mtp_loopbreak \
-      patch_qwen3_toolparse patch_from_json_filter; do \
-        echo "== applying $p =="; python "$p.py"; \
+    for p in patch_gfx1201 patch_radiance_dispatch patch_router_gemm patch_unified_attention_lds \
+             patch_gdn_wmma patch_preshuffle patch_radiance_fusion install_radiance_hooks \
+             patch_unpad patch_mtp_mm_mask patch_mtp_loopbreak patch_qwen3_toolparse patch_from_json_filter; do \
+      echo "== applying $p =="; python "$p.py"; \
     done; \
-    python -c "import ast, glob; [ast.parse(open(f).read()) for f in glob.glob('${SP}/radiance_*.py')]; print('radiance runtime modules parse OK')"
+    python -c "import ast,glob; [ast.parse(open(f).read()) for f in glob.glob('${SP}/radiance_*.py')]; print('radiance modules parse OK')"
 
-# --- RADIANCE MoE-router GEMM kernel (custom gfx1201 HIP, built here against the image's ROCm) ---
-# Skinny bf16 gate GEMM C[n,256] = x[n,2048] @ W[256,2048]^T for the n in [6,16] band that rocBLAS
-# serves poorly (2.5x cold vs Tensile, bit-identical). pybind11 + HIP, no torch/extension.h (dodges
-# the rocThrust/hipSPARSE header gap). -DTEMPORAL keeps the 1 MB weight cache-resident (measured best).
-# Loaded by radiance_router.py, hooked into rocm_unquantized_gemm_impl by patch_router_gemm above;
-# gated by RADIANCE_MOE_ROUTER (inert for models whose gate is not [256,2048]). GPU-free build.
-COPY router_gemm.hip /opt/patches/router_gemm.hip
-RUN INC=$(python -m pybind11 --includes) \
-    && hipcc -O3 -std=c++17 -fPIC -shared --offload-arch=${GFX_ARCH} -Wno-unused-result -DTEMPORAL \
-       $INC /opt/patches/router_gemm.hip -o ${SP}/router_gemm.so \
-    && test -f ${SP}/router_gemm.so && echo "router_gemm.so built"
+# --- gfx1201 HIP kernels, compiled from source ---
+# router_gemm: bf16 MoE-gate GEMM. radiance_ar_ext: bf16 P2P all-reduce. radiance_ar_quant_ext:
+# fp8-payload all-reduce, built with -ffp-contract=off (otherwise the two TP ranks diverge by ~1 ULP).
+COPY router_gemm.hip radiance_ar_ext.hip radiance_ar_quant_ext.hip /opt/patches/
+RUN INC=$(python -m pybind11 --includes); B="-O3 -std=c++17 -fPIC -shared --offload-arch=${GFX_ARCH} -Wno-unused-result"; \
+    hipcc $B -DTEMPORAL $INC /opt/patches/router_gemm.hip        -o ${SP}/router_gemm.so && \
+    hipcc $B              $INC /opt/patches/radiance_ar_ext.hip   -o ${SP}/radiance_ar_ext.so && \
+    hipcc $B -ffp-contract=off $INC /opt/patches/radiance_ar_quant_ext.hip -o ${SP}/radiance_ar_quant_ext.so && \
+    test -f ${SP}/router_gemm.so && test -f ${SP}/radiance_ar_ext.so && test -f ${SP}/radiance_ar_quant_ext.so && \
+    echo "radiance HIP kernels built"
 
-# Radiance feature flags: all baked ON (each set 0 to fall back to stock). Rationale for each
-# is in the corresponding patch/module docstring; the startup banner prints their live state.
-#   PRESHUFFLE/ATTN_TUNE/FUSE_RMS_QUANT  GEMM + attention + rmsnorm kernel paths
-#   GDN_WMMA/VIT_FLASH                    fp16 matrix-core GDN gram; native-72 ViT flash
-#   FAST_REDUCE/AR_*                      P2P all-reduce + fp8-payload size gates (TP=2)
-#   DYNAMIC_DRAFT/DRAFT_*                 lossless per-request MTP draft-depth controller
-#   MOE_ROUTER                            custom bf16 MoE-gate GEMM (fine-grained MoE, e.g. 35B-A3B)
-ENV RADIANCE_PRESHUFFLE=1 \
-    RADIANCE_ATTN_TUNE=1 \
-    RADIANCE_FUSE_RMS_QUANT=1 \
-    RADIANCE_GDN_WMMA=1 \
-    RADIANCE_VIT_FLASH=1 \
-    RADIANCE_FAST_REDUCE=1 \
-    RADIANCE_AR_MAX_KB=32768 \
-    RADIANCE_AR_QUANT=1 \
-    RADIANCE_AR_QUANT_MIN_KB=128 \
-    RADIANCE_DYNAMIC_DRAFT=1 \
-    RADIANCE_DRAFT_SCHEDULE=1:8,2:7,4:6,8:5,16:4 \
-    RADIANCE_DRAFT_TAU=0.35 \
+# --- radiance feature flags (set any to 0 to fall back to stock). RADIANCE_GDN_WMMA gates the
+#     solve_tril fp16 path. ---
+ENV RADIANCE_PRESHUFFLE=1 RADIANCE_ATTN_TUNE=1 RADIANCE_FUSE_RMS_QUANT=1 \
+    RADIANCE_GDN_WMMA=1 RADIANCE_VIT_FLASH=1 \
+    RADIANCE_FAST_REDUCE=1 RADIANCE_AR_MAX_KB=32768 RADIANCE_AR_QUANT=1 RADIANCE_AR_QUANT_MIN_KB=128 \
+    RADIANCE_DYNAMIC_DRAFT=1 RADIANCE_DRAFT_SCHEDULE=1:8,2:7,4:6,8:5,16:4 RADIANCE_DRAFT_TAU=0.35 \
     RADIANCE_MOE_ROUTER=1
 
-# Fail the build early if the native stack doesn't import.
-RUN python -c 'import importlib.metadata as md, torch, vllm, vllm._C, vllm._rocm_C, flash_attn; \
-print("torch", torch.__version__, "| hip", torch.version.hip); \
-print("vllm", vllm.__version__, "| aiter", md.version("amd-aiter")); \
-print("native ext OK")'
-
-# --- pyc hygiene: never let a stale/baked .pyc shadow a patched or mounted .py ---
-# Every radiance patch edits a vllm .py in place; the image's .pyc are timestamp-based
-# and can silently shadow an edit (or a runtime -v mount). Wipe all baked vllm .pyc and
-# disable runtime bytecode writes so the patched source is always what runs. Cost: a few
-# seconds of in-memory recompile at startup.
-ENV PYTHONDONTWRITEBYTECODE=1
+# Fail the build if the native stack does not import. Kept GPU-free: no `import aiter` (it runs
+# rocminfo) and no full `import vllm`; versions are read from package metadata.
+RUN python -c 'import torch, vllm._C, amdsmi, importlib.metadata as m; \
+print("stack OK | vllm", m.version("vllm"), "| torch", torch.__version__, "| aiter", m.version("amd-aiter"))'
 RUN find /opt/vllm -name '__pycache__' -type d -prune -exec rm -rf {} + || true
 
-# --- P2P bandwidth measurement (rocm-bandwidth-test, PREBUILT; no build deps in the image) ---
-# AMD's upstream tool (rocm-6.4.4 classic tag, built once against this image's exact libhsa; ldd
-# fully resolves). Lands on PATH (/opt/vllm/bin): run as `rocm-bandwidth-test -t`. The entrypoint
-# can run it as an OPTIONAL startup topology/bandwidth sweep (off by default; RADIANCE_RUN_BWTEST=1).
-COPY rocm-bandwidth-test /opt/vllm/bin/
-RUN chmod +x /opt/vllm/bin/rocm-bandwidth-test
-
-# --- RADIANCE startup banner + environment preamble ---
-# A thin entrypoint (radiance_entrypoint.sh) that prints the RADIANCE ASCII banner and runs
-# best-effort prechecks (GPU count, gfx1201-only verification, P2P access, the enabled/baked
-# radiance optimizations, component versions), then exec's `vllm serve "$@"` so vLLM becomes
-# PID 1 and the container `command:` args pass through verbatim. Every check is non-fatal. The
-# banner runs once in the launcher process, not per TP worker. RADIANCE_VERSION is the source of
-# truth for the version string the banner prints (bump via --build-arg RADIANCE_VERSION=... or the
-# VERSION file that the Makefile / build command reads).
-ARG RADIANCE_VERSION=0.4.0
+ARG RADIANCE_VERSION=0.5.0
 ENV RADIANCE_VERSION=${RADIANCE_VERSION}
 COPY radiance_preamble.py /opt/radiance_preamble.py
 COPY radiance_entrypoint.sh /opt/radiance_entrypoint.sh
 RUN chmod +x /opt/radiance_entrypoint.sh
-
 ENTRYPOINT ["/opt/radiance_entrypoint.sh"]
