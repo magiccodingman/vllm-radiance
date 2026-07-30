@@ -17,7 +17,8 @@
 #
 #     make RUN='bash -c'
 #
-# Note: rocm-bandwidth-test is AMD's upstream tool (shipped prebuilt, not built here).
+# Note: rocm-bandwidth-test is AMD's upstream tool; the image build compiles it from source (see
+# RBT_VERSION in the Dockerfile). It is not built here.
 
 GFX_ARCH ?= gfx1201
 IMAGE    ?= vllm-radiance:$(shell cat VERSION 2>/dev/null || echo latest)
@@ -37,8 +38,10 @@ BASE_FLAGS = -O3 -std=c++17 -fPIC -shared --offload-arch=$(GFX_ARCH) -Wno-unused
 # bf16 all-reduce is a plain sum (no products) and does not need this flag.
 radiance_ar_quant_ext.so: EXTRA_FLAGS = -ffp-contract=off
 
-# Kernel extensions with source in this repo (both are baked into the image and enabled by default).
-KERNELS := radiance_ar_ext.so
+# Kernel extensions with source in this repo (all are baked into the image and enabled by default).
+# router_gemm needs -DTEMPORAL, matching how the Dockerfile compiles it.
+router_gemm.so: EXTRA_FLAGS = -DTEMPORAL
+KERNELS := radiance_ar_ext.so router_gemm.so
 ifneq ($(wildcard radiance_ar_quant_ext.hip),)
 KERNELS += radiance_ar_quant_ext.so
 endif

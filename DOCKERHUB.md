@@ -2,7 +2,7 @@
 
 vLLM inference server for the AMD Radeon AI PRO R9700 (gfx1201 / RDNA4). Bundles a working ROCm + PyTorch + Triton + AITER + vLLM stack with the RDNA4 patches and custom kernels needed to run vLLM on this card, so you don't have to build the stack yourself.
 
-> **Status: super early dev (v0.4.0). Experimental.**
+> **Status: super early dev (v0.5.7). Experimental.**
 > This is a very early build. The performance numbers here come from three exact configurations: Qwen3.6-27B-FP8, Qwen3.6-35B-A3B-FP8 (fine-grained MoE), and Gemma-4-31B-it-FP8 (block-fp8), all with fp8 KV cache on two R9700 GPUs (tensor parallel); bf16 / `auto` KV also works (see below). Other models, non-FP8 weights, single or 3+ GPUs, and non-R9700 hardware are untested. Expect rough edges, breaking changes between versions, and things that just don't work yet. Not production hardened. Use at your own risk.
 
 ## Tested so far
@@ -31,15 +31,24 @@ vLLM's ROCm builds target datacenter cards (MI300 / CDNA). RDNA4 workstation car
 
 ## Stack
 
+Everything below is compiled from source for `gfx1201` in the image build (0.5.0 onward); nothing is
+pulled from a prebuilt wheel index.
+
 | Component | Version |
 |---|---|
-| vLLM | 0.25.1 (ROCm) |
-| PyTorch | 2.11 (ROCm 7.2) |
-| Triton | 3.6 |
-| AITER | 0.1.16, built from source for gfx1201 |
-| flash-attention | 2.8.3 |
-| ROCm userspace | 7.2, bundled |
-| Base | Ubuntu 24.04, Python 3.12 |
+| vLLM | 0.26.0 |
+| PyTorch | 2.11.0 |
+| Triton | 3.6.0 |
+| torchvision | 0.24.1 |
+| AITER | 0.1.17 |
+| ROCm userspace | 7.14, bundled |
+| Base | `rocm/dev-ubuntu-24.04:7.14.0-full` (Ubuntu 24.04, Python 3.12) |
+
+The PyTorch / Triton / torchvision versions are the ones vLLM 0.26.0 itself pins, not a newer combination
+chosen for this image. That is deliberate: see the tensor-parallel hang note below.
+
+There is no flash-attention package: the vendor flash kernels have no gfx1201 device code. Attention
+runs on the AITER unified path, and the vision tower on the image's own Triton flash kernel.
 
 ## What it patches (to make vLLM run on gfx1201)
 
@@ -51,6 +60,7 @@ vLLM's ROCm builds target datacenter cards (MI300 / CDNA). RDNA4 workstation car
 - `from_json` Jinja filter for tool-calling chat templates.
 - MTP drafter unpadding, so `--speculative-config`'s `disable_padded_drafter_batch:true` works (the single-stream MTP speed path).
 - MTP drafter multimodal mask alignment, so speculative decoding works with image inputs (otherwise the vision-placeholder mask outlives the compacted draft batch and the engine crashes).
+- `torch.compile` telemetry JSON encoding, which otherwise raises `TypeError: Object of type function is not JSON serializable` at startup on this torch version (harmless but alarming: the serve came up anyway).
 
 ## Custom kernels and tuning (on by default, env-gated)
 
@@ -69,6 +79,12 @@ vLLM's ROCm builds target datacenter cards (MI300 / CDNA). RDNA4 workstation car
 | `RADIANCE_DRAFT_SCHEDULE` | `1:8,2:7,4:6,8:5,16:4` | `bs:max_depth` pairs (carry-forward): caps how many serial MTP forwards run at each batch size, so drafting stays deep single-stream and shallower at concurrency. The free n-gram tail is unaffected. |
 | `RADIANCE_DRAFT_TAU` | `0.35` | confidence-product stop threshold: the drafter keeps drafting while the running product of its top-1 confidences stays `>= TAU`. Lower = draft deeper, higher = shallower. |
 | `RADIANCE_MOE_ROUTER` | `1` | for fine-grained MoE models (e.g. Qwen3.6-35B-A3B), routes the bf16 MoE-gate GEMM `x[n,2048] @ W[256,2048]^T` to a custom gfx1201 kernel for the `n` in `[6,16]` batch band that rocBLAS serves poorly (~2.5x faster cold, bit-identical output; wvSplitK already covers `n<=5`). A no-op for models whose gate is not `[256,2048]`. Set `0` for rocBLAS. |
+| `RADIANCE_RUN_BWTEST` | `1` | run the GPU topology + bandwidth sweep at startup (`rocm-bandwidth-test`, compiled into the image): device list, P2P access matrix, NUMA distances, and peak uni/bidirectional copy bandwidth per agent pair. Backgrounded and takes about a second, so it never delays the serve; the report lands in the log a few seconds in. Set `0` to skip it. |
+| `RADIANCE_BWTEST_TIMEOUT` | `150` | seconds to bound the sweep, in case it stalls on an unusual topology |
+| `RADIANCE_NUMA_BIND` | unset (off) | NUMA pinning for multi-node hosts; see below. Same as `--numa-bind`, which wins if both are given |
+| `RADIANCE_BANNER_PLAIN` | `0` | set `1` for a startup banner without ANSI colour (log scrapers, CI). `NO_COLOR` does the same |
+
+> **Fixed in 0.5.7 — tensor-parallel GPU hang under sustained load (multi-GPU only).** Builds 0.5.0 through 0.5.5-pre could hang a GPU during long agentic sessions: both cards pegged at 100% utilisation while drawing a fraction of their power cap, the driver then reporting `HW Exception ... GPU Hang`, the engine dying on an RPC timeout and the container restarting. **The cause was a dependency mismatch, not a kernel bug.** vLLM 0.26.0 pins `torch == 2.11.0`, and this image's build strips torch/torchvision pins (via vLLM's own `use_existing_torch.py`, which exists so pip does not refetch them) — earlier 0.5.x builds then compiled against torch 2.13 / triton 3.7.1 / torchvision 0.28, a combination upstream never tests. The pinned trio (torch 2.11.0, triton 3.6.0, torchvision 0.24.1) is restored, and the hang is gone under the workload that reproduced it. Single-GPU serves were never affected, and nothing is disabled: speculative drafting and the fp8 all-reduce both remain on by default. If you build your own image, take the versions upstream pins — they are not free choices on this architecture.
 
 All of these are baked ON in the image. Set `RADIANCE_DYNAMIC_DRAFT=0` to turn draft control off (`RADIANCE_AR_MAX_KB`, `RADIANCE_DRAFT_SCHEDULE`, and `RADIANCE_DRAFT_TAU` are values, not toggles). `RADIANCE_DYNAMIC_DRAFT` only does anything when speculative decoding is enabled; it is lossless (it changes only *how many* tokens are drafted and whether they come from MTP or a verbatim copy of earlier text, never what the model verifies).
 
@@ -82,7 +98,7 @@ All of these are baked ON in the image. Set `RADIANCE_DYNAMIC_DRAFT=0` to turn d
 
 ## Run
 
-On start the image prints a RADIANCE banner and runs a quick preamble (GPU count, gfx1201 check, P2P, enabled optimizations, component versions), then hands off to `vllm serve`. (An optional `rocm-bandwidth-test` topology/bandwidth sweep is available with `RADIANCE_RUN_BWTEST=1`; it is off by default.) First argument is the model path, the rest are `vllm serve` flags. The `RADIANCE_*` vars below are the custom optimizations (see the table above). They are already baked ON in the image; they are listed here so they are visible and easy to flip off.
+On start the image prints a RADIANCE banner and runs a quick preamble (GPU count, gfx1201 check, P2P, enabled optimizations, component versions), then hands off to `vllm serve`. (It also runs a GPU topology + bandwidth sweep — device list, P2P access matrix, NUMA distances, and peak uni/bidirectional copy bandwidth for every agent pair. `rocm-bandwidth-test` is compiled into the image and the sweep is **on by default**: it is backgrounded and takes about a second, so it never delays the serve, and its report appears in the log a few seconds in. Set `RADIANCE_RUN_BWTEST=0` to skip it, or `RADIANCE_BWTEST_TIMEOUT` to bound it.) First argument is the model path, the rest are `vllm serve` flags. The `RADIANCE_*` vars below are the custom optimizations (see the table above). They are already baked ON in the image; they are listed here so they are visible and easy to flip off.
 
 ```bash
 docker run --rm -it \
@@ -111,7 +127,7 @@ docker run --rm -it \
   -e VLLM_CACHE_ROOT=/cache/vllm -e TORCHINDUCTOR_CACHE_DIR=/cache/inductor \
   -e TRITON_CACHE_DIR=/cache/triton -e AITER_ROOT_DIR=/cache/aiter \
   -e TRITON_CACHE_AUTOTUNING=1 \
-  stilldeadcode/vllm-radiance:0.4.0 \
+  stilldeadcode/vllm-radiance:0.5.7 \
     /models/YourOrg/Your-Model-FP8 \
     --served-model-name my-model \
     --quantization fp8 --kv-cache-dtype fp8 \
@@ -137,7 +153,7 @@ curl http://localhost:8000/v1/chat/completions \
 ```yaml
 services:
   vllm:
-    image: stilldeadcode/vllm-radiance:0.4.0
+    image: stilldeadcode/vllm-radiance:0.5.7
     restart: unless-stopped
     command:
       - /models/YourOrg/Your-Model-FP8
@@ -196,9 +212,9 @@ services:
       - ./vllm-cache:/cache   # persists the caches pointed at /cache above; first start is slow, restarts fast
 ```
 
-## First run is slow
+## First run is slower
 
-With an empty cache the first start spends about 15 to 20 minutes autotuning Triton kernels. It looks idle but it's compiling. Mount a persistent cache so restarts take about 1 to 2 minutes:
+With an empty cache the first start spends a few extra minutes compiling Triton / inductor kernels before the engine comes up; it looks idle but it is compiling. (Older builds spent 15 to 20 minutes here, dominated by the gated-delta-net fp32 autotune; that path is gone on this stack.) Mount a persistent cache so restarts stay fast:
 
 ```bash
   -v /path/to/vllm-cache:/cache \

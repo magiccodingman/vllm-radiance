@@ -212,10 +212,18 @@ def _prepare_match_gpu(runner):
     n_list = []
     for i, rid in enumerate(req_ids):
         n = int(nts[i]); n_list.append(n)
-        s = seen.get(rid, 0)
+        # `seen` records (row, tokens_mirrored). The ROW matters: vLLM reuses and reshuffles
+        # input-batch slots as requests come and go, so a request can land on a row that still
+        # holds the previous occupant's tokens. Keyed by request id alone, the stale tail stayed
+        # and the matcher searched another request's text.
+        prev = seen.get(rid)
+        s = prev[1] if (prev is not None and prev[0] == i) else 0
         if n > s:
-            ctxg[i, s:n].copy_(src[i, s:n].to(torch.int32), non_blocking=True)
-        seen[rid] = n
+            # NOT non_blocking: the source is the temporary from .to(int32), freed as soon as this
+            # statement ends. An async copy from pageable memory can still be reading it, which put
+            # nondeterministic garbage in the mirror.
+            ctxg[i, s:n].copy_(src[i, s:n].to(torch.int32))
+        seen[rid] = (i, n)
     live = set(req_ids)
     for rid in [r for r in seen if r not in live]:
         seen.pop(rid, None)

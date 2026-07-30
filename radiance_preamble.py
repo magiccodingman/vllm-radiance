@@ -2,10 +2,12 @@
 """RADIANCE startup preamble: print the banner and run environment prechecks before
 vLLM boots. Launched once by radiance_entrypoint.sh in the container's main process (not per
 TP worker), which then exec's `vllm serve`. Every check is best-effort: a failure prints a
-warning, never blocks the serve. The optional GPU bandwidth/topology sweep (rocm-bandwidth-test,
-RADIANCE_RUN_BWTEST=1) runs in the background from the entrypoint; its report follows later.
+warning, never blocks the serve. The GPU topology/bandwidth sweep (rocm-bandwidth-test, on by
+default via RADIANCE_RUN_BWTEST=1 in the image) runs in the background from the entrypoint; its
+report follows a few seconds later.
 
 Env knobs: NO_COLOR / RADIANCE_BANNER_PLAIN=1 disable ANSI color."""
+import glob
 import os
 import sys
 import importlib.metadata as md
@@ -77,7 +79,9 @@ def section_gpus():
         print("  " + bad("no GPUs visible; vLLM will not start"))
         return
 
-    want = os.environ.get("VLLM_ROCM_GCN_ARCH", "gfx1201")
+    want = (os.environ.get("RADIANCE_GFX_ARCH")
+            or os.environ.get("VLLM_ROCM_GCN_ARCH")   # pre-0.5.1 name
+            or "gfx1201")
     good = 0
     for i in range(n):
         try:
@@ -164,7 +168,7 @@ def section_opts():
 
     print("\n  " + dim("startup:"))
     for name, dflt, desc in [
-        ("RADIANCE_RUN_BWTEST",     "0", "run the GPU bandwidth/topology sweep at startup (off by default)"),
+        ("RADIANCE_RUN_BWTEST",     "1", "GPU topology + bandwidth sweep at startup (on; backgrounded, ~1 s; set 0 to skip)"),
         ("RADIANCE_BWTEST_TIMEOUT", "150", "bandwidth sweep timeout, seconds"),
         ("RADIANCE_BANNER_PLAIN",   "0", "disable ANSI color (also NO_COLOR)"),
     ]:
@@ -204,15 +208,23 @@ def section_opts():
 
 # ------------------------------------------------------------------ versions
 def _rocm_version():
-    root = os.environ.get("ROCM_PATH", "")
-    for cand in (os.path.join(root, ".info", "version"),
-                 os.path.join(root, ".info", "version-dev")):
+    """ROCm userspace version. The layout moved in 7.14: the version file now lives under the
+    rocm-core component dir (/opt/rocm/core-<ver>/.info/version, reachable via the `core`
+    alternatives symlink) instead of directly under ROCM_PATH."""
+    root = os.environ.get("ROCM_PATH") or "/opt/rocm"
+    cands = [os.path.join(root, ".info", "version"),
+             os.path.join(root, "core", ".info", "version"),
+             os.path.join(root, ".info", "version-dev")]
+    cands += sorted(glob.glob(os.path.join(root, "core-*", ".info", "version")), reverse=True)
+    for cand in cands:
         try:
             with open(cand) as f:
-                return f.read().strip()
+                v = f.read().strip()
+            if v:
+                return v
         except Exception:
             pass
-    return _v("rocm-sdk-core") or _v("rocm-sdk") or "unknown"
+    return _v("rocm-sdk-core") or _v("rocm-sdk") or None
 
 
 def section_versions():
@@ -227,20 +239,21 @@ def section_versions():
         hip = torch.version.hip
     except Exception:
         rows.append(("torch", None))
+    rows.append(("torchvision", _v("torchvision")))
     try:
         import triton
         rows.append(("triton", triton.__version__))
     except Exception:
         rows.append(("triton", _v("triton")))
     rows += [("aiter", _v("amd-aiter")),
-             ("flash-attn", _v("flash-attn")),
              ("transformers", _v("transformers")),
+             ("amdsmi", _v("amdsmi")),
              ("hip", hip),
              ("rocm", _rocm_version()),
              ("python", platform.python_version())]
     for name, val in rows:
-        val = "unknown" if val in (None, "") else val
-        print(f"    {name:<13} {c(ACCENT, str(val))}")
+        cell = c(ACCENT, str(val)) if val not in (None, "") else dim("not detected")
+        print(f"    {name:<13} {cell}")
 
 
 def main():

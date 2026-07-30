@@ -5,7 +5,7 @@ ROCm + PyTorch + Triton + AITER + vLLM stack with the RDNA4 patches and custom k
 this card, plus RDNA4-tuned GEMM / attention / all-reduce paths and a dynamic MTP draft controller, so you
 don't have to build the stack yourself.
 
-> **Status: super early dev (v0.4.0). Experimental.** Everything here was built and measured on three exact
+> **Status: super early dev (v0.5.7). Experimental.** Everything here was built and measured on three exact
 > setups: **Qwen3.6-27B-FP8**, **Qwen3.6-35B-A3B-FP8** (fine-grained MoE, 256 experts / top-8), and
 > **Gemma-4-31B-it-FP8** (block-fp8, sliding + global attention, vision), all with fp8 (or bf16/`auto`) KV
 > cache on two R9700 GPUs (tensor parallel). Other models, non-FP8 weights, single or
@@ -25,27 +25,26 @@ one place, the `VERSION` file, which the tag and the build-arg both read:
 docker build -t vllm-radiance:$(cat VERSION) --build-arg RADIANCE_VERSION=$(cat VERSION) .
 ```
 
-The build pins a working ROCm/PyTorch/Triton/vLLM combination, builds AITER from source for gfx1201, applies
-the RDNA4 correctness patches, and bakes in the tuned kernels. `radiance_ar_ext.so`, `radiance_ar_quant_ext.so`,
-and `rocm-bandwidth-test` are prebuilt binaries; `radiance_ar_ext.hip` / `radiance_ar_quant_ext.hip` are the
-all-reduce extension sources, kept here for transparency.
+That single command builds everything from source. Stage 1 compiles PyTorch, Triton, torchvision, AITER, and
+vLLM for `PYTORCH_ROCM_ARCH=gfx1201` against the official `rocm/dev-ubuntu-24.04` base (digest-pinned) and
+leaves the wheels in `/wheels` (it also builds `rocm-bandwidth-test` for the startup sweep); stage 2 installs
+them, applies the RDNA4 correctness patches, and compiles the
+custom HIP kernels (`router_gemm.hip`, `radiance_ar_ext.hip`, `radiance_ar_quant_ext.hip`) with the image's own
+`hipcc`. No prebuilt component wheels, no rotating wheel indexes, and no checked-in binaries go into the image.
+It is a long build (a full PyTorch compile); expect it to run for hours on a many-core box.
 
-> ### ⚠️ Wheel pins rotate: bump them before building
-> The vLLM and ROCm-SDK wheels come from prebuilt indexes (`wheels.vllm.ai/rocm`, `rocm.nightlies.amd.com`)
-> that keep only their newest builds, so the two dated pins in the `Dockerfile` **stop resolving within days**
-> and the build fails at the wheel step with *"no version of vllm==… your requirements are unsatisfiable"*.
-> Before building, set both `ARG`s to a version **currently listed** on the index:
->
-> ```bash
-> # latest vLLM (ROCm): set ARG VLLM_VERSION
-> curl -sL https://wheels.vllm.ai/rocm/vllm/ | grep -oiE 'vllm-[0-9][^"<> ]*' | sort -u | tail
-> # latest ROCm SDK nightly: set ARG ROCM_SDK_VERSION (format 7.x.ya2026MMDD)
-> curl -sL https://rocm.nightlies.amd.com/whl-multi-arch/rocm-sdk-libraries/ | grep -oE '7\.[0-9.]+a[0-9]+' | sort -u | tail
-> ```
->
-> then either edit the `ARG` defaults or pass `--build-arg VLLM_VERSION=… --build-arg ROCM_SDK_VERSION=…`.
-> The checked-in defaults were current on 2026-07-17 and *will* age out. If you just want a known-good image
-> without chasing nightlies, pull the published one instead: `docker pull stilldeadcode/vllm-radiance`.
+The component pins are the `ARG`s at the top of the `Dockerfile` (`TORCH_VERSION`, `TRITON_VERSION`,
+`TORCHVISION_VERSION`, `AITER_VERSION`, `VLLM_VERSION`). Each one is both the git tag that gets compiled and
+the version the resulting wheel reports, and the build asserts the two agree, so `pip show` and the startup
+banner can be trusted. If you just want a known-good image without building, pull the published one:
+`docker pull stilldeadcode/vllm-radiance`.
+
+**Do not bump torch / triton / torchvision on their own.** They are not independent choices: vLLM pins the
+torch version it is tested against, torch pins its triton, and torchvision ships a matching release. The
+build runs vLLM's own `use_existing_torch.py`, which *strips* those pins — but that exists so pip does not
+re-download torch, not as licence to install a newer one. Builds 0.5.0 through 0.5.4 compiled against a
+newer trio and hung a GPU under sustained tensor-parallel load; restoring the pinned versions fixed it with
+no code change. If you override these with `--build-arg`, move them together and soak-test under real load.
 
 ## Run
 
@@ -108,10 +107,16 @@ Everything below is baked into the image; the tuned paths are env-gated and on b
   --mamba-cache-mode=align`. Align mode snapshots and restores the linear-attention (GDN) recurrent state at
   block boundaries (verified bit-identical to full recompute, including under MTP), giving a large TTFT drop
   on shared prefixes (system prompts, RAG, agentic context).
+- **Startup topology + bandwidth sweep** (`RADIANCE_RUN_BWTEST`, on by default): device list, P2P access
+  matrix, NUMA distances, and peak uni/bidirectional copy bandwidth per agent pair, from a
+  `rocm-bandwidth-test` compiled into the image. Backgrounded and about a second, so it never delays the
+  serve. Set `0` to skip.
 - **Optional NUMA pinning** (`--numa-bind`, off by default) for multi-NUMA-node hosts.
 
 ## Layout
 
 Flat build context: the runtime Python modules (`radiance_*.py`), the `patch_*.py` fixes, the `fp8-configs/`
-and `moe-configs/` GEMM configs, the `router_gemm.hip` kernel source, the prebuilt binaries, the chat template,
-`Dockerfile`, and `docker-compose.yml` all live at the repo root so `docker build .` works directly.
+and `moe-configs/` GEMM configs, the HIP kernel sources (`router_gemm.hip`, `radiance_ar_ext.hip`,
+`radiance_ar_quant_ext.hip`), the chat template, `Dockerfile`, and `docker-compose.yml` all live at the repo
+root so `docker build .` works directly. The `Makefile` is a side tool for rebuilding a single HIP kernel
+against the image's toolchain during development; the image build compiles them itself.

@@ -10,7 +10,7 @@
 # this file, e.g.:  MAX_NUM_SEQS=16 MAX_MODEL_LEN=32768 docker compose up -d
 services:
   vllm:
-    image: ${IMAGE:-vllm-radiance:0.4.0}
+    image: ${IMAGE:-vllm-radiance:0.5.7}
     container_name: vllm-radiance
     restart: unless-stopped
     command:
@@ -97,7 +97,8 @@ services:
       NCCL_PROTO: Simple
       # throttle inductor compile workers to limit peak compile-time RAM (defensive).
       TORCHINDUCTOR_COMPILE_THREADS: "4"
-      # persistent compile caches -> fast warm restarts (skips the ~20 min cold autotune). Mounted below.
+      # persistent compile caches -> fast warm restarts (a cold cache spends a few extra minutes
+      # compiling Triton/inductor kernels before the engine comes up). Mounted below.
       VLLM_CACHE_ROOT: /cache/vllm
       TORCHINDUCTOR_CACHE_DIR: /cache/inductor
       TRITON_CACHE_DIR: /cache/triton
@@ -127,4 +128,5 @@ services:
       interval: 30s
       timeout: 5s
       retries: 60
-      start_period: 1800s     # cold FLA/GDN autotune can take ~20 min on an empty cache
+      start_period: 1800s     # generous: a cold cache compiles kernels before the engine comes up,
+                              # and a long --max-model-len adds graph-capture time

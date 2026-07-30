@@ -80,17 +80,24 @@ if [ -n "$_numa_spec" ]; then
 fi
 [ "${#NUMACTL[@]}" -gt 0 ] && export RADIANCE_NUMA_ACTIVE="numactl ${NUMACTL[*]}"
 
-# Optional: kick off a topology + bandwidth sweep in the BACKGROUND so it never delays startup.
+# Topology + bandwidth sweep, kicked off in the BACKGROUND so it never delays startup.
 # rocm-bandwidth-test (no args) prints: device list, inter-device access (P2P) matrix, NUMA
 # distance, and uni + bidirectional peak copy bandwidth (GB/s) for every agent pair (d2d, d2h,
-# h2d). It surfaces a few seconds into vLLM's startup logs. OFF by default (a diagnostic, not
-# needed to serve); opt IN with RADIANCE_RUN_BWTEST=1.
+# h2d). It surfaces a few seconds into vLLM's startup logs. ON by default (the image ships the
+# binary and sets RADIANCE_RUN_BWTEST=1; it costs about a second); set RADIANCE_RUN_BWTEST=0 to
+# skip it.
+if [ "${RADIANCE_RUN_BWTEST:-0}" = "1" ] && ! command -v rocm-bandwidth-test >/dev/null 2>&1; then
+  echo "[radiance] WARN RADIANCE_RUN_BWTEST=1 but rocm-bandwidth-test is not on PATH; skipping the sweep" >&2
+fi
 if [ "${RADIANCE_RUN_BWTEST:-0}" = "1" ] && command -v rocm-bandwidth-test >/dev/null 2>&1; then
   (
     report=$(timeout "${RADIANCE_BWTEST_TIMEOUT:-150}" rocm-bandwidth-test 2>&1) \
       || report="${report}"$'\n'"(rocm-bandwidth-test exited non-zero / timed out)"
-    printf '\n\033[1;38;5;39m┌─[ RADIANCE · GPU TOPOLOGY & BANDWIDTH (rocm-bandwidth-test) ]%s\033[0m\n%s\n\033[1;38;5;39m└─[ end bandwidth report ]%s\033[0m\n' \
-      "$(printf '─%.0s' {1..2})" "$report" "$(printf '─%.0s' {1..30})"
+    # same colour opt-out the banner honours, so a log scraper gets plain text everywhere
+    _c=$'\033[1;38;5;39m'; _r=$'\033[0m'
+    if [ -n "${NO_COLOR:-}" ] || [ "${RADIANCE_BANNER_PLAIN:-0}" = "1" ]; then _c=""; _r=""; fi
+    printf '\n%s┌─[ RADIANCE · GPU TOPOLOGY & BANDWIDTH (rocm-bandwidth-test) ]%s%s\n%s\n%s└─[ end bandwidth report ]%s%s\n' \
+      "$_c" "$(printf '─%.0s' {1..2})" "$_r" "$report" "$_c" "$(printf '─%.0s' {1..30})" "$_r"
   ) &
 fi
 
