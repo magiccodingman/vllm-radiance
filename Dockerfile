@@ -1,12 +1,20 @@
 # vllm-radiance: vLLM/torch/triton/aiter stack for RDNA4 (gfx1201 / R9700), plus the radiance
-# patches and kernels. Single multistage build on the official AMD ROCm image. Stage 1 compiles
-# the stack from source into wheels; stage 2 installs them and applies the patches and kernels.
-# No prebuilt component wheels and no checked-in binaries.
+# patches and kernels. Single multistage build on the official AMD ROCm image, in four stages:
+#   1. builder    compile torch/triton/torchvision/aiter/vLLM from source into /wheels
+#   2. rocmprune  cut the 19 GB ROCm tree down to this one GPU architecture
+#   3. assemble   install the wheels, apply the patches, compile the HIP kernels
+#   4. final      the release image: a clean Ubuntu with only the pruned ROCm and the venv
+# No prebuilt component wheels and no checked-in binaries. The release image carries neither the
+# build toolchain nor the wheels, which is most of the reason it is far smaller than the base.
 #
 # stack: torch 2.11.0, triton 3.6.0, torchvision 0.24.1, aiter v0.1.17, vLLM v0.26.0,
 # all compiled for PYTORCH_ROCM_ARCH=gfx1201 against the base image's ROCm 7.14.
 ARG ROCM_BASE=rocm/dev-ubuntu-24.04:7.14.0-full@sha256:439edaa8f0c4be4a3728e528f87b8a2ea1f051f34cf10b27caa4bd94f562eda7
 ARG GFX_ARCH=gfx1201
+# The release stage starts from a clean distro image rather than the ROCm base, and COPYs in only
+# the pruned ROCm tree plus the venv. Same Ubuntu release as the ROCm base (24.04), so the venv's
+# interpreter (python 3.12.3) matches.
+ARG RELEASE_BASE=ubuntu:24.04@sha256:a08e551cb33850e4740772b38217fc1796a66da2506d312abe51acda354ff061
 
 # Component pins, in one place. Each is both the git tag that gets compiled and the version the
 # resulting wheel reports, so `pip show`, `importlib.metadata`, and the startup banner all agree
@@ -124,18 +132,29 @@ RUN git clone --depth 1 -b ${RBT_VERSION} https://github.com/ROCm/rocm_bandwidth
     && rm -rf /src/rbt
 
 # =====================================================================================
-# STAGE 2 final: install the wheels and apply the patches and kernels
+# STAGE 2 rocmprune: cut the ROCm tree down to this image's single GPU architecture
 # =====================================================================================
-FROM ${ROCM_BASE} AS final
+# ~19 GB of the base is device code for GPUs this image cannot run on, plus link-time-only
+# archives. Pruning has to happen in a stage that the release stage COPYs FROM: deleting files
+# in a layer stacked on the base reclaims nothing, it only writes whiteouts. See prune_rocm.sh
+# for what is kept and why (the runtime still has to compile: AITER JITs kernels on first use).
+FROM ${ROCM_BASE} AS rocmprune
+ARG GFX_ARCH
+COPY prune_rocm.sh /tmp/prune_rocm.sh
+RUN bash /tmp/prune_rocm.sh ${GFX_ARCH} && rm -f /tmp/prune_rocm.sh
+
+# =====================================================================================
+# STAGE 3 assemble: install the wheels and apply the patches and kernels
+# =====================================================================================
+# Runs on the FULL base because it needs the toolchain (hipcc, headers, static archives) to
+# compile the HIP kernels. Only the resulting /opt/vllm venv is carried into the release image.
+FROM ${ROCM_BASE} AS assemble
 ARG GFX_ARCH
 ARG AITER_VERSION
 ARG VLLM_VERSION
 ENV DEBIAN_FRONTEND=noninteractive
-# libnuma-dev, not just libnuma1: the rocSHMEM transport linked into torch dlopen()s the unversioned
-# `libnuma.so`, which only the -dev package ships. Without it every process that imports torch prints
-# "E-001h rocSHMEM Could not open libnuma".
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      python3.12-venv libnuma-dev numactl git curl ca-certificates \
+      python3.12-venv \
     && rm -rf /var/lib/apt/lists/*
 
 ENV VIRTUAL_ENV=/opt/vllm
@@ -198,8 +217,58 @@ RUN INC=$(python -m pybind11 --includes); B="-O3 -std=c++17 -fPIC -shared --offl
     test -f ${SP}/router_gemm.so && test -f ${SP}/radiance_ar_ext.so && test -f ${SP}/radiance_ar_quant_ext.so && \
     echo "radiance HIP kernels built"
 
-# --- the startup topology + bandwidth sweep (RADIANCE_RUN_BWTEST, on by default below) ---
+# --- strip debug symbols from the installed extensions (worth ~1 GB) ---
+# These are release builds, but they still carry .debug_* sections that nothing reads at runtime.
+# Our three HIP kernels are excluded: they are tiny and carry device fatbins.
+RUN find /opt/vllm -type f -name '*.so*' ! -name 'radiance_ar*' ! -name 'router_gemm*' \
+      -exec strip --strip-unneeded {} + 2>/dev/null || true; \
+    find /opt/vllm -name '__pycache__' -type d -prune -exec rm -rf {} + || true; \
+    echo "extensions stripped"
+
+# =====================================================================================
+# STAGE 4 final: the release image -- a clean Ubuntu with only what is needed to serve
+# =====================================================================================
+# Built by COPYing an allowlist rather than by inheriting the ROCm base, which is what makes the
+# prune above pay: the release image never contains the 19 GB tree, the build toolchain, the
+# wheels, or the patch sources. Only the pruned ROCm, the venv, and the entrypoint come across.
+FROM ${RELEASE_BASE} AS final
+ARG GFX_ARCH
+ARG AITER_VERSION
+ARG VLLM_VERSION
+ENV DEBIAN_FRONTEND=noninteractive
+# ROCm 7.14 vendors its own libdrm / numa / elf / sqlite / zlib / zstd (the librocm_sysdeps_* set),
+# so the release image needs very little from the distro:
+#   python3.12     the interpreter the /opt/vllm venv was built against (Ubuntu 24.04 ships 3.12.3)
+#   libnuma-dev    rocSHMEM dlopen()s the UNVERSIONED libnuma.so, which only the -dev package ships
+#   numactl        optional --numa-bind;  curl  the compose healthcheck runs it inside the container
+#   g++            NOT optional: AITER JIT-compiles its kernels on FIRST USE, inside this image, and
+#                  hipcc needs the C++ standard headers (and the same g++ major torch was built
+#                  with). Without it every JIT build dies with "Could not find standard C++ header
+#                  'cmath'", aiter's flag probes all fail (including --offload-arch), and the engine
+#                  crashes. The build-time probe below is what keeps this honest.
+#   python3.12-dev Python.h, for the pybind11 modules aiter JIT-builds
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      python3 python3.12 python3.12-dev g++ libnuma-dev numactl curl ca-certificates libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+
+# /opt/rocm is a symlink farm pointing through /etc/alternatives into core-<ver>, so both have to
+# come across or nothing resolves. The pruned tree is stable across radiance releases, which keeps
+# it a cached layer users do not re-download for every version bump.
+COPY --from=rocmprune /opt/rocm /opt/rocm
+COPY --from=rocmprune /etc/alternatives /etc/alternatives
+COPY --from=assemble /opt/vllm /opt/vllm
 COPY --from=builder /artifacts/rocm-bandwidth-test /usr/local/bin/rocm-bandwidth-test
+
+# RADIANCE_GFX_ARCH is what the gfx1201 patch and the banner read for the target arch (amdsmi's
+# asic_info reports it empty on this card). It used to be called VLLM_ROCM_GCN_ARCH, which vLLM
+# 0.26 flags as an unknown VLLM_* variable at startup; the old name is still honored.
+ENV VIRTUAL_ENV=/opt/vllm \
+    PATH=/opt/vllm/bin:/opt/rocm/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+    ROCM_PATH=/opt/rocm HIP_PATH=/opt/rocm HIP_PLATFORM=amd \
+    VLLM_TARGET_DEVICE=rocm PYTORCH_ROCM_ARCH=${GFX_ARCH} RADIANCE_GFX_ARCH=${GFX_ARCH} \
+    HIP_ARCHITECTURES=${GFX_ARCH} AMDGPU_TARGETS=${GFX_ARCH} GPU_ARCHS=${GFX_ARCH} \
+    SAFETENSORS_FAST_GPU=1 TOKENIZERS_PARALLELISM=false TRITON_CACHE_AUTOTUNING=1 \
+    PYTHONDONTWRITEBYTECODE=1
 
 # --- radiance feature flags (set any to 0 to fall back to stock). RADIANCE_GDN_WMMA gates the
 #     solve_tril fp16 path. RADIANCE_RUN_BWTEST runs the bandwidth sweep at startup; it is
@@ -212,18 +281,40 @@ ENV RADIANCE_PRESHUFFLE=1 RADIANCE_ATTN_TUNE=1 RADIANCE_FUSE_RMS_QUANT=1 \
 
 # Fail the build if the native stack does not import, or if a wheel reports a version that does not
 # match the source it was built from (a silently mis-stamped wheel is how "aiter 0.0.0" shipped).
+# Running this in the RELEASE stage also proves the allowlist above is complete: a library left
+# behind by the prune or by the slim base shows up here as an ImportError, not in production.
 # Kept GPU-free: no `import aiter` (it runs rocminfo) and no full `import vllm`; versions come from
-# package metadata.
+# package metadata. The radiance kernels are imported after torch, which is what loads libamdhip64.
 RUN WANT_VLLM=${VLLM_VERSION} WANT_AITER=${AITER_VERSION} \
     python -c 'import os, torch, vllm._C, amdsmi, importlib.metadata as m; \
+import radiance_ar_ext, radiance_ar_quant_ext, router_gemm; \
 v, a = m.version("vllm"), m.version("amd-aiter"); \
 assert v.startswith(os.environ["WANT_VLLM"]), "vllm wheel reports " + v + ", built tag is " + os.environ["WANT_VLLM"]; \
 assert a.startswith(os.environ["WANT_AITER"]), "aiter wheel reports " + a + ", built tag is " + os.environ["WANT_AITER"]; \
 print("stack OK | vllm", v, "| torch", torch.__version__, "| aiter", a, \
       "| torchvision", m.version("torchvision"), "| triton", m.version("triton"))'
-RUN find /opt/vllm -name '__pycache__' -type d -prune -exec rm -rf {} + || true
 
-ARG RADIANCE_VERSION=0.5.7
+# The release image must still be able to COMPILE. AITER JIT-builds its kernels on first use, as a
+# pybind11 HIP extension, so the shipped image needs hipcc AND the C++ standard headers AND Python.h.
+# `hipcc --version` does not prove any of that -- it passes on an image whose JIT is broken, which is
+# exactly how a slim release stage shipped with no libstdc++ headers. This mirrors aiter's real
+# compile: build a pybind11 HIP module that includes <cmath>, then import it and call into it.
+# torch is imported first because that is what pulls libamdhip64 into the process -- a bare HIP
+# extension cannot resolve it on its own (no ROCm entry in ld.so.conf), here or in any prior release.
+RUN printf '%s\n' \
+      '#include <hip/hip_runtime.h>' \
+      '#include <cmath>' \
+      '#include <pybind11/pybind11.h>' \
+      '__global__ void k(float* o) { o[threadIdx.x] = 1.0f; }' \
+      'PYBIND11_MODULE(_jit_probe, m) { m.def("f", [](double x) { return std::sqrt(x); }); }' \
+      > /tmp/_jit_probe.hip \
+ && hipcc -O3 -fPIC -shared -std=c++20 --offload-arch=${GFX_ARCH} \
+      $(python -m pybind11 --includes) /tmp/_jit_probe.hip -o /tmp/_jit_probe.so \
+ && python -c "import torch, sys; sys.path.insert(0, '/tmp'); import _jit_probe; assert _jit_probe.f(4.0) == 2.0" \
+ && rm -f /tmp/_jit_probe.hip /tmp/_jit_probe.so \
+ && echo "runtime JIT toolchain OK (hipcc + libstdc++ headers + Python.h + pybind11)"
+
+ARG RADIANCE_VERSION=0.5.8
 ENV RADIANCE_VERSION=${RADIANCE_VERSION}
 COPY radiance_preamble.py /opt/radiance_preamble.py
 COPY radiance_entrypoint.sh /opt/radiance_entrypoint.sh

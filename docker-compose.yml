@@ -10,7 +10,7 @@
 # this file, e.g.:  MAX_NUM_SEQS=16 MAX_MODEL_LEN=32768 docker compose up -d
 services:
   vllm:
-    image: ${IMAGE:-vllm-radiance:0.5.7}
+    image: ${IMAGE:-vllm-radiance:0.5.8}
     container_name: vllm-radiance
     restart: unless-stopped
     command:
