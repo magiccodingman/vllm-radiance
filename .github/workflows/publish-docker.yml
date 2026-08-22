@@ -1,11 +1,2 @@
-name: Docker publishing moved to GitLab
-
-on:
-  workflow_dispatch:
-
-jobs:
-  moved-to-gitlab:
-    if: ${{ false }}
-    runs-on: ubuntu-latest
-    steps:
-      - run: echo "Docker publishing now runs from GitLab CI."
+# GitHub Actions intentionally disabled.
+# Docker publishing is handled exclusively by .gitlab-ci.yml on GitLab.
