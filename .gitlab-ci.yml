@@ -12,6 +12,10 @@ variables:
   # This image compiles PyTorch, Triton, torchvision, AITER, and vLLM from source.
   # Keep compiler parallelism deliberately low for the 8 GiB RAM runner.
   RADIANCE_BUILD_JOBS: "2"
+  # The runner and GitLab are containers on the same Docker host. Use the
+  # host daemon socket instead of expecting a nonexistent `docker` DinD service.
+  DOCKER_HOST: "unix:///var/run/docker.sock"
+  DOCKER_TLS_CERTDIR: ""
   DOCKER_BUILDKIT: "1"
   BUILDKIT_PROGRESS: "plain"
   GIT_DEPTH: "1"
@@ -29,6 +33,7 @@ publish_docker:
     - test -s Dockerfile
     - test -s README.md
     - test -s VERSION
+    - test -S /var/run/docker.sock || { echo "Runner must mount /var/run/docker.sock into build containers"; exit 1; }
     - docker version
     - docker buildx version
     - printf '%s' "$DOCKERHUB_TOKEN" | docker login --username "$DOCKERHUB_USERNAME" --password-stdin
