@@ -127,7 +127,11 @@ run_one warmup 128 64 1 1 2 1
 # Everyday A/B gate: two waves at each concurrency and two repetitions. At the
 # slowest known BF16 baseline this is about four minutes of measured decoding;
 # native FP8 is faster. A third repetition belongs in standard/qualification.
-for concurrency in 1 2 4 8; do
+decode_concurrencies=(1 2 4 8)
+# TP1 is a constrained reference for large models, not a VRAM saturation test.
+# Stop at c4 so hybrid-state/KV capacity does not dominate the kernel result.
+((TP == 1)) && decode_concurrencies=(1 2 4)
+for concurrency in "${decode_concurrencies[@]}"; do
   prompts=$((concurrency * 2))
   ((prompts < 4)) && prompts=4
   for repetition in 1 2; do
@@ -160,7 +164,7 @@ if [[ $SUITE == quick ]]; then
 fi
 
 # Standard adds a third decode sample and another mixed-workload repetition.
-for concurrency in 1 2 4 8; do
+for concurrency in "${decode_concurrencies[@]}"; do
   prompts=$((concurrency * 2))
   ((prompts < 4)) && prompts=4
   run_one decode 256 256 "$concurrency" 3 "$prompts" 0
@@ -177,7 +181,7 @@ fi
 
 # Qualification is reserved for milestone builds: longer steady decode plus
 # concurrent 16K context. It remains bounded and avoids the old 6-8 hour matrix.
-for concurrency in 1 2 4 8; do
+for concurrency in "${decode_concurrencies[@]}"; do
   prompts=$((concurrency * 2))
   ((prompts < 4)) && prompts=4
   run_one sustained_decode 256 512 "$concurrency" 1 "$prompts" 0

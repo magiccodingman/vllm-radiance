@@ -105,7 +105,7 @@ RUN --mount=type=cache,id=radiance-ccache-gfx1201,target=/root/.cache/ccache \
 # back to a placeholder version; pin it to the tag being built.
 ARG AITER_VERSION
 RUN git clone --recursive --shallow-submodules -b v${AITER_VERSION} https://github.com/ROCm/aiter.git /src/aiter \
-    && cd /src/aiter && GPU_ARCHS=${GFX_ARCH} PREBUILD_KERNELS=0 \
+    && cd /src/aiter && GPU_ARCHS=${GFX_ARCH} PREBUILD_KERNELS=0 AITER_USE_SYSTEM_TRITON=1 \
        SETUPTOOLS_SCM_PRETEND_VERSION=${AITER_VERSION} \
        pip wheel --no-build-isolation --no-deps . -w /wheels \
     && pip install /wheels/*aiter-*.whl && rm -rf /src/aiter

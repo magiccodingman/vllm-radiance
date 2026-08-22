@@ -99,7 +99,8 @@ editing it. The full knob list (kernel toggles, draft controller, AITER routing,
 Everything below is baked into the image; the tuned paths are env-gated and on by default. See
 **[DOCKERHUB.md](DOCKERHUB.md)** for the per-knob reference: every flag, its default, and what it does.
 
-- **gfx1201 correctness patches** (always on): GPU enumeration, AITER enablement, native sampler fallback,
+- **gfx1201 correctness and routing** (always on): deterministic GPU enumeration plus current vLLM's
+  native RDNA4 AITER and sampler routing (without exposing CDNA-only CK/MFMA/ASM kernels),
   MTP drafter unpad + multimodal draft-mask alignment, tool-parser + `from_json` chat-template filter, and
   an attention LDS fit that shrinks the staged K/V tile into the R9700's 64 KiB shared memory for any head
   size and KV dtype (AITER sizes it for a larger LDS; without this, 2-byte KV at head 256 and fp8 KV at

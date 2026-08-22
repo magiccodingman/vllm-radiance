@@ -15,7 +15,8 @@ rather than searching for maximum throughput.
 ## Profiles and matrix
 
 The default `quick` profile is the everyday A/B gate. It uses one server warmup,
-two bounded decode repetitions at concurrency 1/2/4/8, a 2K prefill sweep,
+two bounded decode repetitions at concurrency 1/2/4/8 for TP2 and 1/2/4 for
+the constrained TP1 reference, a 2K prefill sweep,
 and a single 8K context check. `standard` adds a third decode sample and a
 second prefill sample. `qualification` adds sustained decode and concurrent 16K
 context plus a near-32K capacity request and is reserved for milestone builds.
