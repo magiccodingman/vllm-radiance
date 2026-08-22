@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1.7
 # vllm-radiance: vLLM/torch/triton/aiter stack for RDNA4 (gfx1201 / R9700), plus the radiance
 # patches and kernels. Single multistage build on the official AMD ROCm image, in four stages:
 #   1. builder    compile torch/triton/torchvision/aiter/vLLM from source into /wheels
@@ -7,7 +8,7 @@
 # No prebuilt component wheels and no checked-in binaries. The release image carries neither the
 # build toolchain nor the wheels, which is most of the reason it is far smaller than the base.
 #
-# stack: torch 2.11.0, triton 3.6.0, torchvision 0.24.1, aiter v0.1.17, vLLM v0.26.0,
+# stack: torch 2.11.0, triton 3.6.0, torchvision 0.26.0, aiter v0.1.17, pinned vLLM main,
 # all compiled for PYTORCH_ROCM_ARCH=gfx1201 against the base image's ROCm 7.14.
 ARG ROCM_BASE=rocm/dev-ubuntu-24.04:7.14.0-full@sha256:439edaa8f0c4be4a3728e528f87b8a2ea1f051f34cf10b27caa4bd94f562eda7
 ARG GFX_ARCH=gfx1201
@@ -19,16 +20,19 @@ ARG RELEASE_BASE=ubuntu:24.04@sha256:a08e551cb33850e4740772b38217fc1796a66da2506
 # Component pins, in one place. Each is both the git tag that gets compiled and the version the
 # resulting wheel reports, so `pip show`, `importlib.metadata`, and the startup banner all agree
 # with what was actually built.
-# torch/triton/torchvision are NOT free choices: vLLM 0.26.0's pyproject pins `torch == 2.11.0`,
-# torch 2.11.0 pins triton 3.6.0, and torchvision 0.24.1 is its matching release. Building against
+# torch/triton/torchvision are NOT free choices: pinned vLLM main's ROCm build requirements pin
+# torch 2.11.0, triton 3.6.0, and torchvision 0.26.0. Building against
 # newer ones means running a combination upstream never tests. 0.5.0-0.5.4 did exactly that (torch
 # 2.13 / triton 3.7.1 / torchvision 0.28) because `use_existing_torch.py` strips the pin, and those
 # builds hang the GPU under load where 0.4.0 -- which used this sanctioned trio -- does not.
 ARG TORCH_VERSION=2.11.0
 ARG TRITON_VERSION=3.6.0
-ARG TORCHVISION_VERSION=0.24.1
+ARG TORCHVISION_VERSION=0.26.0
 ARG AITER_VERSION=0.1.17
-ARG VLLM_VERSION=0.26.0
+# Never float main: this is the exact 2026-08-22 tree containing the RDNA4
+# routing work and DFlash2. VLLM_VERSION is only the deterministic wheel stamp.
+ARG VLLM_COMMIT=a014e35f38c80fb0652387740193ad2147fed6a3
+ARG VLLM_VERSION=0.28.0.dev0+a014e35
 # rocm-bandwidth-test for the startup topology/bandwidth sweep. Pinned to the NEWEST tag that still
 # has a plain CMakeLists: the rocm-7.x tags moved to a cmake framework that demands clang>=19 on PATH
 # plus vendored boost/fmt/curl submodules, none of which this tool needs.
@@ -40,11 +44,6 @@ ARG RBT_VERSION=rocm-6.4.4
 FROM ${ROCM_BASE} AS builder
 ARG GFX_ARCH
 ARG BUILD_JOBS=2
-ARG TORCH_VERSION
-ARG TRITON_VERSION
-ARG TORCHVISION_VERSION
-ARG AITER_VERSION
-ARG VLLM_VERSION
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTORCH_ROCM_ARCH=${GFX_ARCH} \
     ROCM_PATH=/opt/rocm HIP_PATH=/opt/rocm \
@@ -70,7 +69,9 @@ RUN mkdir -p /wheels
 
 # --- torch (AOTriton off: its gfx1201 source-configure fails and vLLM never uses torch
 #     SDPA-flash; USE_MAGMA=0: base has no magma) ---
-RUN git clone --depth 1 -b v${TORCH_VERSION} --recurse-submodules --shallow-submodules \
+ARG TORCH_VERSION
+RUN --mount=type=cache,id=radiance-ccache-gfx1201,target=/root/.cache/ccache \
+    git clone --depth 1 -b v${TORCH_VERSION} --recurse-submodules --shallow-submodules \
         https://github.com/pytorch/pytorch.git /src/pytorch \
     && cd /src/pytorch \
     && pip install -r requirements.txt \
@@ -82,7 +83,9 @@ RUN git clone --depth 1 -b v${TORCH_VERSION} --recurse-submodules --shallow-subm
     && cp dist/*.whl /wheels/ && pip install dist/*.whl && rm -rf /src/pytorch
 
 # --- triton ---
-RUN git clone --depth 1 -b v${TRITON_VERSION} https://github.com/triton-lang/triton.git /src/triton \
+ARG TRITON_VERSION
+RUN --mount=type=cache,id=radiance-ccache-gfx1201,target=/root/.cache/ccache \
+    git clone --depth 1 -b v${TRITON_VERSION} https://github.com/triton-lang/triton.git /src/triton \
     && cd /src/triton && pip wheel --no-build-isolation --no-deps . -w /wheels \
     && pip install /wheels/triton-*.whl && rm -rf /src/triton
 
@@ -91,13 +94,16 @@ RUN git clone --depth 1 -b v${TRITON_VERSION} https://github.com/triton-lang/tri
 # which is false in `docker build` (no GPU) -> it picks CppExtension, where torch's build-time hipify
 # double-compiles vision.cpp + vision_hip.cpp -> "multiple definition of vision::cuda_version()".
 # FORCE_CUDA=1 forces CUDAExtension (correct hipify source replacement); hipcc needs no GPU to compile.
-RUN git clone --depth 1 -b v${TORCHVISION_VERSION} https://github.com/pytorch/vision.git /src/vision \
+ARG TORCHVISION_VERSION
+RUN --mount=type=cache,id=radiance-ccache-gfx1201,target=/root/.cache/ccache \
+    git clone --depth 1 -b v${TORCHVISION_VERSION} https://github.com/pytorch/vision.git /src/vision \
     && cd /src/vision && FORCE_CUDA=1 USE_ROCM=1 pip wheel --no-build-isolation --no-deps . -w /wheels \
     && rm -rf /src/vision
 
 # --- aiter (gfx1201; kernels JIT at runtime, PREBUILD_KERNELS=0) ---
 # PRETEND_VERSION: the checkout is shallow, so setuptools-scm cannot describe the tag and would fall
 # back to a placeholder version; pin it to the tag being built.
+ARG AITER_VERSION
 RUN git clone --recursive --shallow-submodules -b v${AITER_VERSION} https://github.com/ROCm/aiter.git /src/aiter \
     && cd /src/aiter && GPU_ARCHS=${GFX_ARCH} PREBUILD_KERNELS=0 \
        SETUPTOOLS_SCM_PRETEND_VERSION=${AITER_VERSION} \
@@ -111,8 +117,13 @@ RUN git clone --recursive --shallow-submodules -b v${AITER_VERSION} https://gith
 #     VLLM_VERSION_OVERRIDE pins the reported version to the tag: the tree is dirty (use_existing_torch
 #     rewrites the requirements files) and shallow, so setuptools-scm would otherwise stamp the wheel
 #     with a guessed next-release dev version plus the build date. ---
-RUN git clone --depth 1 -b v${VLLM_VERSION} https://github.com/vllm-project/vllm.git /src/vllm \
-    && cd /src/vllm && python use_existing_torch.py \
+ARG VLLM_COMMIT
+ARG VLLM_VERSION
+RUN --mount=type=cache,id=radiance-ccache-gfx1201,target=/root/.cache/ccache \
+    git clone --filter=blob:none --no-checkout https://github.com/vllm-project/vllm.git /src/vllm \
+    && cd /src/vllm && git checkout --detach ${VLLM_COMMIT} \
+    && test "$(git rev-parse HEAD)" = "${VLLM_COMMIT}" \
+    && python use_existing_torch.py \
     && pip install "setuptools-rust>=1.9.0" \
     && VLLM_TARGET_DEVICE=rocm VLLM_VERSION_OVERRIDE=${VLLM_VERSION} \
        pip wheel --no-build-isolation --no-deps . -w /wheels \
@@ -154,8 +165,6 @@ RUN bash /tmp/prune_rocm.sh ${GFX_ARCH} && rm -f /tmp/prune_rocm.sh
 # compile the HIP kernels. Only the resulting /opt/vllm venv is carried into the release image.
 FROM ${ROCM_BASE} AS assemble
 ARG GFX_ARCH
-ARG AITER_VERSION
-ARG VLLM_VERSION
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
       python3.12-venv \
@@ -203,7 +212,7 @@ COPY moe-configs/ ${SP}/vllm/model_executor/layers/fused_moe/configs/
 COPY patch_*.py install_radiance_hooks.py _patchlib.py /opt/patches/
 RUN set -eu; cd /opt/patches; \
     for p in patch_gfx1201 patch_radiance_dispatch patch_router_gemm patch_unified_attention_lds \
-             patch_gdn_wmma patch_preshuffle patch_radiance_fusion install_radiance_hooks \
+             patch_gdn_wmma patch_preshuffle install_radiance_hooks \
              patch_unpad patch_mtp_mm_mask patch_mtp_loopbreak patch_qwen3_toolparse patch_from_json_filter \
              patch_dynamo_metrics; do \
       echo "== applying $p =="; python "$p.py"; \
@@ -237,8 +246,6 @@ RUN find /opt/vllm -type f -name '*.so*' ! -name 'radiance_ar*' ! -name 'router_
 # wheels, or the patch sources. Only the pruned ROCm, the venv, and the entrypoint come across.
 FROM ${RELEASE_BASE} AS final
 ARG GFX_ARCH
-ARG AITER_VERSION
-ARG VLLM_VERSION
 ENV DEBIAN_FRONTEND=noninteractive
 # ROCm 7.14 vendors its own libdrm / numa / elf / sqlite / zlib / zstd (the librocm_sysdeps_* set),
 # so the release image needs very little from the distro:
@@ -289,6 +296,8 @@ ENV RADIANCE_PRESHUFFLE=1 RADIANCE_ATTN_TUNE=1 RADIANCE_FUSE_RMS_QUANT=1 \
 # behind by the prune or by the slim base shows up here as an ImportError, not in production.
 # Kept GPU-free: no `import aiter` (it runs rocminfo) and no full `import vllm`; versions come from
 # package metadata. The radiance kernels are imported after torch, which is what loads libamdhip64.
+ARG AITER_VERSION
+ARG VLLM_VERSION
 RUN WANT_VLLM=${VLLM_VERSION} WANT_AITER=${AITER_VERSION} \
     python -c 'import os, torch, vllm._C, amdsmi, importlib.metadata as m; \
 import radiance_ar_ext, radiance_ar_quant_ext, router_gemm; \
@@ -318,7 +327,7 @@ RUN printf '%s\n' \
  && rm -f /tmp/_jit_probe.hip /tmp/_jit_probe.so \
  && echo "runtime JIT toolchain OK (hipcc + libstdc++ headers + Python.h + pybind11)"
 
-ARG RADIANCE_VERSION=0.5.8
+ARG RADIANCE_VERSION=0.6.0-dev.a014e35
 ENV RADIANCE_VERSION=${RADIANCE_VERSION}
 COPY radiance_preamble.py /opt/radiance_preamble.py
 COPY radiance_entrypoint.sh /opt/radiance_entrypoint.sh
