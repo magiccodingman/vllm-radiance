@@ -8,7 +8,8 @@
 # No prebuilt component wheels and no checked-in binaries. The release image carries neither the
 # build toolchain nor the wheels, which is most of the reason it is far smaller than the base.
 #
-# stack: torch 2.11.0, triton 3.6.0, torchvision 0.26.0, aiter v0.1.17, pinned vLLM main,
+# stack: AMD torch 2.12, AMD Triton 3.7.1, torchvision 0.27.1, AITER 0.1.20,
+# pinned vLLM main,
 # all compiled for PYTORCH_ROCM_ARCH=gfx1201 against the base image's ROCm 7.14.
 ARG ROCM_BASE=rocm/dev-ubuntu-24.04:7.14.0-full@sha256:439edaa8f0c4be4a3728e528f87b8a2ea1f051f34cf10b27caa4bd94f562eda7
 ARG GFX_ARCH=gfx1201
@@ -20,15 +21,18 @@ ARG RELEASE_BASE=ubuntu:24.04@sha256:a08e551cb33850e4740772b38217fc1796a66da2506
 # Component pins, in one place. Each is both the git tag that gets compiled and the version the
 # resulting wheel reports, so `pip show`, `importlib.metadata`, and the startup banner all agree
 # with what was actually built.
-# torch/triton/torchvision are NOT free choices: pinned vLLM main's ROCm build requirements pin
-# torch 2.11.0, triton 3.6.0, and torchvision 0.26.0. Building against
-# newer ones means running a combination upstream never tests. 0.5.0-0.5.4 did exactly that (torch
-# 2.13 / triton 3.7.1 / torchvision 0.28) because `use_existing_torch.py` strips the pin, and those
-# builds hang the GPU under load where 0.4.0 -- which used this sanctioned trio -- does not.
-ARG TORCH_VERSION=2.11.0
-ARG TRITON_VERSION=3.6.0
-ARG TORCHVISION_VERSION=0.26.0
-ARG AITER_VERSION=0.1.17
+# Treat the compiler stack as one atomic upstream-tested ROCm unit. These are
+# the exact AMD commits used by pinned vLLM main's Dockerfile.rocm_base, not the
+# generic PyTorch 2.13 / upstream Triton 3.7.1 combination that hung TP2 Radiance.
+ARG TORCH_REPO=https://github.com/ROCm/pytorch.git
+ARG TORCH_COMMIT=6bbd26020da1c6dc198625dfcdd968b1e4e6b1c5
+ARG TORCH_VERSION=2.12.0
+ARG TRITON_REPO=https://github.com/ROCm/triton.git
+ARG TRITON_COMMIT=f0b55c07da61c71775bef6d1a15ebf846430ac75
+ARG TRITON_VERSION=3.7.1
+ARG TORCHVISION_VERSION=0.27.1
+ARG AITER_COMMIT=fc2e5d57fb5b8ad8e7e23f7103071dde798ea618
+ARG AITER_VERSION=0.1.20
 # Never float main: this is the exact 2026-08-22 tree containing the RDNA4
 # routing work and DFlash2. VLLM_VERSION is only the deterministic wheel stamp.
 ARG VLLM_COMMIT=a014e35f38c80fb0652387740193ad2147fed6a3
@@ -69,24 +73,33 @@ RUN mkdir -p /wheels
 
 # --- torch (AOTriton off: its gfx1201 source-configure fails and vLLM never uses torch
 #     SDPA-flash; USE_MAGMA=0: base has no magma) ---
+ARG TORCH_REPO
+ARG TORCH_COMMIT
 ARG TORCH_VERSION
 RUN --mount=type=cache,id=radiance-ccache-gfx1201,target=/root/.cache/ccache \
-    git clone --depth 1 -b v${TORCH_VERSION} --recurse-submodules --shallow-submodules \
-        https://github.com/pytorch/pytorch.git /src/pytorch \
+    git clone --filter=blob:none --no-checkout ${TORCH_REPO} /src/pytorch \
     && cd /src/pytorch \
+    && git checkout --detach ${TORCH_COMMIT} \
+    && test "$(git rev-parse HEAD)" = "${TORCH_COMMIT}" \
+    && git submodule update --init --recursive --depth 1 \
     && pip install -r requirements.txt \
     && python tools/amd_build/build_amd.py \
     && USE_MAGMA=0 USE_MKLDNN=1 BUILD_TEST=0 USE_NCCL=1 USE_RCCL=1 \
        USE_FLASH_ATTENTION=0 USE_MEM_EFF_ATTENTION=0 USE_AOTRITON=0 \
+       CC=gcc-13 CXX=g++-13 \
        PYTORCH_BUILD_VERSION=${TORCH_VERSION}+rocm7.14 PYTORCH_BUILD_NUMBER=1 \
        python setup.py bdist_wheel \
     && cp dist/*.whl /wheels/ && pip install dist/*.whl && rm -rf /src/pytorch
 
 # --- triton ---
-ARG TRITON_VERSION
+ARG TRITON_REPO
+ARG TRITON_COMMIT
 RUN --mount=type=cache,id=radiance-ccache-gfx1201,target=/root/.cache/ccache \
-    git clone --depth 1 -b v${TRITON_VERSION} https://github.com/triton-lang/triton.git /src/triton \
-    && cd /src/triton && pip wheel --no-build-isolation --no-deps . -w /wheels \
+    git clone --filter=blob:none --no-checkout ${TRITON_REPO} /src/triton \
+    && cd /src/triton \
+    && git checkout --detach ${TRITON_COMMIT} \
+    && test "$(git rev-parse HEAD)" = "${TRITON_COMMIT}" \
+    && TRITON_BUILD_PROTON=OFF pip wheel --no-build-isolation --no-deps . -w /wheels \
     && pip install /wheels/triton-*.whl && rm -rf /src/triton
 
 # --- torchvision ---
@@ -101,11 +114,15 @@ RUN --mount=type=cache,id=radiance-ccache-gfx1201,target=/root/.cache/ccache \
     && rm -rf /src/vision
 
 # --- aiter (gfx1201; kernels JIT at runtime, PREBUILD_KERNELS=0) ---
-# PRETEND_VERSION: the checkout is shallow, so setuptools-scm cannot describe the tag and would fall
-# back to a placeholder version; pin it to the tag being built.
+# PRETEND_VERSION gives the exact release label to the detached commit.
+ARG AITER_COMMIT
 ARG AITER_VERSION
-RUN git clone --recursive --shallow-submodules -b v${AITER_VERSION} https://github.com/ROCm/aiter.git /src/aiter \
-    && cd /src/aiter && GPU_ARCHS=${GFX_ARCH} PREBUILD_KERNELS=0 AITER_USE_SYSTEM_TRITON=1 \
+RUN git clone --filter=blob:none --no-checkout https://github.com/ROCm/aiter.git /src/aiter \
+    && cd /src/aiter \
+    && git checkout --detach ${AITER_COMMIT} \
+    && test "$(git rev-parse HEAD)" = "${AITER_COMMIT}" \
+    && git submodule update --init --recursive --depth 1 \
+    && GPU_ARCHS=${GFX_ARCH} PREBUILD_KERNELS=0 AITER_USE_SYSTEM_TRITON=1 \
        SETUPTOOLS_SCM_PRETEND_VERSION=${AITER_VERSION} \
        pip wheel --no-build-isolation --no-deps . -w /wheels \
     && pip install /wheels/*aiter-*.whl && rm -rf /src/aiter
@@ -298,12 +315,19 @@ ENV RADIANCE_PRESHUFFLE=1 RADIANCE_ATTN_TUNE=1 RADIANCE_FUSE_RMS_QUANT=1 \
 # package metadata. The radiance kernels are imported after torch, which is what loads libamdhip64.
 ARG AITER_VERSION
 ARG VLLM_VERSION
-RUN WANT_VLLM=${VLLM_VERSION} WANT_AITER=${AITER_VERSION} \
+ARG TORCH_VERSION
+ARG TRITON_VERSION
+ARG TORCHVISION_VERSION
+RUN WANT_VLLM=${VLLM_VERSION} WANT_AITER=${AITER_VERSION} WANT_TORCH=${TORCH_VERSION} \
+    WANT_TRITON=${TRITON_VERSION} WANT_VISION=${TORCHVISION_VERSION} \
     python -c 'import os, torch, vllm._C, amdsmi, importlib.metadata as m; \
 import radiance_ar_ext, radiance_ar_quant_ext, router_gemm; \
-v, a = m.version("vllm"), m.version("amd-aiter"); \
+v, a, t, r, tv = m.version("vllm"), m.version("amd-aiter"), m.version("torch"), m.version("triton"), m.version("torchvision"); \
 assert v.startswith(os.environ["WANT_VLLM"]), "vllm wheel reports " + v + ", built tag is " + os.environ["WANT_VLLM"]; \
 assert a.startswith(os.environ["WANT_AITER"]), "aiter wheel reports " + a + ", built tag is " + os.environ["WANT_AITER"]; \
+assert t.startswith(os.environ["WANT_TORCH"]), "torch wheel reports " + t; \
+assert r.startswith(os.environ["WANT_TRITON"]), "triton wheel reports " + r; \
+assert tv.startswith(os.environ["WANT_VISION"]), "torchvision wheel reports " + tv; \
 print("stack OK | vllm", v, "| torch", torch.__version__, "| aiter", a, \
       "| torchvision", m.version("torchvision"), "| triton", m.version("triton"))'
 

@@ -127,9 +127,14 @@ and vLLM still selects Triton/FLA GDN prefill plus Triton GDN decode. AITER 0.1.
 is therefore a safe foundation, but its new GDN prefill work requires an explicit
 vLLM bridge before it can produce a material gain.
 
+The constrained TP1 lane was also normalized and compared against Radiance
+0.5.8. Pinned main plus AITER 0.1.20 was within -0.21% to -0.25% output TPS for
+decode c1/c2/c4, -0.23% for 2K prefill, and -0.21% for the near-8K context case.
+Decode CV was at most 0.06%. This confirms that the rebase did not trade away
+single-card performance, and TP1 c8 remains excluded as a capacity confounder.
+
 ## Next checkpoints
 
-1. Validate the constrained TP1 reference for the pinned-main rebase.
-2. Stage the official AMD PyTorch/Triton pair independently.
-3. Integrate GDN prefill work, then qualify DFlash2 separately with reserved
+1. Stage the official AMD PyTorch/Triton pair independently.
+2. Integrate GDN prefill work, then qualify DFlash2 separately with reserved
    drafter headroom.
