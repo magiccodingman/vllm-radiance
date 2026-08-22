@@ -39,6 +39,7 @@ ARG RBT_VERSION=rocm-6.4.4
 # =====================================================================================
 FROM ${ROCM_BASE} AS builder
 ARG GFX_ARCH
+ARG BUILD_JOBS=2
 ARG TORCH_VERSION
 ARG TRITON_VERSION
 ARG TORCHVISION_VERSION
@@ -47,7 +48,10 @@ ARG VLLM_VERSION
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTORCH_ROCM_ARCH=${GFX_ARCH} \
     ROCM_PATH=/opt/rocm HIP_PATH=/opt/rocm \
-    USE_ROCM=1 USE_CUDA=0 MAX_JOBS=32 CMAKE_BUILD_PARALLEL_LEVEL=32
+    USE_ROCM=1 USE_CUDA=0 \
+    MAX_JOBS=${BUILD_JOBS} CMAKE_BUILD_PARALLEL_LEVEL=${BUILD_JOBS} \
+    MAKEFLAGS=-j${BUILD_JOBS} CARGO_BUILD_JOBS=${BUILD_JOBS} \
+    CCACHE_MAXSIZE=4G CCACHE_COMPRESS=1
 
 # Build tooling the base dev image lacks (git/venv/pkg-config + the -dev packages torch's cmake
 # probes: libdrm for rocm_smi, libnuma, libelf).
@@ -127,7 +131,7 @@ ARG RBT_VERSION
 RUN git clone --depth 1 -b ${RBT_VERSION} https://github.com/ROCm/rocm_bandwidth_test.git /src/rbt \
     && cmake -S /src/rbt -B /src/rbt/build -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=/opt/rocm \
          -DCMAKE_EXE_LINKER_FLAGS="-Wl,-rpath,/opt/rocm/core/lib:/opt/rocm/lib" \
-    && cmake --build /src/rbt/build -j 16 \
+    && cmake --build /src/rbt/build -j ${BUILD_JOBS} \
     && mkdir -p /artifacts && cp /src/rbt/build/rocm-bandwidth-test /artifacts/ \
     && rm -rf /src/rbt
 
