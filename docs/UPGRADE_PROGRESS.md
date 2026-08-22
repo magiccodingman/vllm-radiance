@@ -23,6 +23,9 @@ numbers use native FP8 weights and mandatory FP8 KV cache with the reusable
 - A 32K request and longer repetitions are qualification-only. The routine gate
   is not a maximum-throughput or VRAM-saturation search.
 - FP8 KV is a hard precondition checked from the resolved container command.
+- Each shape receives a disjoint-seed warmup wave, and every measured repetition
+  has its own deterministic seed. This heats lazy kernels without allowing
+  prefix-cache state to leak into a measurement.
 
 The checkpoint lacks calibrated attention q/k/v/prob scale tensors, so vLLM
 records that FP8 KV attention uses scale 1.0. Dynamic KV scale calculation is
@@ -92,9 +95,41 @@ reserved 0.75 GiB for graphs, and retained 10.59 GiB for KV (525,501 tokens,
 16.04 full 32K requests). This leaves the intended non-engine headroom instead
 of tuning to the VRAM edge.
 
+## Canonical pinned-main performance checkpoint
+
+Early exploratory runs were retained but rejected after two benchmark defects
+were observed directly: lazy Triton JIT inside measured cases, then built-in
+warmups reusing a measured prompt through prefix cache. The canonical runs use
+the corrected disjoint-seed contract:
+
+- Radiance 0.5.8 TP2 baseline: `20260822T222623Z_..._quick`
+- Pinned-main/AITER 0.1.17 TP2: `20260822T223332Z_..._quick`
+
+Pinned main is effectively neutral to mildly positive for decode: +0.51%,
++0.55%, +0.29%, and +0.52% output TPS at concurrency 1/2/4/8. The 8K context
+case was -1.55%. Aggregate 2K prefill throughput was -0.46%, -0.80%, and -1.48%
+at concurrency 1/4/8; median TTFT improved at concurrent prefill, but TPOT became
+worse enough that no broad prefill win is claimed. Decode CV was at most 0.05%,
+which is a strong stable-rebase checkpoint.
+
+## AITER 0.1.20 checkpoint
+
+AITER was upgraded in isolation from exact commit
+`fc2e5d57fb5b8ad8e7e23f7103071dde798ea618`, built for gfx1201 with
+`AITER_USE_SYSTEM_TRITON=1`. Image
+`vllm-radiance:dev-a014e35-aiter0.1.20` has local digest
+`sha256:b1e303dc0b6bbc7b0c6eac1c727b4a5e1c0035b9c4f1afb74718ac69afb57e40`.
+It passed smoke and the canonical TP2 gate.
+
+Against AITER 0.1.17, all measured output-throughput deltas were within -0.24%
+to +0.29%. That is expected: Radiance's dense preshuffle dispatcher is retained,
+and vLLM still selects Triton/FLA GDN prefill plus Triton GDN decode. AITER 0.1.20
+is therefore a safe foundation, but its new GDN prefill work requires an explicit
+vLLM bridge before it can produce a material gain.
+
 ## Next checkpoints
 
-1. Run the pinned-main non-spec performance gate and compare with Radiance 0.5.8.
-2. Stage AITER and the official AMD PyTorch/Triton pair independently.
+1. Validate the constrained TP1 reference for the pinned-main rebase.
+2. Stage the official AMD PyTorch/Triton pair independently.
 3. Integrate GDN prefill work, then qualify DFlash2 separately with reserved
    drafter headroom.

@@ -1,0 +1,51 @@
+# syntax=docker/dockerfile:1.7
+# Focused AITER experiment layered over an already-validated pinned-main image.
+# This isolates the AITER delta from vLLM, PyTorch, and Triton changes.
+ARG BASE_IMAGE=vllm-radiance:dev-a014e35
+ARG VLLM_VERSION=0.28.0.dev0+a014e35
+ARG AITER_COMMIT=fc2e5d57fb5b8ad8e7e23f7103071dde798ea618
+ARG AITER_VERSION=0.1.20
+ARG GFX_ARCH=gfx1201
+
+FROM ${BASE_IMAGE} AS aiter-builder
+ARG AITER_COMMIT
+ARG AITER_VERSION
+ARG GFX_ARCH
+USER root
+RUN apt-get update && apt-get install -y --no-install-recommends git cmake ccache \
+    && rm -rf /var/lib/apt/lists/*
+RUN git clone --filter=blob:none https://github.com/ROCm/aiter.git /src/aiter \
+    && cd /src/aiter \
+    && git checkout --detach ${AITER_COMMIT} \
+    && test "$(git rev-parse HEAD)" = "${AITER_COMMIT}" \
+    && git submodule update --init --recursive --depth 1 \
+    && mkdir -p /wheels \
+    && GPU_ARCHS=${GFX_ARCH} PREBUILD_KERNELS=0 AITER_USE_SYSTEM_TRITON=1 \
+       SETUPTOOLS_SCM_PRETEND_VERSION=${AITER_VERSION} \
+       pip wheel --no-build-isolation --no-deps . -w /wheels
+
+FROM ${BASE_IMAGE} AS final
+ARG VLLM_VERSION
+ARG AITER_VERSION
+ARG RADIANCE_VERSION=0.6.0-dev.a014e35-aiter0.1.20
+ENV RADIANCE_VERSION=${RADIANCE_VERSION}
+
+COPY --from=aiter-builder /wheels/*aiter-*.whl /tmp/wheels/
+RUN pip install --force-reinstall --no-cache-dir --no-deps /tmp/wheels/*aiter-*.whl \
+    && rm -rf /tmp/wheels /root/.cache
+
+# AITER was replaced, so re-run the guarded patch set. vLLM-side edits are
+# expected NOOPs; AITER-side LDS, split-K, and GDN edits apply to 0.1.20.
+COPY patch_*.py install_radiance_hooks.py _patchlib.py /opt/patches/
+RUN set -eu; cd /opt/patches; \
+    for p in patch_gfx1201 patch_radiance_dispatch patch_router_gemm patch_unified_attention_lds \
+             patch_gdn_wmma patch_preshuffle install_radiance_hooks \
+             patch_unpad patch_mtp_mm_mask patch_mtp_loopbreak patch_qwen3_toolparse patch_from_json_filter \
+             patch_dynamo_metrics; do \
+      echo "== applying $p =="; python "$p.py"; \
+    done; \
+    WANT_VLLM=${VLLM_VERSION} WANT_AITER=${AITER_VERSION} python -c 'import os, importlib.metadata as m; \
+v=m.version("vllm"); a=m.version("amd-aiter"); t=m.version("triton"); \
+assert v.startswith(os.environ["WANT_VLLM"]), (v, os.environ["WANT_VLLM"]); \
+assert a.startswith(os.environ["WANT_AITER"]), (a, os.environ["WANT_AITER"]); \
+assert t.startswith("3.6"), t; print("AITER overlay OK", v, a, t)'

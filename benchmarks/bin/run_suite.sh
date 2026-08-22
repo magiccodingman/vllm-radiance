@@ -71,7 +71,42 @@ run_one() {
   stem=$(printf '%s_in%s_out%s_c%s_r%s' "$workload" "$input_tokens" "$output_tokens" "$concurrency" "$repetition")
   local result=${RAW_DIR}/${stem}.json
   local log=${LOG_DIR}/${stem}.log
+  local warmup_log=${LOG_DIR}/${stem}.shape-warmup.log
   local telemetry=${TELEMETRY_DIR}/${stem}.jsonl
+  # Repetitions and shapes get stable but distinct prompts. Reusing one global
+  # seed makes prefix caching leak across samples; using the benchmark client's
+  # built-in warmup is worse because it reuses the measurement's test prompt.
+  local case_seed=$((SEED + input_tokens * 31 + output_tokens * 17 + concurrency * 101 + repetition * 1009))
+  local warmup_seed=$((case_seed + 500000))
+
+  local common_args=(
+    --backend openai
+    --base-url "$BASE_URL"
+    --endpoint /v1/completions
+    --model "$MODEL_NAME"
+    --tokenizer "$MODEL_HOST"
+    --dataset-name random
+    --input-len "$input_tokens"
+    --output-len "$output_tokens"
+    --random-range-ratio 0.0
+    --max-concurrency "$concurrency"
+    --request-rate inf
+    --ignore-eos
+    --percentile-metrics ttft,tpot,itl,e2el
+    --metric-percentiles 50,90,95,99
+    --disable-tqdm
+  )
+
+  if ((warmups > 0)); then
+    echo "[$(date -u +%FT%TZ)] ${CONFIG}: shape warmup, in=${input_tokens}, out=${output_tokens}, c=${concurrency}, prompts=${warmups}"
+    if ! timeout --signal=TERM --kill-after=30 "${CASE_TIMEOUT}" \
+      "${VENV}/bin/python" "${SCRIPT_DIR}/vllm_bench_serve.py" \
+      "${common_args[@]}" --num-prompts "$warmups" --num-warmups 0 \
+      --seed "$warmup_seed" >"$warmup_log" 2>&1; then
+      echo "Shape warmup failed (${stem}); see ${warmup_log}" >&2
+      return 1
+    fi
+  fi
 
   echo "[$(date -u +%FT%TZ)] ${CONFIG}: ${workload}, in=${input_tokens}, out=${output_tokens}, c=${concurrency}, rep=${repetition}, prompts=${prompts}"
   "${SCRIPT_DIR}/telemetry.py" "$telemetry" --interval 1 &
@@ -79,30 +114,16 @@ run_one() {
   set +e
   timeout --signal=TERM --kill-after=30 "${CASE_TIMEOUT}" \
     "${VENV}/bin/python" "${SCRIPT_DIR}/vllm_bench_serve.py" \
-    --backend openai \
-    --base-url "$BASE_URL" \
-    --endpoint /v1/completions \
-    --model "$MODEL_NAME" \
-    --tokenizer "$MODEL_HOST" \
-    --dataset-name random \
-    --input-len "$input_tokens" \
-    --output-len "$output_tokens" \
-    --random-range-ratio 0.0 \
+    "${common_args[@]}" \
     --num-prompts "$prompts" \
-    --num-warmups "$warmups" \
-    --max-concurrency "$concurrency" \
-    --request-rate inf \
-    --ignore-eos \
-    --seed "$SEED" \
-    --percentile-metrics ttft,tpot,itl,e2el \
-    --metric-percentiles 50,90,95,99 \
-    --disable-tqdm \
+    --num-warmups 0 \
+    --seed "$case_seed" \
     --save-result \
     --save-detailed \
     --result-filename "$result" \
     --metadata "config=${CONFIG}" "workload=${workload}" "input_tokens=${input_tokens}" \
       "output_tokens=${output_tokens}" "repetition=${repetition}" "tp=${TP}" \
-      "spec=${SPEC}" "cpu_offload_gb=${CPU_OFFLOAD_GB}" \
+      "spec=${SPEC}" "cpu_offload_gb=${CPU_OFFLOAD_GB}" "seed=${case_seed}" \
     >"$log" 2>&1
   local status=$?
   set -e
@@ -135,7 +156,12 @@ for concurrency in "${decode_concurrencies[@]}"; do
   prompts=$((concurrency * 2))
   ((prompts < 4)) && prompts=4
   for repetition in 1 2; do
-    run_one decode 256 256 "$concurrency" "$repetition" "$prompts" 0
+    # Warm the exact batch shape before its first measured repetition. Current
+    # vLLM reports otherwise-lazy Triton JITs (notably c2 GDN decode) during
+    # inference, which can turn a compile pause into a fake performance delta.
+    warmups=0
+    ((repetition == 1)) && warmups=$concurrency
+    run_one decode 256 256 "$concurrency" "$repetition" "$prompts" "$warmups"
   done
 done
 
@@ -146,17 +172,19 @@ prefill_concurrencies=(1 4 8)
 for concurrency in "${prefill_concurrencies[@]}"; do
   prompts=$((concurrency * 2))
   ((prompts < 2)) && prompts=2
-  run_one prefill "$PREFILL_INPUT_TOKENS" 64 "$concurrency" 1 "$prompts" 0
+  # Prefill has a distinct GDN/attention kernel family, so the short decode
+  # warmup above cannot make this measurement hot.
+  run_one prefill "$PREFILL_INPUT_TOKENS" 64 "$concurrency" 1 "$prompts" "$concurrency"
 done
 
 # Long-context cases are capacity/correctness checks, not stability repetitions.
 if ((TP == 1)); then
   context_input=$((MAX_MODEL_LEN - 256))
-  run_one context_tp1 "$context_input" 64 1 1 1 0
+  run_one context_tp1 "$context_input" 64 1 1 1 1
 else
   context_input=$QUICK_CONTEXT_TOKENS
   ((context_input + 64 > MAX_MODEL_LEN)) && context_input=$((MAX_MODEL_LEN - 64))
-  run_one context_quick "$context_input" 64 1 1 1 0
+  run_one context_quick "$context_input" 64 1 1 1 1
 fi
 
 if [[ $SUITE == quick ]]; then

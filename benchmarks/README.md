@@ -20,6 +20,11 @@ the constrained TP1 reference, a 2K prefill sweep,
 and a single 8K context check. `standard` adds a third decode sample and a
 second prefill sample. `qualification` adds sustained decode and concurrent 16K
 context plus a near-32K capacity request and is reserved for milestone builds.
+Each exact workload/concurrency shape gets one unmeasured request wave before
+its first sample. Warmups and every measured repetition use distinct,
+deterministic prompt seeds, so prefix caching cannot leak across samples. This
+prevents lazy Triton compilation or autotuning from being misreported as model
+latency while adding only a bounded amount of runtime.
 
 `bin/run_matrix.sh` defaults to the model-neutral, non-speculative gate:
 
