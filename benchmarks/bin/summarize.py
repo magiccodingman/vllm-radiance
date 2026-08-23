@@ -64,6 +64,19 @@ def summarize_telemetry(run_root: Path) -> None:
     for path in sorted(run_root.glob("**/telemetry/*.jsonl")):
         devices: dict[str, dict[str, object]] = {}
         min_host_available: float | None = None
+        visible_devices: set[str] | None = None
+        manifest_path = path.parent.parent / "manifest.json"
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            visible = manifest.get("environment", {}).get("HIP_VISIBLE_DEVICES")
+            if isinstance(visible, str) and visible.strip():
+                visible_devices = {
+                    f"card{index.strip()}"
+                    for index in visible.split(",")
+                    if index.strip().isdigit()
+                }
+        except (OSError, json.JSONDecodeError):
+            pass
         try:
             lines = path.read_text(encoding="utf-8").splitlines()
         except OSError:
@@ -82,6 +95,8 @@ def summarize_telemetry(run_root: Path) -> None:
                 )
             for gpu in sample.get("gpus", []):
                 device = str(gpu.get("device", "unknown"))
+                if visible_devices is not None and device not in visible_devices:
+                    continue
                 row = devices.setdefault(
                     device,
                     {

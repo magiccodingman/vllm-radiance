@@ -90,6 +90,25 @@ can use `BENCH_WORKLOADS=prefill,context`; an all-reduce/decode change can use
 stores their exact text, prompt/completion token lengths, seeds, and fixture
 checksum. Use it with `bin/verify_outputs.py` when synthetic random-token
 prompts expose near-tie numerical drift or when qualifying speculative decode.
+Set `BENCH_CORRECTNESS_REPETITIONS` to audit within-server repeatability and
+`BENCH_CORRECTNESS_LOGPROBS` to retain top-logprob evidence around a first
+divergence. `BENCH_CORRECTNESS_PROMPTS` selects an alternate immutable fixture;
+the DFlash hybrid-GDN graph diagnostic uses
+`fixtures/gdn-shape-alias-prompts.json` to exercise short prompt lengths around
+the speculative batch-shape boundary.
+
+For deeper output triage, compare two retained correctness payloads with:
+
+```bash
+benchmarks/bin/analyze_correctness.py \
+  BASE/raw/correctness_fixed.json CANDIDATE/raw/correctness_fixed.json \
+  --output CANDIDATE/correctness-analysis.json
+```
+
+The report keeps strict token equality intact while adding repeatability,
+first-divergence position, nearby token/text context, and top-two logprob
+margins when available. A deterministic near-tie is evidence for numerical
+drift, not permission to weaken the strict qualification gate.
 
 Compare two completed run directories with direction-normalized deltas (positive
 always means better). Speculative comparisons also show candidate acceptance
@@ -153,13 +172,42 @@ including `RADIANCE_PRESHUFFLE`, `RADIANCE_FAST_REDUCE`,
 container inspection in each manifest; explicitly supplied values are also
 listed in the manifest environment section.
 
+### Experimental DFlash2 lane
+
+DFlash2 remains explicit-only. The best bounded headroom profile found on the
+dual R9700 host uses the selective-FP8 drafter at
+`/nvme/lexar-2/ai/models/Qwen3.8-27B-heretic-ara-DFlash2-fp8-magiccodingman`,
+five speculative tokens, draft TP2, `TRITON_ATTN` for the drafter, the V2 model
+runner, and `PIECEWISE` graph mode. The native-FP8 target, FP8 KV, 8K DFlash
+envelope, 85% allocation, and normal Radiance target paths remain unchanged.
+It is an experimental benchmark profile—not the compose default—because strict
+greedy equivalence still fails even though repeated outputs are deterministic.
+
+Use explicit JSON so manifests retain the full experiment contract:
+
+```bash
+VLLM_USE_V2_MODEL_RUNNER=1 \
+RADIANCE_AR_QUANT=0 \
+TP2_MAX_MODEL_LEN=8192 \
+COMPILATION_CONFIG_JSON='{"cudagraph_mode":"PIECEWISE"}' \
+SPECULATIVE_CONFIG_JSON='{"method":"dflash","model":"/models/Qwen3.8-27B-heretic-ara-DFlash2-fp8-magiccodingman","num_speculative_tokens":5,"draft_tensor_parallel_size":2,"attention_backend":"TRITON_ATTN","max_model_len":8192}' \
+BENCH_CONFIGS=tp2_spec-on BENCH_SUITE=quick \
+benchmarks/bin/run_matrix.sh
+```
+
+`RADIANCE_AR_QUANT=0` is deliberate for this lane: disabling FP8 all-reduce
+payload quantization improved strict matches during isolation. The custom TP2
+all-reduce itself remains enabled and was independently exonerated.
+
 ## Results
 
 Each timestamped directory beneath `runs/` includes exact manifests, resolved
 server commands, raw vLLM JSON, logs, two-second GPU/host telemetry, checksums,
 and consolidated CSV/JSON/Markdown summaries. `telemetry-summary.json` and
 `.csv` promote each case's peak VRAM/use/power/temperature and minimum VRAM and
-host-memory headroom so model-size changes remain auditable. Fixed seed
-`20260822`, exact
-input/output lengths, forced output length, warmups, and repetitions make runs
-directly comparable across future images and forks.
+host-memory headroom so model-size changes remain auditable. Only GPUs named
+by the configuration's recorded `HIP_VISIBLE_DEVICES` are
+promoted; the host's 2 GiB integrated GPU is intentionally excluded from
+inference headroom summaries while its raw samples remain available.
+Fixed seed `20260822`, exact input/output lengths, forced output length, warmups,
+and repetitions make runs directly comparable across future images and forks.

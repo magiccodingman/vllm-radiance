@@ -113,6 +113,8 @@ def main() -> None:
                 "findmnt", "-T", "/nvme/lexar-2", "-o", "TARGET,SOURCE,FSTYPE,OPTIONS"
             ),
             "gpu_products": command("rocm-smi", "--showproductname"),
+            "gpu_vbios": command("rocm-smi", "--showvbios"),
+            "gpu_firmware": command("rocm-smi", "--showfwinfo"),
             "gpu_topology": command("rocm-smi", "--showtopo"),
             "docker_version": command("docker", "version"),
             "docker_root": command("docker", "info", "--format", "{{.DockerRootDir}}"),
@@ -134,6 +136,15 @@ def main() -> None:
                 "RADIANCE_AR_QUANT",
                 "RADIANCE_AR_QUANT_MIN_KB",
                 "RADIANCE_GDN_WMMA",
+                "KV_CACHE_DTYPE",
+                "ALLOW_DIAGNOSTIC_NON_FP8_KV",
+                "PREFIX_CACHING",
+                "MAMBA_CACHE_MODE",
+                "VLLM_USE_V2_MODEL_RUNNER",
+                "BENCH_CORRECTNESS_MAX_TOKENS",
+                "BENCH_CORRECTNESS_REPETITIONS",
+                "BENCH_CORRECTNESS_LOGPROBS",
+                "BENCH_CORRECTNESS_PROMPTS",
             )
             if key in os.environ
         },
