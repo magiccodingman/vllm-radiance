@@ -28,6 +28,8 @@ numbers use native FP8 weights and mandatory FP8 KV cache with the reusable
 - Each shape receives a disjoint-seed warmup wave, and every measured repetition
   has its own deterministic seed. This heats lazy kernels without allowing
   prefix-cache state to leak into a measurement.
+- The normalized contract explicitly uses greedy `temperature=0`; sampling
+  policy is a comparison key rather than an inherited server default.
 
 This normalized 16K/85% contract supersedes the early 32K/90% server envelope;
 the older runs remain immutable historical evidence and the retained software

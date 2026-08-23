@@ -17,6 +17,7 @@ KEYS = (
     "tp",
     "spec",
     "cpu_offload_gb",
+    "temperature",
 )
 
 
@@ -70,8 +71,8 @@ def main() -> None:
         "",
         "Positive percentages are improvements: higher TPS or lower latency.",
         "",
-        "| Config | Workload | In/out | C | Output TPS | TPS delta | TTFT delta | TPOT delta | Accept % | Accept delta | Accept len |",
-        "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+        "| Config | Workload | In/out | C | Temp | Output TPS | TPS delta | TTFT delta | TPOT delta | Accept % | Accept delta | Accept len |",
+        "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     failed: list[str] = []
     for key in common:
@@ -98,7 +99,7 @@ def main() -> None:
         )
         accept_len = number(cand, "median_spec_decode_acceptance_length")
         lines.append(
-            f"| {key[0]} | {key[1]} | {key[2]}/{key[3]} | {key[4]} "
+            f"| {key[0]} | {key[1]} | {key[2]}/{key[3]} | {key[4]} | {key[8]} "
             f"| {'' if tps is None else f'{tps:.2f}'} | {shown(tps_delta)} "
             f"| {shown(ttft_delta)} | {shown(tpot_delta)} "
             f"| {'' if accept is None else f'{accept:.2f}'} "

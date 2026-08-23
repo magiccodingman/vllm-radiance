@@ -25,6 +25,10 @@ its first sample. Warmups and every measured repetition use distinct,
 deterministic prompt seeds, so prefix caching cannot leak across samples. This
 prevents lazy Triton compilation or autotuning from being misreported as model
 latency while adding only a bounded amount of runtime.
+Every request also sets `temperature=0` explicitly. This makes outputs and
+speculative acceptance reproducible instead of inheriting a model/server
+sampling default. Set `BENCH_TEMPERATURE` only for a separately labeled sampling
+experiment; temperature is part of the comparison key.
 
 `bin/run_matrix.sh` defaults to the model-neutral, non-speculative gate:
 

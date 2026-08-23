@@ -11,6 +11,7 @@ SEED=20260822
 CASE_TIMEOUT=${BENCH_CASE_TIMEOUT:-900}
 PREFILL_INPUT_TOKENS=${BENCH_PREFILL_INPUT_TOKENS:-2048}
 QUICK_CONTEXT_TOKENS=${BENCH_QUICK_CONTEXT_TOKENS:-8192}
+TEMPERATURE=${BENCH_TEMPERATURE:-0}
 
 RUN_DIR=
 CONFIG=
@@ -92,6 +93,7 @@ run_one() {
     --max-concurrency "$concurrency"
     --request-rate inf
     --ignore-eos
+    --temperature "$TEMPERATURE"
     --percentile-metrics ttft,tpot,itl,e2el
     --metric-percentiles 50,90,95,99
     --disable-tqdm
@@ -124,6 +126,7 @@ run_one() {
     --metadata "config=${CONFIG}" "workload=${workload}" "input_tokens=${input_tokens}" \
       "output_tokens=${output_tokens}" "repetition=${repetition}" "tp=${TP}" \
       "spec=${SPEC}" "cpu_offload_gb=${CPU_OFFLOAD_GB}" "seed=${case_seed}" \
+      "temperature=${TEMPERATURE}" \
     >"$log" 2>&1
   local status=$?
   set -e

@@ -67,6 +67,7 @@ def main() -> None:
             "tp": data.get("tp", ""),
             "spec": data.get("spec", ""),
             "cpu_offload_gb": data.get("cpu_offload_gb", ""),
+            "temperature": data.get("temperature", ""),
             "num_prompts": data.get("num_prompts", ""),
         }
         for metric in METRICS:
@@ -75,7 +76,7 @@ def main() -> None:
 
     columns = [
         "file", "config", "workload", "input_tokens", "output_tokens",
-        "concurrency", "repetition", "tp", "spec", "cpu_offload_gb",
+        "concurrency", "repetition", "tp", "spec", "cpu_offload_gb", "temperature",
         "num_prompts", *METRICS,
     ]
     csv_path = args.run_root / "measurements.csv"
@@ -90,6 +91,7 @@ def main() -> None:
             row["config"], row["workload"], row["input_tokens"],
             row["output_tokens"], row["concurrency"], row["tp"], row["spec"],
             row["cpu_offload_gb"],
+            row["temperature"],
         )
         grouped[key].append(row)
 
@@ -99,6 +101,7 @@ def main() -> None:
             "config": key[0], "workload": key[1], "input_tokens": key[2],
             "output_tokens": key[3], "concurrency": key[4], "tp": key[5],
             "spec": key[6], "cpu_offload_gb": key[7], "samples": len(samples),
+            "temperature": key[8],
         }
         for metric in METRICS:
             values = [value for row in samples if (value := numeric(row.get(metric))) is not None]
@@ -125,8 +128,8 @@ def main() -> None:
         "",
         "Medians across repetitions. TPS is output-token throughput; TPOT and TTFT are milliseconds.",
         "",
-        "| Config | Workload | In/out | C | N | Output TPS | Total TPS | TTFT p50 | TTFT p99 | TPOT p50 | TPOT p99 | Spec accept % | CV % |",
-        "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+        "| Config | Workload | In/out | C | Temp | N | Output TPS | Total TPS | TTFT p50 | TTFT p99 | TPOT p50 | TPOT p99 | Spec accept % | CV % |",
+        "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for row in aggregates:
         def shown(name: str) -> str:
@@ -135,7 +138,7 @@ def main() -> None:
 
         lines.append(
             f"| {row['config']} | {row['workload']} | {row['input_tokens']}/{row['output_tokens']} "
-            f"| {row['concurrency']} | {row['samples']} | {shown('median_output_throughput')} "
+            f"| {row['concurrency']} | {row['temperature']} | {row['samples']} | {shown('median_output_throughput')} "
             f"| {shown('median_total_token_throughput')} | {shown('median_p50_ttft_ms')} "
             f"| {shown('median_p99_ttft_ms')} | {shown('median_p50_tpot_ms')} "
             f"| {shown('median_p99_tpot_ms')} | {shown('median_spec_decode_acceptance_rate')} "
