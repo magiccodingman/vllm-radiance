@@ -95,8 +95,9 @@ inputs, so the same core workloads can be reused for larger models. Select only
 the configurations a model can safely host; for example a 35B model may use
 `BENCH_CONFIGS=tp2_spec-off` while retaining directly comparable TP2 cases.
 Maximum-context requests are qualification checks, not routine performance
-samples. `ATTENTION_BACKEND`, `ADDITIONAL_CONFIG_JSON`, and
-`SPECULATIVE_CONFIG_JSON` provide recorded, command-line-visible experiment
+samples. `ATTENTION_BACKEND`, `ADDITIONAL_CONFIG_JSON`,
+`SPECULATIVE_CONFIG_JSON`, and `COMPILATION_CONFIG_JSON` provide recorded,
+command-line-visible experiment
 switches without editing the harness. The latter defaults to the normal MTP
 configuration only when a speculative lane is requested and no explicit JSON
 is supplied.

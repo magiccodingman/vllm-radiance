@@ -17,6 +17,7 @@ MAX_NUM_SEQS=${MAX_NUM_SEQS:-8}
 ATTENTION_BACKEND=${ATTENTION_BACKEND:-ROCM_AITER_UNIFIED_ATTN}
 ADDITIONAL_CONFIG_JSON=${ADDITIONAL_CONFIG_JSON:-}
 SPECULATIVE_CONFIG_JSON=${SPECULATIVE_CONFIG_JSON:-}
+COMPILATION_CONFIG_JSON=${COMPILATION_CONFIG_JSON:-}
 ENFORCE_EAGER=0
 DISABLE_CUDAGRAPH=0
 
@@ -117,7 +118,13 @@ if ((ENFORCE_EAGER)); then
   server_args+=(--enforce-eager)
 fi
 if ((DISABLE_CUDAGRAPH)); then
+  [[ -z $COMPILATION_CONFIG_JSON ]] || {
+    echo "DISABLE_CUDAGRAPH and COMPILATION_CONFIG_JSON are mutually exclusive" >&2
+    exit 2
+  }
   server_args+=('--compilation-config={"cudagraph_mode":"NONE"}')
+elif [[ -n $COMPILATION_CONFIG_JSON ]]; then
+  server_args+=("--compilation-config=${COMPILATION_CONFIG_JSON}")
 fi
 if [[ $CPU_OFFLOAD_GB != 0 && $CPU_OFFLOAD_GB != 0.0 ]]; then
   server_args+=("--cpu-offload-gb=${CPU_OFFLOAD_GB}")
