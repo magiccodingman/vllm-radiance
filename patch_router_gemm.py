@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Install the RADIANCE router-GEMM hook: route the bf16 MoE-gate GEMM (x[n,2048] @ W[256,2048]^T,
-n in [6,16]) to the custom gfx1201 kernel via radiance_router, gated by RADIANCE_MOE_ROUTER=1.
+n in [6,16]) to the libr4d gfx1201 kernel, gated by RADIANCE_USE_R4D.
 Idempotent source patch of vllm's rocm_unquantized_gemm_impl (the rocm unquantized-linear chokepoint)."""
 import sysconfig
 from pathlib import Path

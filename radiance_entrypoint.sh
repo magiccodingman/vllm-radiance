@@ -31,6 +31,39 @@ done
 set -- ${_args[@]+"${_args[@]}"}
 [ -z "$_numa_spec" ] && _numa_spec="${RADIANCE_NUMA_BIND:-}"
 
+# Compose-friendly speculative decoding. A raw JSON config in the environment is
+# appended as one argv item, so users can opt into MTP/DFlash without editing the
+# portable Compose command list. An explicit CLI flag always wins.
+if [ -n "${RADIANCE_SPECULATIVE_CONFIG:-}" ]; then
+  _has_speculative_config=0
+  for _arg in "$@"; do
+    case "$_arg" in
+      --speculative-config|--speculative-config=*) _has_speculative_config=1; break ;;
+    esac
+  done
+  if [ "$_has_speculative_config" -eq 1 ]; then
+    echo "[radiance] WARN RADIANCE_SPECULATIVE_CONFIG ignored because --speculative-config was passed explicitly" >&2
+  else
+    set -- "$@" "--speculative-config=${RADIANCE_SPECULATIVE_CONFIG}"
+  fi
+fi
+
+# The DFlash2 profile also needs an explicit graph mode. Keep this optional so
+# ordinary Radiance retains vLLM's normal compilation defaults.
+if [ -n "${RADIANCE_COMPILATION_CONFIG:-}" ]; then
+  _has_compilation_config=0
+  for _arg in "$@"; do
+    case "$_arg" in
+      --compilation-config|--compilation-config=*) _has_compilation_config=1; break ;;
+    esac
+  done
+  if [ "$_has_compilation_config" -eq 1 ]; then
+    echo "[radiance] WARN RADIANCE_COMPILATION_CONFIG ignored because --compilation-config was passed explicitly" >&2
+  else
+    set -- "$@" "--compilation-config=${RADIANCE_COMPILATION_CONFIG}"
+  fi
+fi
+
 # NUMA node ids local to the *visible* AMD GPUs, PCI-bus-ordered to match HIP enumeration.
 _numa_gpu_nodes() {
   local vis n; local -a ordered=() sel=() nodes=()
@@ -91,7 +124,7 @@ if [ "${RADIANCE_RUN_BWTEST:-0}" = "1" ] && ! command -v rocm-bandwidth-test >/d
 fi
 if [ "${RADIANCE_RUN_BWTEST:-0}" = "1" ] && command -v rocm-bandwidth-test >/dev/null 2>&1; then
   (
-    report=$(timeout "${RADIANCE_BWTEST_TIMEOUT:-150}" rocm-bandwidth-test 2>&1) \
+    report=$(timeout 150 rocm-bandwidth-test 2>&1) \
       || report="${report}"$'\n'"(rocm-bandwidth-test exited non-zero / timed out)"
     # same colour opt-out the banner honours, so a log scraper gets plain text everywhere
     _c=$'\033[1;38;5;39m'; _r=$'\033[0m'
@@ -101,8 +134,9 @@ if [ "${RADIANCE_RUN_BWTEST:-0}" = "1" ] && command -v rocm-bandwidth-test >/dev
   ) &
 fi
 
-# Synchronous banner + arch / P2P / optimizations / versions checks.
-python /opt/radiance_preamble.py || true
+# Synchronous banner + arch / P2P / optimizations / versions checks. The serve's own args are
+# passed through so the banner can report the attention backend that was actually selected.
+python /opt/radiance_preamble.py "$@" || true
 
 # Hand off. exec so vLLM becomes PID 1 and receives signals directly; the backgrounded
 # bandwidth job keeps its inherited stdout and prints its report when it finishes. When

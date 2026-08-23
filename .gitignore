@@ -3,12 +3,14 @@ __pycache__/
 *.pyc
 # local deploy state (mounted into the container; not source)
 .env
+docker-compose.dev.yml
+docker-compose.override.yml
 models/
 vllm-cache/
 benchmarks/runs/
-# build outputs: the image compiles its own kernels from the .hip sources, and
-# rocm-bandwidth-test is built in the Dockerfile. A stale local copy must never be
-# mistaken for what the image ships.
+# local R4D checkout/build output; the image fetches its own immutable pin
+libr4d/
+# build outputs; rocm-bandwidth-test is built in the Dockerfile
 *.so
 rocm-bandwidth-test
 

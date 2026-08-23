@@ -1,0 +1,31 @@
+{
+  "temperature": 0.0,
+  "top_p": 1.0,
+  "top_k": null,
+  "greedy": true,
+  "seed": 20260823,
+  "warmup": 3,
+  "runs_per_category": 20,
+  "unique_nonce": true,
+  "run_concurrency": true,
+  "concurrency_levels": [1, 2, 4, 8],
+  "concurrency_requests": 48,
+  "run_prefill": true,
+  "prefill_depths": [2000, 4000, 7000],
+  "prefill_runs": 8,
+  "prefill_warmup": 2,
+  "prefill_max_tokens": 16,
+  "prefill_ctx_margin": 256,
+  "max_model_len": 8192,
+  "weights": {
+    "code": 0.25,
+    "reasoning": 0.20,
+    "prose": 0.12,
+    "json": 0.12,
+    "file_edit": 0.10,
+    "summarization": 0.09,
+    "math": 0.07,
+    "chat": 0.05
+  },
+  "timeout_s": 900.0
+}

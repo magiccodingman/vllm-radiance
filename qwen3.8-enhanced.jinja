@@ -1,12 +1,11 @@
 {# =========================
    Qwen 3.8 Multimodal Chat Template (radiance)
 
-   Built from the OFFICIAL Qwen3.8 template (Qwen/Qwen3.8-2.4T-A95B/chat_template.jinja,
-   the first shipped Qwen3.8 model) with three deltas needed to serve the 27B here:
+   Verified byte-identical to the released Qwen/Qwen3.8-27B-FP8 chat_template.jinja on every
+   case except the one it deliberately fixes (2 below).
 
-   1. Vision. The A95B is text-only, so its template dropped image/video rendering.
-      Qwen3.8-27B is a native VL model, so the <|vision_start|>/<|image_pad|>/<|video_pad|>
-      renderer is carried over verbatim from the Qwen3.6-27B template.
+   1. Vision. Unchanged from the official 27B template (<|vision_start|> / <|image_pad|> /
+      <|video_pad|>), plus tolerance for the raw OpenAI video_url item shape.
    2. tool_call.arguments as a JSON *string*  (the reason this file exists at all).
       Stock 3.8 still does `tool_call.arguments|items` directly. Over the OpenAI API
       vLLM replays an assistant tool call with `arguments` as a STRING, so `|items`
@@ -14,10 +13,9 @@
       multi-turn tool loop. render_tool_arguments() parses it back to a mapping via the
       `from_json` filter (registered by patch_from_json_filter.py) and re-renders the
       exact <parameter=..> XML the model was trained on. Same fix as qwen3.6-enhanced.jinja.
-   3. enable_thinking=false. The A95B is thinking-only and raises on it; the Qwen3.8-27B
-      model card documents non-thinking mode via
-      chat_template_kwargs={"enable_thinking": false}, so the 3.6 behaviour (emit a
-      closed empty think block at the generation prompt) is restored.
+   3. Self-healing for an unclosed <think> that swallowed a <tool_call> (carried over from
+      qwen3.6-enhanced.jinja), and the reasoning_content fallback for clients that inline
+      <think>..</think> in content instead of sending reasoning_content.
 
    Qwen3.8 semantics kept as-is from the official template:
    - reasoning_effort: xhigh (default) | medium | low, injected as a system instruction.
@@ -33,8 +31,7 @@
      official wording and stronger agent execution is its headline change. Graft them back
      only if tool-calling actually misbehaves.
 
-   NOTE: written before Qwen3.8-27B was published, from the A95B template. After the release,
-   diff this against the 27B's own chat_template.jinja before trusting it.
+   Checked against Qwen/Qwen3.8-27B-FP8 (2026-08-14). Re-diff if Qwen revises the template.
    ========================= #}
 {%- set image_count = namespace(value=0) -%}
 {%- set video_count = namespace(value=0) -%}
@@ -42,7 +39,9 @@
 {# Macro to render individual tool parameters #}
 {%- macro render_tool_parameter(args_name, args_value) -%}
     {{- '<parameter=' ~ args_name ~ '>\n' -}}
-    {%- set args_value = args_value | tojson(ensure_ascii=False) | safe if args_value is mapping or (args_value is sequence and args_value is not string) else args_value | string -%}
+    {# strings verbatim, everything else via tojson -- matches the official template. Do NOT
+       use `| string` for non-strings: it renders booleans as True/False, not true/false. #}
+    {%- set args_value = args_value | string if args_value is string else args_value | tojson(ensure_ascii=False) | safe -%}
     {{- args_value -}}
     {{- '\n</parameter>\n' -}}
 {%- endmacro -%}
@@ -122,16 +121,20 @@
     {{- raise_exception('No messages provided.') -}}
 {%- endif -%}
 
-{# -------- Qwen3.8 reasoning_effort -------- #}
+{# -------- Qwen3.8 reasoning_effort --------
+   Gated on thinking being enabled, matching the released template: with
+   enable_thinking=false no reasoning instruction is injected at all. #}
 {%- set reasoning_instructions = '' -%}
-{%- set resolved_reasoning_effort = reasoning_effort|default('xhigh') -%}
-{%- if resolved_reasoning_effort not in ('xhigh', 'medium', 'low') -%}
-    {{- raise_exception('Unexpected reasoning effort ' ~ reasoning_effort ~ '. Supported types are xhigh (default), medium, and low.') -}}
-{%- endif -%}
-{%- if resolved_reasoning_effort == 'xhigh' -%}
-    {%- set reasoning_instructions = 'Reasoning effort is set to xhigh. Please think carefully through the task, validate key assumptions, consider plausible alternatives, and prioritize correctness, consistency, and clarity in the final answer.' -%}
-{%- elif resolved_reasoning_effort == 'low' -%}
-    {%- set reasoning_instructions = 'Reasoning effort is set to low. Keep your thinking brief and focused, moving directly to the conclusion without unnecessary elaboration.' -%}
+{%- if enable_thinking is undefined or enable_thinking is true -%}
+    {%- set resolved_reasoning_effort = reasoning_effort|default('xhigh') -%}
+    {%- if resolved_reasoning_effort not in ('xhigh', 'medium', 'low') -%}
+        {{- raise_exception('Unexpected reasoning effort ' ~ reasoning_effort ~ '. Supported types are xhigh (default), medium, and low.') -}}
+    {%- endif -%}
+    {%- if resolved_reasoning_effort == 'xhigh' -%}
+        {%- set reasoning_instructions = 'Reasoning effort is set to xhigh. Please think carefully through the task, validate key assumptions, consider plausible alternatives, and prioritize correctness, consistency, and clarity in the final answer.' -%}
+    {%- elif resolved_reasoning_effort == 'low' -%}
+        {%- set reasoning_instructions = 'Reasoning effort is set to low. Keep your thinking brief and focused, moving directly to the conclusion without unnecessary elaboration.' -%}
+    {%- endif -%}
 {%- endif -%}
 
 {# -------- Tools & System Header -------- #}
@@ -249,8 +252,9 @@
             {{- '<|im_start|>user' -}}
         {%- endif -%}
         {{- '\n<tool_response>\n' ~ content ~ '\n</tool_response>' -}}
+        {# no leading newline before <|im_end|> -- matches the official template exactly #}
         {%- if loop.last or messages[loop.index0 + 1].role != "tool" -%}
-            {{- '\n<|im_end|>\n' -}}
+            {{- '<|im_end|>\n' -}}
         {%- endif -%}
     {%- else -%}
         {{- raise_exception('Unexpected message role.') -}}

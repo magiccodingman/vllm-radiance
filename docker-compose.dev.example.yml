@@ -1,0 +1,19 @@
+# Copy this file to docker-compose.dev.yml for local-only overrides, then run:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+#
+# docker-compose.dev.yml is intentionally gitignored and excluded from the
+# Docker build context. Never place private paths in docker-compose.yml.
+services:
+  vllm:
+    image: vllm-radiance:dev
+    environment:
+      HIP_VISIBLE_DEVICES: "0,1"
+    group_add:
+      # Replace with:
+      #   getent group render | cut -d: -f3
+      #   getent group video  | cut -d: -f3
+      - "RENDER_GID"
+      - "VIDEO_GID"
+    volumes:
+      - /absolute/path/to/models:/models:ro
+      - /absolute/path/to/vllm-cache:/cache
