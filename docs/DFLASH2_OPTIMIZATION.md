@@ -199,6 +199,21 @@ Retained negative results:
   `VLLM_USE_V2_MODEL_RUNNER` injection. The redundant Compose entry was removed;
   the conditional runner injection and the failed evidence are retained.
 
+## Final validation
+
+- `pip check`: no broken requirements.
+- GPU-backed imports: vLLM `0.28.0.dev0+a014e35`, PyTorch
+  `2.12.0+rocm7.14`, Triton `3.7.1`, AITER, and R9700 device discovery passed.
+- All benchmark Python files compile; all shell files pass `bash -n`; fixtures
+  parse; `git diff --check` and resolved Compose validation pass.
+- Final production-default smoke:
+  `20260823T090735Z_vllm-radiance-dflash2-experimental-46f4840_..._smoke`.
+  It also validates that manifests now capture VBIOS/firmware and telemetry
+  summaries exclude the non-visible integrated GPU.
+- No benchmark containers are left running. The final image is the exact tested
+  digest above; benchmark/report-only changes did not justify rebuilding the
+  multi-hour runtime image.
+
 ## Deployment recommendation
 
 Deploy ordinary Radiance 0.6 non-spec: TP2, native FP8 target, mandatory FP8
