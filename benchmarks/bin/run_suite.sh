@@ -164,7 +164,10 @@ if wants_workload correctness; then
   "${VENV}/bin/python" "${SCRIPT_DIR}/run_correctness.py" \
     --base-url "$BASE_URL" --model "$MODEL_NAME" \
     --prompts "${BENCH_ROOT}/fixtures/correctness-prompts.json" \
-    --output "${RAW_DIR}/correctness_fixed.json"
+    --output "${RAW_DIR}/correctness_fixed.json" \
+    --max-tokens "${BENCH_CORRECTNESS_MAX_TOKENS:-128}" \
+    --repetitions "${BENCH_CORRECTNESS_REPETITIONS:-1}" \
+    --logprobs "${BENCH_CORRECTNESS_LOGPROBS:-0}"
 fi
 
 # Everyday A/B gate: two waves at each concurrency and two repetitions. At the

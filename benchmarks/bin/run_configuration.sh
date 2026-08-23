@@ -9,6 +9,8 @@ MODEL_HOST=${MODEL_HOST:-/nvme/lexar-2/ai/models/Qwen3.8-27B-heretic-ara-fp8-mag
 MODEL=/models/$(basename "$MODEL_HOST")
 MODEL_NAME=${MODEL_NAME:-$(basename "$MODEL_HOST")}
 WEIGHT_QUANTIZATION=${WEIGHT_QUANTIZATION:-fp8}
+KV_CACHE_DTYPE=${KV_CACHE_DTYPE:-fp8}
+ALLOW_DIAGNOSTIC_NON_FP8_KV=${ALLOW_DIAGNOSTIC_NON_FP8_KV:-0}
 GPU_MEMORY_UTILIZATION=0.85
 READINESS_TIMEOUT=3600
 MAX_MODEL_LEN=16384
@@ -18,6 +20,8 @@ ATTENTION_BACKEND=${ATTENTION_BACKEND:-ROCM_AITER_UNIFIED_ATTN}
 ADDITIONAL_CONFIG_JSON=${ADDITIONAL_CONFIG_JSON:-}
 SPECULATIVE_CONFIG_JSON=${SPECULATIVE_CONFIG_JSON:-}
 COMPILATION_CONFIG_JSON=${COMPILATION_CONFIG_JSON:-}
+PREFIX_CACHING=${PREFIX_CACHING:-default}
+MAMBA_CACHE_MODE=${MAMBA_CACHE_MODE:-}
 WORKLOAD_FILTER=${BENCH_WORKLOADS:-all}
 ENFORCE_EAGER=0
 DISABLE_CUDAGRAPH=0
@@ -82,6 +86,14 @@ if [[ $WEIGHT_QUANTIZATION == fp8 ]]; then
     exit 1
   }
 fi
+if [[ $KV_CACHE_DTYPE != fp8 && $ALLOW_DIAGNOSTIC_NON_FP8_KV != 1 ]]; then
+  echo "Non-FP8 KV is diagnostic-only; set ALLOW_DIAGNOSTIC_NON_FP8_KV=1 explicitly" >&2
+  exit 2
+fi
+case "$PREFIX_CACHING" in
+  default|on|off) ;;
+  *) echo "PREFIX_CACHING must be default, on, or off" >&2; exit 2 ;;
+esac
 
 CONFIG_DIR=${RUN_ROOT}/${LABEL}
 mkdir -p "$CONFIG_DIR" "${CONFIG_DIR}/logs"
@@ -95,7 +107,7 @@ gpu_devices=0,1
 server_args=(
   "$MODEL"
   "--served-model-name=${MODEL_NAME}"
-  --kv-cache-dtype=fp8
+  "--kv-cache-dtype=${KV_CACHE_DTYPE}"
   "--tensor-parallel-size=${TP}"
   "--gpu-memory-utilization=${GPU_MEMORY_UTILIZATION}"
   "--max-model-len=${MAX_MODEL_LEN}"
@@ -114,6 +126,14 @@ if [[ $SPEC == on ]]; then
 fi
 if [[ -n $ADDITIONAL_CONFIG_JSON ]]; then
   server_args+=("--additional-config=${ADDITIONAL_CONFIG_JSON}")
+fi
+if [[ $PREFIX_CACHING == on ]]; then
+  server_args+=(--enable-prefix-caching)
+elif [[ $PREFIX_CACHING == off ]]; then
+  server_args+=(--no-enable-prefix-caching)
+fi
+if [[ -n $MAMBA_CACHE_MODE ]]; then
+  server_args+=("--mamba-cache-mode=${MAMBA_CACHE_MODE}")
 fi
 if ((ENFORCE_EAGER)); then
   server_args+=(--enforce-eager)
@@ -194,8 +214,9 @@ printf '%s\n' "$((ready_epoch - start_epoch))" >"${CONFIG_DIR}/startup-seconds.t
 docker logs "$container" >"${CONFIG_DIR}/logs/server-ready.log" 2>&1 || true
 
 docker inspect --format '{{json .Config.Cmd}}' "$container" >"${CONFIG_DIR}/container-command.json"
-jq -e 'index("--kv-cache-dtype=fp8") != null' "${CONFIG_DIR}/container-command.json" >/dev/null || {
-  echo "Refusing to benchmark: container command does not force FP8 KV cache" >&2
+jq -e --arg expected "--kv-cache-dtype=${KV_CACHE_DTYPE}" 'index($expected) != null' \
+  "${CONFIG_DIR}/container-command.json" >/dev/null || {
+  echo "Refusing to benchmark: container command does not contain ${KV_CACHE_DTYPE} KV cache" >&2
   exit 1
 }
 
@@ -205,7 +226,7 @@ HIP_VISIBLE_DEVICES=$gpu_devices RADIANCE_IMAGE="$IMAGE" "${SCRIPT_DIR}/capture_
   --cpu-offload-gb "$CPU_OFFLOAD_GB" \
   --gpu-memory-utilization "$GPU_MEMORY_UTILIZATION" \
   --container "$container" --image "$IMAGE" --model-host "$MODEL_HOST" \
-  --suite "$SUITE" --kv-cache-dtype fp8 --max-model-len "$MAX_MODEL_LEN" \
+  --suite "$SUITE" --kv-cache-dtype "$KV_CACHE_DTYPE" --max-model-len "$MAX_MODEL_LEN" \
   --weight-quantization "$WEIGHT_QUANTIZATION" \
   --max-num-batched-tokens "$MAX_NUM_BATCHED_TOKENS" \
   --max-num-seqs "$MAX_NUM_SEQS" \

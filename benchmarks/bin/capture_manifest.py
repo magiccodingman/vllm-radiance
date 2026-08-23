@@ -134,6 +134,14 @@ def main() -> None:
                 "RADIANCE_AR_QUANT",
                 "RADIANCE_AR_QUANT_MIN_KB",
                 "RADIANCE_GDN_WMMA",
+                "KV_CACHE_DTYPE",
+                "ALLOW_DIAGNOSTIC_NON_FP8_KV",
+                "PREFIX_CACHING",
+                "MAMBA_CACHE_MODE",
+                "VLLM_USE_V2_MODEL_RUNNER",
+                "BENCH_CORRECTNESS_MAX_TOKENS",
+                "BENCH_CORRECTNESS_REPETITIONS",
+                "BENCH_CORRECTNESS_LOGPROBS",
             )
             if key in os.environ
         },

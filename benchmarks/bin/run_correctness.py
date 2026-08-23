@@ -34,7 +34,18 @@ def main() -> None:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--max-tokens", type=int, default=128)
     parser.add_argument("--timeout", type=int, default=900)
+    parser.add_argument("--repetitions", type=int, default=1)
+    parser.add_argument(
+        "--logprobs",
+        type=int,
+        default=0,
+        help="Record this many top token log probabilities (diagnostic only).",
+    )
     args = parser.parse_args()
+    if args.repetitions < 1:
+        raise SystemExit("--repetitions must be positive")
+    if not 0 <= args.logprobs <= 20:
+        raise SystemExit("--logprobs must be between 0 and 20")
 
     prompts = json.loads(args.prompts.read_text(encoding="utf-8"))
     if not isinstance(prompts, list) or not prompts or not all(
@@ -45,29 +56,61 @@ def main() -> None:
     generated_texts: list[str] = []
     input_lens: list[int] = []
     output_lens: list[int] = []
+    samples: list[dict[str, object]] = []
     for index, prompt in enumerate(prompts):
-        response = post_json(
-            f"{args.base_url.rstrip('/')}/v1/completions",
-            {
+        for repetition in range(args.repetitions):
+            payload: dict[str, object] = {
                 "model": args.model,
                 "prompt": prompt,
                 "max_tokens": args.max_tokens,
                 "temperature": 0,
                 "ignore_eos": True,
                 "seed": 20260822 + index,
-            },
-            args.timeout,
-        )
-        choices = response.get("choices")
-        usage = response.get("usage")
-        if not isinstance(choices, list) or len(choices) != 1 or not isinstance(usage, dict):
-            raise RuntimeError(f"unexpected completion response for prompt {index}: {response}")
-        choice = choices[0]
-        if not isinstance(choice, dict) or not isinstance(choice.get("text"), str):
-            raise RuntimeError(f"completion text missing for prompt {index}")
-        generated_texts.append(choice["text"])
-        input_lens.append(int(usage["prompt_tokens"]))
-        output_lens.append(int(usage["completion_tokens"]))
+            }
+            if args.logprobs:
+                payload["logprobs"] = args.logprobs
+            response = post_json(
+                f"{args.base_url.rstrip('/')}/v1/completions",
+                payload,
+                args.timeout,
+            )
+            choices = response.get("choices")
+            usage = response.get("usage")
+            if (
+                not isinstance(choices, list)
+                or len(choices) != 1
+                or not isinstance(usage, dict)
+            ):
+                raise RuntimeError(
+                    f"unexpected completion response for prompt {index}: {response}"
+                )
+            choice = choices[0]
+            if not isinstance(choice, dict) or not isinstance(choice.get("text"), str):
+                raise RuntimeError(f"completion text missing for prompt {index}")
+            sample: dict[str, object] = {
+                "prompt_index": index,
+                "repetition": repetition,
+                "seed": 20260822 + index,
+                "input_len": int(usage["prompt_tokens"]),
+                "output_len": int(usage["completion_tokens"]),
+                "generated_text": choice["text"],
+            }
+            if args.logprobs:
+                logprobs = choice.get("logprobs")
+                if not isinstance(logprobs, dict):
+                    raise RuntimeError(f"logprobs missing for prompt {index}")
+                for field in (
+                    "tokens",
+                    "token_logprobs",
+                    "top_logprobs",
+                    "text_offset",
+                ):
+                    sample[field] = logprobs.get(field)
+            samples.append(sample)
+            if repetition == 0:
+                generated_texts.append(choice["text"])
+                input_lens.append(int(usage["prompt_tokens"]))
+                output_lens.append(int(usage["completion_tokens"]))
 
     fixture_bytes = args.prompts.read_bytes()
     result = {
@@ -79,6 +122,9 @@ def main() -> None:
         "input_lens": input_lens,
         "output_lens": output_lens,
         "generated_texts": generated_texts,
+        "repetitions": args.repetitions,
+        "logprobs": args.logprobs,
+        "samples": samples,
         "completed": len(prompts),
         "failed": 0,
     }
