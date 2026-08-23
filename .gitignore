@@ -5,6 +5,7 @@ __pycache__/
 .env
 models/
 vllm-cache/
+benchmarks/runs/
 # build outputs: the image compiles its own kernels from the .hip sources, and
 # rocm-bandwidth-test is built in the Dockerfile. A stale local copy must never be
 # mistaken for what the image ships.

@@ -5,16 +5,19 @@ ROCm + PyTorch + Triton + AITER + vLLM stack with the RDNA4 patches and custom k
 this card, plus RDNA4-tuned GEMM / attention / all-reduce paths and a dynamic MTP draft controller, so you
 don't have to build the stack yourself.
 
-> **Status: super early dev (v0.5.8). Experimental.** Everything here was built and measured on three exact
-> setups: **Qwen3.6-27B-FP8**, **Qwen3.6-35B-A3B-FP8** (fine-grained MoE, 256 experts / top-8), and
+> **Status: experimental.** The upgrade branch pins an exact post-0.27 vLLM-main commit and the
+> corresponding AMD ROCm compiler stack; see [docs/UPGRADE_PROGRESS.md](docs/UPGRADE_PROGRESS.md).
+> The current regression model is **Qwen3.8-27B FP8**. Earlier Radiance work was measured on
+> **Qwen3.6-27B-FP8**, **Qwen3.6-35B-A3B-FP8** (fine-grained MoE, 256 experts / top-8), and
 > **Gemma-4-31B-it-FP8** (block-fp8, sliding + global attention, vision), all with fp8 (or bf16/`auto`) KV
 > cache on two R9700 GPUs (tensor parallel). Other models, non-FP8 weights, single or
 > 3+ GPUs, and non-R9700 hardware are untested. Expect rough edges and breaking changes. Not production
 > hardened. Use at your own risk.
 
 This repository is the **source** for the image published as `stilldeadcode/vllm-radiance` on Docker Hub.
-See **[DOCKERHUB.md](DOCKERHUB.md)** for the full description, the complete environment-variable / knob
-reference, tested configuration, and stack versions.
+See **[DOCKERHUB.md](DOCKERHUB.md)** for the complete environment-variable / knob
+reference and legacy published-image examples. The current pinned stack and
+measurements live in **[docs/UPGRADE_PROGRESS.md](docs/UPGRADE_PROGRESS.md)**.
 
 ## Build
 
@@ -35,6 +38,21 @@ custom HIP kernels (`router_gemm.hip`, `radiance_ar_ext.hip`, `radiance_ar_quant
 venv, and the entrypoint, so neither the build toolchain nor the wheels ever reach the published image. No
 prebuilt component wheels, no rotating wheel indexes, and no checked-in binaries go into the image. It is a
 long build (a full PyTorch compile); expect it to run for hours on a many-core box.
+
+For ordinary guarded Python-patch, hook, config, or entrypoint iteration, layer
+`Dockerfile.patch` over an already-built immutable stack instead of recompiling
+the compiler stack:
+
+```bash
+docker build -f Dockerfile.patch \
+  --build-arg BASE_IMAGE=vllm-radiance:dev-a014e35-amd212 \
+  --build-arg RADIANCE_VERSION=0.6.0-dev.patch \
+  -t vllm-radiance:dev-a014e35-amd212-patch .
+```
+
+The overlay reruns every source-drift guard and import check but deliberately
+does not replace the compiled torch/Triton/AITER/vLLM wheels or HIP extensions.
+Use the full `Dockerfile` whenever one of those compiled components changes.
 
 That structure is what keeps the download reasonable: the stock ROCm base is 7.4 GiB compressed on its own,
 most of it device code for GPUs this image cannot run on. Pruning it to gfx1201 and shipping an allowlist
@@ -65,12 +83,18 @@ no code change. If you override these with `--build-arg`, move them together and
 then:
 
 ```bash
-# put your model at ./models/Qwen/Qwen3.6-27B-FP8  (or set MODELS=/your/model/dir)
+# The host default is /nvme/lexar-2/ai/models; override MODELS if needed.
 docker compose up -d          # start; follow with: docker compose logs -f
 docker compose down           # stop
 ```
 
-The compose defaults target Qwen3.6-27B-FP8. To serve the fine-grained-MoE **Qwen3.6-35B-A3B-FP8**, point it
+The compose defaults target the local
+`Qwen3.8-27B-heretic-ara-fp8-magiccodingman` checkpoint with native FP8 weights,
+mandatory FP8 KV, eight maximum sequences, a 16K envelope, and 85% GPU
+allocation. Speculative decoding is commented out for a clean baseline. Override
+`MODEL_PATH`, `SERVED_MODEL_NAME`, and `MODELS` without editing the file.
+
+To serve the fine-grained-MoE **Qwen3.6-35B-A3B-FP8**, point it
 at that model and raise the batch-token budget: `--max-num-batched-tokens` must be **≥ 2240** (align mode
 reconciles the GDN state to attention block size 2240; the 27B default of 2048 asserts otherwise). Its tuned
 MoE config and the `RADIANCE_MOE_ROUTER` gate GEMM are baked in and turn on automatically.
@@ -99,7 +123,8 @@ editing it. The full knob list (kernel toggles, draft controller, AITER routing,
 Everything below is baked into the image; the tuned paths are env-gated and on by default. See
 **[DOCKERHUB.md](DOCKERHUB.md)** for the per-knob reference: every flag, its default, and what it does.
 
-- **gfx1201 correctness patches** (always on): GPU enumeration, AITER enablement, native sampler fallback,
+- **gfx1201 correctness and routing** (always on): deterministic GPU enumeration plus current vLLM's
+  native RDNA4 AITER and sampler routing (without exposing CDNA-only CK/MFMA/ASM kernels),
   MTP drafter unpad + multimodal draft-mask alignment, tool-parser + `from_json` chat-template filter, and
   an attention LDS fit that shrinks the staged K/V tile into the R9700's 64 KiB shared memory for any head
   size and KV dtype (AITER sizes it for a larger LDS; without this, 2-byte KV at head 256 and fp8 KV at

@@ -2,8 +2,33 @@
 
 vLLM inference server for the AMD Radeon AI PRO R9700 (gfx1201 / RDNA4). Bundles a working ROCm + PyTorch + Triton + AITER + vLLM stack with the RDNA4 patches and custom kernels needed to run vLLM on this card, so you don't have to build the stack yourself.
 
-> **Status: super early dev (v0.5.8). Experimental.**
-> This is a very early build. The performance numbers here come from three exact configurations: Qwen3.6-27B-FP8, Qwen3.6-35B-A3B-FP8 (fine-grained MoE), and Gemma-4-31B-it-FP8 (block-fp8), all with fp8 KV cache on two R9700 GPUs (tensor parallel); bf16 / `auto` KV also works (see below). Other models, non-FP8 weights, single or 3+ GPUs, and non-R9700 hardware are untested. Expect rough edges, breaking changes between versions, and things that just don't work yet. Not production hardened. Use at your own risk.
+> **Status: experimental.** The GitLab upgrade branch is
+> `0.6.0-dev.a014e35`; the published `stilldeadcode/*:0.5.8` examples below
+> describe the last upstream Docker Hub release and are retained as legacy
+> deployment reference. Current pins, normalized Qwen3.8 results, and DFlash2
+> qualification are in `docs/UPGRADE_PROGRESS.md`.
+
+The upgrade branch is validated primarily with
+`Qwen3.8-27B-heretic-ara-fp8-magiccodingman`, mandatory FP8 KV, and two R9700s
+(TP2). Its reusable default is 16K, 85% GPU allocation, and at most eight
+sequences; it deliberately leaves VRAM headroom instead of finding the largest
+batch that fits. Earlier 0.5.8 performance numbers below remain useful history,
+but are not claims about the new compiler stack.
+
+## Upgrade branch stack (`0.6.0-dev.a014e35`)
+
+| Component | Exact version/pin |
+|---|---|
+| vLLM | `0.28.0.dev0+a014e35` / `a014e35f38c80fb0652387740193ad2147fed6a3` |
+| PyTorch | AMD ROCm 2.12 commit `6bbd26020da1c6dc198625dfcdd968b1e4e6b1c5` |
+| Triton | AMD 3.7.1 commit `f0b55c07da61c71775bef6d1a15ebf846430ac75` |
+| torchvision | 0.27.1 |
+| AITER | 0.1.20 (`fc2e5d57fb5b8ad8e7e23f7103071dde798ea618`) |
+| ROCm userspace | 7.14, bundled |
+
+Use the repository `docker-compose.yml` for the current local image and model
+defaults. Do not substitute an unpinned `main` checkout or generic PyTorch
+2.13/upstream Triton pair.
 
 ## Tested so far
 

@@ -1,0 +1,60 @@
+# syntax=docker/dockerfile:1.7
+# Fast iteration image. It reuses the released 0.5.8 ROCm/PyTorch/Triton/AITER
+# stack, replaces only vLLM at an exact commit, then reapplies the audited
+# Radiance modules and patches. Dockerfile remains the clean full-source release
+# build; this overlay is for short compile/fix/benchmark cycles.
+ARG BASE_IMAGE=stilldeadcode/vllm-radiance:0.5.8@sha256:2e788f7475907cc86d82acddb5f1e50360b1ffd39e1ffbd2d00ac705b728ccc1
+ARG VLLM_COMMIT=a014e35f38c80fb0652387740193ad2147fed6a3
+ARG VLLM_VERSION=0.28.0.dev0+a014e35
+
+FROM ${BASE_IMAGE} AS vllm-builder
+ARG VLLM_COMMIT
+ARG VLLM_VERSION
+USER root
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      git build-essential ccache cmake ninja-build pkg-config cargo rustc \
+    && rm -rf /var/lib/apt/lists/*
+RUN pip install -U pip wheel "setuptools>=77,<80" "setuptools-scm>=8" \
+      "setuptools-rust>=1.9" ninja cmake pybind11
+RUN --mount=type=cache,id=radiance-dev-ccache-gfx1201,target=/root/.cache/ccache \
+    git clone --filter=blob:none --no-checkout https://github.com/vllm-project/vllm.git /src/vllm \
+    && cd /src/vllm \
+    && git checkout --detach ${VLLM_COMMIT} \
+    && test "$(git rev-parse HEAD)" = "${VLLM_COMMIT}" \
+    && python use_existing_torch.py \
+    && mkdir -p /wheels \
+    && VLLM_TARGET_DEVICE=rocm VLLM_VERSION_OVERRIDE=${VLLM_VERSION} \
+       MAX_JOBS=2 CMAKE_BUILD_PARALLEL_LEVEL=2 \
+       pip wheel --no-build-isolation --no-deps . -w /wheels
+
+FROM ${BASE_IMAGE} AS final
+ARG VLLM_VERSION
+ARG RADIANCE_VERSION=0.6.0-dev.a014e35
+ENV RADIANCE_VERSION=${RADIANCE_VERSION}
+
+COPY --from=vllm-builder /wheels/vllm-*.whl /tmp/wheels/
+RUN pip install --no-cache-dir /tmp/wheels/vllm-*.whl \
+    && rm -rf /tmp/wheels /root/.cache
+
+ENV SP=/opt/vllm/lib/python3.12/site-packages
+COPY radiance_amdsmi.py radiance_amdsmi.pth \
+     radiance_kernels.py radiance_vit_attn.py radiance_allreduce.py \
+     radiance_draft.py radiance_draft_gpu.py radiance_router.py ${SP}/
+COPY fp8-configs/ ${SP}/vllm/model_executor/layers/quantization/utils/configs/
+COPY moe-configs/ ${SP}/vllm/model_executor/layers/fused_moe/configs/
+COPY patch_*.py install_radiance_hooks.py _patchlib.py /opt/patches/
+RUN set -eu; cd /opt/patches; \
+    for p in patch_gfx1201 patch_radiance_dispatch patch_router_gemm patch_unified_attention_lds \
+             patch_gdn_wmma patch_gdn_aiter_prefill patch_preshuffle install_radiance_hooks \
+             patch_unpad patch_mtp_mm_mask patch_mtp_loopbreak patch_qwen3_toolparse patch_from_json_filter \
+             patch_dynamo_metrics; do \
+      echo "== applying $p =="; python "$p.py"; \
+    done; \
+    python -c "import ast,glob; [ast.parse(open(f).read()) for f in glob.glob('${SP}/radiance_*.py')]"
+
+COPY radiance_preamble.py /opt/radiance_preamble.py
+COPY radiance_entrypoint.sh /opt/radiance_entrypoint.sh
+RUN chmod +x /opt/radiance_entrypoint.sh \
+    && WANT_VLLM=${VLLM_VERSION} python -c 'import os, importlib.metadata as m, vllm._C; \
+v=m.version("vllm"); assert v.startswith(os.environ["WANT_VLLM"]), (v, os.environ["WANT_VLLM"]); print("vLLM overlay OK", v)'
+ENTRYPOINT ["/opt/radiance_entrypoint.sh"]

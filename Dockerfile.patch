@@ -1,0 +1,35 @@
+# syntax=docker/dockerfile:1.7
+# Fast Python/source-patch overlay for an already-built Radiance stack.
+#
+# Use this after changing guarded patches, hooks, configs, or the entrypoint. It
+# intentionally does not rebuild torch, Triton, AITER, vLLM, or the existing HIP
+# extensions, so compiler-stack checkpoints remain immutable and cheap to test.
+ARG BASE_IMAGE=vllm-radiance:dev
+FROM ${BASE_IMAGE}
+
+USER root
+ARG RADIANCE_VERSION=0.6.0-dev.patch
+ENV RADIANCE_VERSION=${RADIANCE_VERSION} \
+    SP=/opt/vllm/lib/python3.12/site-packages
+
+COPY radiance_amdsmi.py radiance_amdsmi.pth \
+     radiance_kernels.py radiance_vit_attn.py radiance_allreduce.py \
+     radiance_draft.py radiance_draft_gpu.py radiance_router.py ${SP}/
+COPY fp8-configs/ ${SP}/vllm/model_executor/layers/quantization/utils/configs/
+COPY moe-configs/ ${SP}/vllm/model_executor/layers/fused_moe/configs/
+COPY patch_*.py install_radiance_hooks.py _patchlib.py /opt/patches/
+
+RUN set -eu; cd /opt/patches; \
+    for p in patch_gfx1201 patch_radiance_dispatch patch_router_gemm patch_unified_attention_lds \
+             patch_gdn_wmma patch_gdn_aiter_prefill patch_preshuffle install_radiance_hooks \
+             patch_unpad patch_mtp_mm_mask patch_mtp_loopbreak patch_qwen3_toolparse patch_from_json_filter \
+             patch_dynamo_metrics; do \
+      echo "== applying $p =="; python "$p.py"; \
+    done; \
+    python -c "import ast,glob; [ast.parse(open(f).read()) for f in glob.glob('${SP}/radiance_*.py')]; print('patch overlay parse OK')"; \
+    python -c 'import importlib.metadata as m, torch, vllm._C, radiance_ar_ext, radiance_ar_quant_ext, router_gemm; print("patch overlay stack OK", m.version("vllm"), torch.__version__, m.version("triton"), m.version("amd-aiter"))'
+
+COPY radiance_preamble.py /opt/radiance_preamble.py
+COPY radiance_entrypoint.sh /opt/radiance_entrypoint.sh
+RUN chmod +x /opt/radiance_entrypoint.sh
+ENTRYPOINT ["/opt/radiance_entrypoint.sh"]
