@@ -124,6 +124,16 @@ def main() -> None:
                 "HIP_VISIBLE_DEVICES",
                 "HIP_FORCE_DEV_KERNARG",
                 "TORCH_BLAS_PREFER_HIPBLASLT",
+                "VLLM_ROCM_USE_AITER",
+                "VLLM_ROCM_USE_AITER_UNIFIED_ATTENTION",
+                "VLLM_ROCM_USE_AITER_LINEAR",
+                "RADIANCE_PRESHUFFLE",
+                "RADIANCE_ATTN_TUNE",
+                "RADIANCE_FAST_REDUCE",
+                "RADIANCE_AR_MAX_KB",
+                "RADIANCE_AR_QUANT",
+                "RADIANCE_AR_QUANT_MIN_KB",
+                "RADIANCE_GDN_WMMA",
             )
             if key in os.environ
         },

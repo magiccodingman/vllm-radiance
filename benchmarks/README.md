@@ -121,6 +121,13 @@ switches without editing the harness. The latter defaults to the normal MTP
 configuration only when a speculative lane is requested and no explicit JSON
 is supplied.
 
+Kernel control cases can likewise override the compose defaults from the host,
+including `RADIANCE_PRESHUFFLE`, `RADIANCE_FAST_REDUCE`,
+`RADIANCE_AR_QUANT`, `RADIANCE_GDN_WMMA`, and
+`VLLM_ROCM_USE_AITER_LINEAR`. Their resolved values are retained by the
+container inspection in each manifest; explicitly supplied values are also
+listed in the manifest environment section.
+
 ## Results
 
 Each timestamped directory beneath `runs/` includes exact manifests, resolved
