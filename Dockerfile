@@ -196,11 +196,16 @@ ENV SP=/opt/vllm/lib/python3.12/site-packages
 # torch/triton/vision/aiter with --no-deps so pip does not replace them; vLLM with its pure-python
 # dependencies. amdsmi (the ROCm python bindings the base image ships) is required for vLLM's ROCm
 # platform detection.
+# AITER is installed without dependencies so it cannot replace the compiler
+# stack. Restore its one version-pinned runtime dependency explicitly; vLLM
+# supplies pandas/einops/psutil/ninja/packaging, and the later install adds
+# pybind11 alongside the ROCm bindings.
 COPY --from=builder /wheels /wheels
 RUN pip install --no-cache-dir -U pip wheel setuptools \
  && pip install --no-cache-dir --no-deps \
       /wheels/torch-*.whl /wheels/triton-*.whl /wheels/torchvision-*.whl /wheels/*aiter-*.whl \
  && pip install --no-cache-dir /wheels/vllm-*.whl \
+ && pip install --no-cache-dir flydsl==0.3.1 \
  && pip install --no-cache-dir /opt/rocm/share/amd_smi pillow pybind11 \
  && rm -rf /wheels /root/.cache
 
@@ -329,7 +334,8 @@ assert t.startswith(os.environ["WANT_TORCH"]), "torch wheel reports " + t; \
 assert r.startswith(os.environ["WANT_TRITON"]), "triton wheel reports " + r; \
 assert tv.startswith(os.environ["WANT_VISION"]), "torchvision wheel reports " + tv; \
 print("stack OK | vllm", v, "| torch", torch.__version__, "| aiter", a, \
-      "| torchvision", m.version("torchvision"), "| triton", m.version("triton"))'
+      "| torchvision", m.version("torchvision"), "| triton", m.version("triton"))' \
+ && pip check
 
 # The release image must still be able to COMPILE. AITER JIT-builds its kernels on first use, as a
 # pybind11 HIP extension, so the shipped image needs hipcc AND the C++ standard headers AND Python.h.
