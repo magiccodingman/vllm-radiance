@@ -137,6 +137,7 @@ def main() -> None:
                 "RADIANCE_USE_R4D_AR",
                 "RADIANCE_USE_R4D_AR_QUANT",
                 "RADIANCE_FAST_DRAFT",
+                "RADIANCE_SPECULATIVE_CONFIG",
                 "RADIANCE_DYNAMIC_DRAFT",
                 "RADIANCE_DRAFT_SCHEDULE",
                 "RADIANCE_DRAFT_TAU",

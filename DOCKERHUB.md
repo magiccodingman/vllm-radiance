@@ -47,13 +47,26 @@ defaults. Do not substitute an unpinned `main` checkout or generic PyTorch
 | `RADIANCE_DRAFT_SCHEDULE` | `1:8,2:7,4:6,8:5,16:4` | MTP maximum depth by active batch size |
 | `RADIANCE_DRAFT_TAU` | `0.28` | confidence-product stop threshold |
 | `RADIANCE_FAST_DRAFT` | `0` | opt-in INT2-g128 MTP head with exact top-32 reranking |
+| `RADIANCE_SPECULATIVE_CONFIG` | unset | raw vLLM speculative-config JSON appended by the entrypoint; explicit CLI config wins |
 | `RADIANCE_RUN_BWTEST` | `1` | background topology/P2P bandwidth report at startup |
 
 R4D attention is selected with `--attention-backend=R4D`. AITER attention and
 the older operator implementations remain fallbacks/controls. The portable
 Compose defaults to native FP8 weights, FP8 KV, TP2, 16K, 85% allocation,
 eight admitted sequences, and 4,096 batched tokens. Speculative decoding is
-commented out because its strict cross-mode output gate has not qualified.
+off because its strict cross-mode output gate has not qualified. For Qwen's
+in-checkpoint MTP head, opt in without editing Compose by adding these two lines
+to `.env`:
+
+```dotenv
+RADIANCE_SPECULATIVE_CONFIG='{"method":"mtp","num_speculative_tokens":8,"attention_backend":"R4D","disable_padded_drafter_batch":true}'
+RADIANCE_FAST_DRAFT=1
+```
+
+The first enables R4D MTP with dynamic K8-as-a-ceiling drafting; the second
+enables the INT2-g128 draft-head copy with exact top-32 reranking. An explicit
+`--speculative-config` command argument overrides the environment value. Gemma-4
+is the head-512 exception and must use the AITER backend shown below.
 
 ## Tested so far
 

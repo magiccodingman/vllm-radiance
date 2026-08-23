@@ -50,14 +50,11 @@ services:
       # VLLM_SSM_CONV_STATE_LAYOUT=DS (asserts under MTP + align).
       - --enable-prefix-caching
       - --mamba-cache-mode=align
-      # MTP self-speculation. nspec=8 default: RADIANCE dynamic-draft caps the actual MTP depth
-      # by confidence, so 8 is the ceiling not a fixed cost. nspec=16 is an option for more verbatim
-      # upside (editing/RAG) but needs GPU_UTIL=0.90 to stay safe at 8 concurrent sequences (else CUDA OOM).
-      # Baseline serving is deliberately non-speculative. Enable this explicitly
-      # for the separate MTP milestone after validating the base engine.
-      # - '--speculative-config={"method":"mtp","num_speculative_tokens":${MTP_NSPEC:-8},"attention_backend":"R4D","disable_padded_drafter_batch":true}'
-      # disable_padded_drafter_batch (above) is incompatible with async scheduling; vLLM would
-      # otherwise auto-enable async then disable it with a runtime warning. Turn it off explicitly.
+      # Baseline serving is deliberately non-speculative. For Qwen's in-checkpoint
+      # MTP head, opt in from .env without editing this file; see
+      # RADIANCE_SPECULATIVE_CONFIG and RADIANCE_FAST_DRAFT below.
+      # The recommended MTP config sets disable_padded_drafter_batch, which is incompatible
+      # with async scheduling; keep async off so vLLM does not auto-enable then disable it.
       - --no-async-scheduling
       # agentic serving: XML tool calls + qwen3 reasoning + the fixed chat template
       - --enable-auto-tool-choice
@@ -108,6 +105,10 @@ services:
       # Exact-rerank int2 MTP head. Opt-in until model-level qualification;
       # it has no effect when speculative MTP is disabled.
       RADIANCE_FAST_DRAFT: "${RADIANCE_FAST_DRAFT:-0}"
+      # Optional raw vLLM speculative-config JSON. The entrypoint appends it as
+      # one CLI argument unless an explicit --speculative-config is already present.
+      # Qwen fast-MTP example is provided (commented) in .env.example.
+      RADIANCE_SPECULATIVE_CONFIG: "${RADIANCE_SPECULATIVE_CONFIG:-}"
       NCCL_PROTO: Simple
       # throttle inductor compile workers to limit peak compile-time RAM (defensive).
       TORCHINDUCTOR_COMPILE_THREADS: "4"

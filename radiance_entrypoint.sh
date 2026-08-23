@@ -31,6 +31,23 @@ done
 set -- ${_args[@]+"${_args[@]}"}
 [ -z "$_numa_spec" ] && _numa_spec="${RADIANCE_NUMA_BIND:-}"
 
+# Compose-friendly speculative decoding. A raw JSON config in the environment is
+# appended as one argv item, so users can opt into MTP/DFlash without editing the
+# portable Compose command list. An explicit CLI flag always wins.
+if [ -n "${RADIANCE_SPECULATIVE_CONFIG:-}" ]; then
+  _has_speculative_config=0
+  for _arg in "$@"; do
+    case "$_arg" in
+      --speculative-config|--speculative-config=*) _has_speculative_config=1; break ;;
+    esac
+  done
+  if [ "$_has_speculative_config" -eq 1 ]; then
+    echo "[radiance] WARN RADIANCE_SPECULATIVE_CONFIG ignored because --speculative-config was passed explicitly" >&2
+  else
+    set -- "$@" "--speculative-config=${RADIANCE_SPECULATIVE_CONFIG}"
+  fi
+fi
+
 # NUMA node ids local to the *visible* AMD GPUs, PCI-bus-ordered to match HIP enumeration.
 _numa_gpu_nodes() {
   local vis n; local -a ordered=() sel=() nodes=()

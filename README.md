@@ -95,8 +95,29 @@ fallbacks are `./models`, `./vllm-cache`, `/models/model`, and the published
 `magiccodingman/vllm-radiance:latest` image. The tuned starting envelope uses
 native FP8 weights, mandatory FP8 KV, TP2, a 16K maximum length, an eight-request
 admission ceiling, and 85% GPU allocation. Speculative decoding remains
-commented out for the correctness-qualified baseline. Override every setting in
-`.env` without editing the public file.
+disabled for the correctness-qualified baseline. Runtime and capacity settings,
+including speculative decoding, can be overridden in `.env` without editing the
+public file.
+
+### Optional fast MTP
+
+Qwen checkpoints with an in-checkpoint MTP head can enable the measured R4D
+fast-MTP path entirely from the private `.env`:
+
+```dotenv
+RADIANCE_SPECULATIVE_CONFIG='{"method":"mtp","num_speculative_tokens":8,"attention_backend":"R4D","disable_padded_drafter_batch":true}'
+RADIANCE_FAST_DRAFT=1
+```
+
+`RADIANCE_SPECULATIVE_CONFIG` is passed through as one vLLM
+`--speculative-config` argument by the image entrypoint. An explicit command-line
+flag takes precedence. K8 is a ceiling: the enabled dynamic-draft controller
+selects a shallower depth when confidence or active batch size warrants it. The
+R4D backend is the qualified Qwen head-256 route; Gemma-4's separate head-512
+assistant must continue to use `ROCM_AITER_UNIFIED_ATTN`, as documented below.
+Fast MTP remains opt-in because the current strict cross-mode output gate has not
+qualified; the BetterBench result is a performance measurement, not a default-use
+correctness claim.
 
 For source development, copy `docker-compose.dev.example.yml` to
 `docker-compose.dev.yml` and layer it explicitly:
