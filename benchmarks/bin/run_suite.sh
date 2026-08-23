@@ -12,6 +12,7 @@ CASE_TIMEOUT=${BENCH_CASE_TIMEOUT:-900}
 PREFILL_INPUT_TOKENS=${BENCH_PREFILL_INPUT_TOKENS:-2048}
 QUICK_CONTEXT_TOKENS=${BENCH_QUICK_CONTEXT_TOKENS:-8192}
 TEMPERATURE=${BENCH_TEMPERATURE:-0}
+WORKLOAD_FILTER=${BENCH_WORKLOADS:-all}
 
 RUN_DIR=
 CONFIG=
@@ -54,6 +55,16 @@ done
 [[ -x ${VENV}/bin/python ]] || { echo "Benchmark venv is missing: $VENV" >&2; exit 1; }
 [[ -f ${MODEL_HOST}/config.json ]] || { echo "Model is missing: $MODEL_HOST" >&2; exit 1; }
 curl --fail --silent --show-error "${BASE_URL}/v1/models" >/dev/null
+
+wants_workload() {
+  [[ ,${WORKLOAD_FILTER}, == *,all,* || ,${WORKLOAD_FILTER}, == *,$1,* ]]
+}
+for requested in ${WORKLOAD_FILTER//,/ }; do
+  [[ $requested == all || $requested == decode || $requested == prefill || $requested == context ]] || {
+    echo "Unknown BENCH_WORKLOADS entry: $requested" >&2
+    exit 2
+  }
+done
 
 RAW_DIR=${RUN_DIR}/raw
 LOG_DIR=${RUN_DIR}/logs
@@ -155,39 +166,45 @@ decode_concurrencies=(1 2 4 8)
 # TP1 is a constrained reference for large models, not a VRAM saturation test.
 # Stop at c4 so hybrid-state/KV capacity does not dominate the kernel result.
 ((TP == 1)) && decode_concurrencies=(1 2 4)
-for concurrency in "${decode_concurrencies[@]}"; do
-  prompts=$((concurrency * 2))
-  ((prompts < 4)) && prompts=4
-  for repetition in 1 2; do
-    # Warm the exact batch shape before its first measured repetition. Current
-    # vLLM reports otherwise-lazy Triton JITs (notably c2 GDN decode) during
-    # inference, which can turn a compile pause into a fake performance delta.
-    warmups=0
-    ((repetition == 1)) && warmups=$concurrency
-    run_one decode 256 256 "$concurrency" "$repetition" "$prompts" "$warmups"
+if wants_workload decode; then
+  for concurrency in "${decode_concurrencies[@]}"; do
+    prompts=$((concurrency * 2))
+    ((prompts < 4)) && prompts=4
+    for repetition in 1 2; do
+      # Warm the exact batch shape before its first measured repetition. Current
+      # vLLM reports otherwise-lazy Triton JITs (notably c2 GDN decode) during
+      # inference, which can turn a compile pause into a fake performance delta.
+      warmups=0
+      ((repetition == 1)) && warmups=$concurrency
+      run_one decode 256 256 "$concurrency" "$repetition" "$prompts" "$warmups"
+    done
   done
-done
+fi
 
 # A bounded prefill/mixed sweep captures TTFT and prompt throughput without
 # turning every iterative comparison into a soak test.
 prefill_concurrencies=(1 4 8)
 ((TP == 1)) && prefill_concurrencies=(1)
-for concurrency in "${prefill_concurrencies[@]}"; do
-  prompts=$((concurrency * 2))
-  ((prompts < 2)) && prompts=2
-  # Prefill has a distinct GDN/attention kernel family, so the short decode
-  # warmup above cannot make this measurement hot.
-  run_one prefill "$PREFILL_INPUT_TOKENS" 64 "$concurrency" 1 "$prompts" "$concurrency"
-done
+if wants_workload prefill; then
+  for concurrency in "${prefill_concurrencies[@]}"; do
+    prompts=$((concurrency * 2))
+    ((prompts < 2)) && prompts=2
+    # Prefill has a distinct GDN/attention kernel family, so the short decode
+    # warmup above cannot make this measurement hot.
+    run_one prefill "$PREFILL_INPUT_TOKENS" 64 "$concurrency" 1 "$prompts" "$concurrency"
+  done
+fi
 
 # Long-context cases are capacity/correctness checks, not stability repetitions.
-if ((TP == 1)); then
-  context_input=$((MAX_MODEL_LEN - 256))
-  run_one context_tp1 "$context_input" 64 1 1 1 1
-else
-  context_input=$QUICK_CONTEXT_TOKENS
-  ((context_input + 64 > MAX_MODEL_LEN)) && context_input=$((MAX_MODEL_LEN - 64))
-  run_one context_quick "$context_input" 64 1 1 1 1
+if wants_workload context; then
+  if ((TP == 1)); then
+    context_input=$((MAX_MODEL_LEN - 256))
+    run_one context_tp1 "$context_input" 64 1 1 1 1
+  else
+    context_input=$QUICK_CONTEXT_TOKENS
+    ((context_input + 64 > MAX_MODEL_LEN)) && context_input=$((MAX_MODEL_LEN - 64))
+    run_one context_quick "$context_input" 64 1 1 1 1
+  fi
 fi
 
 if [[ $SUITE == quick ]]; then
@@ -195,16 +212,20 @@ if [[ $SUITE == quick ]]; then
 fi
 
 # Standard adds a third decode sample and another mixed-workload repetition.
-for concurrency in "${decode_concurrencies[@]}"; do
-  prompts=$((concurrency * 2))
-  ((prompts < 4)) && prompts=4
-  run_one decode 256 256 "$concurrency" 3 "$prompts" 0
-done
-for concurrency in "${prefill_concurrencies[@]}"; do
-  prompts=$((concurrency * 2))
-  ((prompts < 2)) && prompts=2
-  run_one prefill "$PREFILL_INPUT_TOKENS" 64 "$concurrency" 2 "$prompts" 0
-done
+if wants_workload decode; then
+  for concurrency in "${decode_concurrencies[@]}"; do
+    prompts=$((concurrency * 2))
+    ((prompts < 4)) && prompts=4
+    run_one decode 256 256 "$concurrency" 3 "$prompts" 0
+  done
+fi
+if wants_workload prefill; then
+  for concurrency in "${prefill_concurrencies[@]}"; do
+    prompts=$((concurrency * 2))
+    ((prompts < 2)) && prompts=2
+    run_one prefill "$PREFILL_INPUT_TOKENS" 64 "$concurrency" 2 "$prompts" 0
+  done
+fi
 
 if [[ $SUITE == standard ]]; then
   exit 0
@@ -213,12 +234,14 @@ fi
 # Qualification is reserved for milestone builds: longer steady decode plus a
 # concurrent near-envelope context check. It remains bounded and avoids the old
 # 6-8 hour matrix while adapting to an explicitly larger capacity envelope.
-for concurrency in "${decode_concurrencies[@]}"; do
-  prompts=$((concurrency * 2))
-  ((prompts < 4)) && prompts=4
-  run_one sustained_decode 256 512 "$concurrency" 1 "$prompts" 0
-done
-if ((TP == 2)); then
+if wants_workload decode; then
+  for concurrency in "${decode_concurrencies[@]}"; do
+    prompts=$((concurrency * 2))
+    ((prompts < 4)) && prompts=4
+    run_one sustained_decode 256 512 "$concurrency" 1 "$prompts" 0
+  done
+fi
+if wants_workload context && ((TP == 2)); then
   if ((MAX_MODEL_LEN >= 8192)); then
     context_input=$((MAX_MODEL_LEN - 256))
     run_one context_envelope "$context_input" 64 2 1 2 1

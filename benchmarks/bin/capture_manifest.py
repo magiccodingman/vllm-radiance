@@ -47,6 +47,7 @@ def main() -> None:
     parser.add_argument("--weight-quantization", required=True)
     parser.add_argument("--max-num-batched-tokens", type=int, required=True)
     parser.add_argument("--max-num-seqs", type=int, required=True)
+    parser.add_argument("--workload-filter", required=True)
     parser.add_argument("--notes", default="")
     args = parser.parse_args()
 
@@ -74,6 +75,7 @@ def main() -> None:
             "weight_quantization": args.weight_quantization,
             "max_num_batched_tokens": args.max_num_batched_tokens,
             "max_num_seqs": args.max_num_seqs,
+            "workload_filter": args.workload_filter,
             "container": args.container,
             "image": args.image,
             "image_inspect": command("docker", "image", "inspect", args.image),

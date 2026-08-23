@@ -78,6 +78,12 @@ BENCH_CONFIGS=tp2_spec-off,tp1-eager8k_spec-off,tp2_spec-on \
 Set `RADIANCE_IMAGE` to compare an exact image reference. For a startup-only
 validation, call `bin/run_configuration.sh` with `--suite smoke`.
 
+For an operator-specific iteration, select only the affected families while
+retaining the same shapes and warmup rules. For example, a GDN prefill change
+can use `BENCH_WORKLOADS=prefill,context`; an all-reduce/decode change can use
+`BENCH_WORKLOADS=decode`. The selected filter is stored in the manifest. Full
+`quick` and `qualification` gates remain milestone requirements.
+
 Compare two completed run directories with direction-normalized deltas (positive
 always means better). Speculative comparisons also show candidate acceptance
 rate, acceptance-length, and the rate change in percentage points:
