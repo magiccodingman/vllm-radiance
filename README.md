@@ -99,6 +99,36 @@ disabled for the correctness-qualified baseline. Runtime and capacity settings,
 including speculative decoding, can be overridden in `.env` without editing the
 public file.
 
+### Choose and switch serving modes
+
+The modes are mutually exclusive: `RADIANCE_SPECULATIVE_CONFIG` must contain
+either one speculative method or be unset. They are not cumulative.
+
+| Mode | `RADIANCE_SPECULATIVE_CONFIG` | Separate drafter | Profile-specific overrides |
+|---|---|---|---|
+| Qualified non-spec | unset | no | none |
+| Fast MTP | `"method":"mtp"` | no; head is in the target | `RADIANCE_FAST_DRAFT=1` |
+| Experimental DFlash2 | `"method":"dflash"` | yes | V2 runner, `PIECEWISE`, 8K, draft TP2, and the prefix-cache controls below |
+
+To switch from MTP to DFlash2, replace—not append—the speculative JSON, remove
+`RADIANCE_FAST_DRAFT=1`, and add the DFlash2-only variables in the DFlash2 block
+below. To switch from DFlash2 to MTP, delete
+`VLLM_USE_V2_MODEL_RUNNER`, `RADIANCE_COMPILATION_CONFIG`,
+`PREFIX_CACHING_FLAG`, and `MAMBA_CACHE_MODE`, restore the desired
+`MAX_MODEL_LEN` (16K is the portable baseline), replace the speculative JSON
+with the MTP value, and set `RADIANCE_FAST_DRAFT=1`. To return to non-spec,
+remove both speculative and fast-draft variables plus all DFlash2-only
+overrides.
+
+Recreate the container after every mode change so the new environment and
+server arguments are applied:
+
+```bash
+docker compose down
+docker compose up -d
+docker compose logs -f
+```
+
 ### Optional fast MTP
 
 Qwen checkpoints with an in-checkpoint MTP head can enable the measured R4D
