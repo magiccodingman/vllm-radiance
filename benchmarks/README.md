@@ -96,6 +96,15 @@ Pass `--fail-below -5` to make any common decode-throughput regression worse
 than 5% fail a milestone gate. Inspect the recorded CV before treating a small
 delta as meaningful.
 
+For a greedy speculative-decoding correctness gate, compare the matching
+configuration directories. The verifier requires identical seeds, input
+lengths, generated text, and output token lengths for every common raw case:
+
+```bash
+benchmarks/bin/verify_outputs.py RUN/tp2_spec-off RUN/tp2_spec-on \
+  --output RUN/spec-output-equivalence.json
+```
+
 The workload does not try to fill VRAM. The canonical TP2 gate is c1/c2/c4/c8
 inside a 16K, 85%-allocation envelope; it never searches for the largest batch
 that fits. `MODEL_HOST`, `MODEL_NAME`,
