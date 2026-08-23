@@ -31,11 +31,19 @@ import numpy as np
 
 # ----- config (the only three knobs) ------------------------------------------
 DYNAMIC = os.environ.get("RADIANCE_DYNAMIC_DRAFT", "1") == "1"
-TAU = float(os.environ.get("RADIANCE_DRAFT_TAU", "0.35") or "0.35")
+# Draft policy, tuned on the BetterBench corpus for the 2-bit head (RADIANCE_FAST_DRAFT=1):
+# tau 0.28 with 1:8,2:7,4:6,8:5 measured +5.3% over the policy tuned for a 4-bit head. A cheaper
+# draft step lowers the marginal acceptance a draft position has to clear, so the optimum sits
+# deeper than it does when drafting is expensive.
+TAU = float(os.environ.get("RADIANCE_DRAFT_TAU") or "0.28")
 # batch-size MTP-forward ceiling "bs:max_depth,..." (carry-forward). Caps how deep the drafter forwards
-# by running batch size, so we don't do deep serial drafts at concurrency. The per-slot rule still stops
+# by running batch size, so deep serial drafts do not run at concurrency. The per-slot rule still stops
 # earlier within it, and the free n-gram tail is unaffected. Empty string disables the cap.
-SCHEDULE = os.environ.get("RADIANCE_DRAFT_SCHEDULE", "1:8,2:7,4:6,8:5,16:4").strip()
+SCHEDULE = (os.environ.get("RADIANCE_DRAFT_SCHEDULE") or "1:8,2:7,4:6,8:5,16:4").strip()
+# Runtime state, not a knob: the shard-local draft path (see _local_draft) is always used, and this
+# latches off for the rest of the process if it ever raises, so a single failure degrades to the
+# gathered path instead of taking the serve down.
+_LOCAL_OK = [True]
 
 _GPU = [None]          # the radiance_draft_gpu kernels module (set at install if it imports)
 
@@ -71,6 +79,56 @@ def _batch_ceil(num_reqs):
     return max(1, d)
 
 
+# ----- local-vocabulary draft sampling (no full-vocab all-gather) -------------
+# The gate needs exactly two numbers per row: the drafted token id and the top-1 softmax
+# probability. Getting them the obvious way -- compute_logits() -> argmax -- makes vLLM all-gather
+# the whole 248320-wide logit row across the TP group on every draft slot, which the decode profile
+# prices at ~374 us per slot. Both numbers are recoverable from per-rank partial reductions instead:
+# each rank reduces its own vocabulary shard to (max, sum-exp, argmax), the ranks exchange three
+# floats per row, and a cross-rank logsumexp finishes the softmax. That is the same arithmetic on
+# the same values, up to floating-point associativity -- not an approximation.
+#
+# vLLM has its own version of half of this (`use_local_argmax_reduction`), but it only produces the
+# token id; the confidence gate would still need the gathered logits, which is why this controller
+# switches itself off whenever that flag is set.
+def _local_draft(proposer, hidden_states):
+    """Returns (draft_token_ids [B] int64, conf [B] float32) without gathering the vocabulary."""
+    import torch
+    from vllm.distributed import (get_tensor_model_parallel_world_size,
+                                  tensor_model_parallel_all_gather)
+    gpu = _GPU[0]
+    model = proposer.model
+    lp = model.logits_processor
+    lm_head = model.lm_head
+    local = lp._apply_head(lm_head, hidden_states, None)
+    if local.dim() > 2:
+        local = local.reshape(-1, local.shape[-1])
+    npad = getattr(getattr(lm_head, "shard_indices", None), "num_org_vocab_padding", 0) or 0
+    if npad > 0:
+        local[..., -npad:] = float("-inf")      # padding entries must not win the argmax
+
+    B = local.shape[0]
+    sc = getattr(proposer, "_radiance_lscratch", None)
+    if sc is None or sc[0].shape[0] != B * gpu._NSPLIT:
+        sc = proposer._radiance_lscratch = gpu.make_scratch(B, local.device)
+    lmax = torch.empty(B, device=local.device)
+    lsum = torch.empty(B, device=local.device)
+    gpu.capture_local(local, lmax, lsum, sc)
+    lidx = local.argmax(dim=-1)
+
+    start = getattr(getattr(lm_head, "shard_indices", None), "org_vocab_start_index", 0) or 0
+    tp = get_tensor_model_parallel_world_size()
+    if tp == 1:
+        return (lidx + start).to(torch.int64), 1.0 / lsum
+    stats = torch.stack([lmax, lsum, (lidx + start).to(torch.float32)], dim=-1)   # [B,3]
+    g = tensor_model_parallel_all_gather(stats, dim=-1).view(B, tp, 3)
+    gm = g[:, :, 0]
+    M, which = gm.max(dim=1)
+    S = (g[:, :, 1] * torch.exp(gm - M[:, None])).sum(dim=1)
+    ids = g[:, :, 2].gather(1, which[:, None]).squeeze(1).to(torch.int64)
+    return ids, 1.0 / S
+
+
 # ----- drafter hooks: per-slot confidence capture + A/B/C decision ------------
 def _install_drafter_hooks():
     import torch
@@ -83,25 +141,36 @@ def _install_drafter_hooks():
     def greedy_sample(self, hidden_states):
         if not getattr(self, "_radiance_active", False):
             return orig_greedy(self, hidden_states)
-        logits = self.model.compute_logits(hidden_states)
-        draft_token_ids = logits.argmax(dim=-1)
         gpu = _GPU[0]
+        logits = None
+        if _LOCAL_OK[0]:
+            try:
+                draft_token_ids, conf_dev = _local_draft(self, hidden_states)
+            except Exception as e:
+                _log(f"local-vocab draft failed, using the gathered path: {e!r}")
+                _LOCAL_OK[0] = False
+        if not _LOCAL_OK[0]:
+            logits = self.model.compute_logits(hidden_states)
+            draft_token_ids = logits.argmax(dim=-1)
         # Per-slot decision (confidence-gated depth). After this slot's MTP forward, capture the top-1
         # confidence on-device, decide on the host: 0 = another MTP pass (continue), 1 = take the n-gram
         # (stop), 2 = verify now (stop). Once every request has chosen 1 or 2, set _radiance_stop so the
         # patched loop skips the remaining forwards. One tiny per-slot D2H (conf + drafted token).
         j = self._radiance_slot; self._radiance_slot = j + 1
-        B = logits.shape[0]
+        B = draft_token_ids.shape[0]
         cont = getattr(self, "_radiance_cont", None)
         if cont is None or cont.shape[0] != B:
             return draft_token_ids                       # matcher didn't run -> full native draft (safe)
         sc = getattr(self, "_radiance_scratch", None)
         if sc is None or sc[0].shape[0] != B * gpu._NSPLIT:
-            sc = self._radiance_scratch = gpu.make_scratch(B, logits.device)
+            sc = self._radiance_scratch = gpu.make_scratch(B, draft_token_ids.device)
         # pack conf + drafted token id into one device tensor so the whole slot is a SINGLE D2H
         # (token ids < 2^24 are exact in fp32).
-        packed = torch.empty(2, B, device=logits.device)
-        gpu.capture_gpu(logits, packed[0], sc)
+        packed = torch.empty(2, B, device=draft_token_ids.device)
+        if logits is None:
+            packed[0] = conf_dev
+        else:
+            gpu.capture_gpu(logits, packed[0], sc)
         packed[1] = draft_token_ids.to(torch.float32)
         arr = packed.cpu().numpy()
         cfn = arr[0]; mtpn = arr[1].astype(np.int64)
@@ -239,7 +308,7 @@ def _prepare_match_gpu(runner):
 
 def _postprocess_gpu(runner, draft):
     """Assemble the final draft from the per-slot decisions. The patched loop already ran only the
-    forwards up to the batch's stop point; here we trim each request to its own stop slot and append the
+    forwards up to the batch's stop point; here each request is trimmed to its own stop slot and given the
     verbatim n-gram tail where it chose one. Returns a ragged list[list[int]] (native draft format), so
     vLLM verifies exactly the tokens the controller kept."""
     import torch

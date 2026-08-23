@@ -14,9 +14,9 @@ ALLOW_DIAGNOSTIC_NON_FP8_KV=${ALLOW_DIAGNOSTIC_NON_FP8_KV:-0}
 GPU_MEMORY_UTILIZATION=0.85
 READINESS_TIMEOUT=3600
 MAX_MODEL_LEN=16384
-MAX_NUM_BATCHED_TOKENS=${MAX_NUM_BATCHED_TOKENS:-2048}
+MAX_NUM_BATCHED_TOKENS=${MAX_NUM_BATCHED_TOKENS:-4096}
 MAX_NUM_SEQS=${MAX_NUM_SEQS:-8}
-ATTENTION_BACKEND=${ATTENTION_BACKEND:-ROCM_AITER_UNIFIED_ATTN}
+ATTENTION_BACKEND=${ATTENTION_BACKEND:-R4D}
 ADDITIONAL_CONFIG_JSON=${ADDITIONAL_CONFIG_JSON:-}
 SPECULATIVE_CONFIG_JSON=${SPECULATIVE_CONFIG_JSON:-}
 COMPILATION_CONFIG_JSON=${COMPILATION_CONFIG_JSON:-}
@@ -35,7 +35,7 @@ NOTES=
 SUITE=quick
 
 usage() {
-  echo "Usage: $0 --run-root DIR --label NAME --tp 1|2 --spec on|off [--image REF] [--max-model-len N] [--disable-cudagraph|--enforce-eager] [--cpu-offload-gb N] [--notes TEXT] [--suite smoke|quick|standard|qualification]"
+  echo "Usage: $0 --run-root DIR --label NAME --tp 1|2 --spec on|off [--image REF] [--max-model-len N] [--disable-cudagraph|--enforce-eager] [--cpu-offload-gb N] [--notes TEXT] [--suite smoke|quick|standard|qualification|betterbench]"
 }
 
 while (($#)); do
@@ -61,7 +61,7 @@ done
 [[ -n $RUN_ROOT && -n $LABEL && -n $TP && -n $SPEC ]] || { usage >&2; exit 2; }
 [[ $TP == 1 || $TP == 2 ]] || { echo "--tp must be 1 or 2" >&2; exit 2; }
 [[ $SPEC == on || $SPEC == off ]] || { echo "--spec must be on or off" >&2; exit 2; }
-[[ $SUITE == smoke || $SUITE == quick || $SUITE == standard || $SUITE == qualification ]] || {
+[[ $SUITE == smoke || $SUITE == quick || $SUITE == standard || $SUITE == qualification || $SUITE == betterbench ]] || {
   echo "Invalid suite: $SUITE" >&2
   exit 2
 }
@@ -120,7 +120,7 @@ if [[ $WEIGHT_QUANTIZATION != auto ]]; then
 fi
 if [[ $SPEC == on ]]; then
   if [[ -z $SPECULATIVE_CONFIG_JSON ]]; then
-    SPECULATIVE_CONFIG_JSON='{"method":"mtp","num_speculative_tokens":8,"attention_backend":"ROCM_AITER_UNIFIED_ATTN","disable_padded_drafter_batch":true}'
+    SPECULATIVE_CONFIG_JSON='{"method":"mtp","num_speculative_tokens":8,"attention_backend":"R4D","disable_padded_drafter_batch":true}'
   fi
   server_args+=("--speculative-config=${SPECULATIVE_CONFIG_JSON}")
 fi
@@ -233,13 +233,22 @@ HIP_VISIBLE_DEVICES=$gpu_devices RADIANCE_IMAGE="$IMAGE" "${SCRIPT_DIR}/capture_
   --workload-filter "$WORKLOAD_FILTER" \
   --enforce-eager "$ENFORCE_EAGER" --disable-cudagraph "$DISABLE_CUDAGRAPH" --notes "$NOTES"
 
-MODEL_HOST="$MODEL_HOST" MODEL_NAME="$MODEL_NAME" BENCH_WORKLOADS="$WORKLOAD_FILTER" "${SCRIPT_DIR}/run_suite.sh" \
-  --run-dir "$CONFIG_DIR" --config "$LABEL" --tp "$TP" --spec "$SPEC" \
-  --cpu-offload-gb "$CPU_OFFLOAD_GB" --max-model-len "$MAX_MODEL_LEN" --suite "$SUITE"
+if [[ $SUITE == betterbench ]]; then
+  MODEL_NAME="$MODEL_NAME" "${SCRIPT_DIR}/run_betterbench.sh" \
+    --run-dir "$CONFIG_DIR" --config "$LABEL" --max-model-len "$MAX_MODEL_LEN"
+else
+  MODEL_HOST="$MODEL_HOST" MODEL_NAME="$MODEL_NAME" BENCH_WORKLOADS="$WORKLOAD_FILTER" "${SCRIPT_DIR}/run_suite.sh" \
+    --run-dir "$CONFIG_DIR" --config "$LABEL" --tp "$TP" --spec "$SPEC" \
+    --cpu-offload-gb "$CPU_OFFLOAD_GB" --max-model-len "$MAX_MODEL_LEN" --suite "$SUITE"
+fi
 
 docker logs "$container" >"${CONFIG_DIR}/logs/server.log" 2>&1 || true
 curl --fail --silent http://127.0.0.1:11435/metrics >"${CONFIG_DIR}/metrics-final.prom"
-"${SCRIPT_DIR}/summarize.py" "$RUN_ROOT"
+if [[ $SUITE != betterbench ]]; then
+  "${SCRIPT_DIR}/summarize.py" "$RUN_ROOT"
+else
+  "${SCRIPT_DIR}/summarize.py" --telemetry-only "$RUN_ROOT"
+fi
 final_status=completed
 cleanup
 trap - EXIT

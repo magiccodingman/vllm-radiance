@@ -293,3 +293,30 @@ than FP8 KV, V2 itself, prefix cache, hybrid-GDN state corruption, the drafter,
 or custom TP2 reduction. The complete experiment matrix, exact run IDs,
 checksums, upstream audit, negative results, and deployment recommendation are
 in [DFLASH2_OPTIMIZATION.md](DFLASH2_OPTIMIZATION.md).
+
+## libr4d 0.4.0 / DeadCode 0.7.4 continuation (!9)
+
+DeadCode's Radiance 0.7.4 operator work was ported without reverting the pinned
+vLLM-main/AMD compiler foundation. R4D attention, GDN, vision, TP2 collectives,
+router, and the optional INT2 MTP head now build from exact libr4d v0.4.0 commit
+`000d5f91d0e47ee9faf3b5466f0a12995f0cbfd6`. R4D attention and GDN replace the
+older AITER/FLA defaults; the older paths remain measured fallbacks.
+
+The portable default is now TP2, native FP8 weights, mandatory FP8 KV, R4D,
+16K, 85% allocation, maximum eight sequences, 4,096 batched tokens, and
+speculative decoding off. This supersedes the 2,048/AITER selected-state text
+above while retaining it as historical evidence.
+
+BetterBench v0.2.2 (10 passes/category) measured 35.8 weighted non-spec decode
+tok/s and 35.5/67.0/118.4/187.6 aggregate tok/s at c1/c2/c4/c8. That is decode
+parity with immutable DeadCode 0.7.4 (35.7 weighted and
+35.6/66.9/117.4/190.7), although fork non-spec cold prefill is 2.7-3.3% lower.
+
+The opt-in INT2 MTP head reached 93.7 weighted tok/s. Selective-FP8 DFlash K5
+reached 99.4, and K7 won at 112.6 weighted plus
+102.1/189.0/305.1/496.1 c1/c2/c4/c8. K7 retained at least 6.47 GiB physical
+VRAM headroom per card. Strict speculative versus non-spec equivalence remains
+failed (3/8 exact prompts), so the performance winner is not promoted to the
+generic default. Full pins, run IDs, acceptance counters, correctness
+isolation, and negative results are in
+[LIBR4D_BETTERBENCH.md](LIBR4D_BETTERBENCH.md).

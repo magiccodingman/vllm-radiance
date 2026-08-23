@@ -8,6 +8,7 @@ report follows a few seconds later.
 
 Env knobs: NO_COLOR / RADIANCE_BANNER_PLAIN=1 disable ANSI color."""
 import glob
+import json
 import os
 import sys
 import importlib.metadata as md
@@ -44,6 +45,19 @@ BANNER = r"""
 ╚═╝  ╚═╝╚═╝  ╚═╝╚═════╝ ╚═╝╚═╝  ╚═╝╚═╝  ╚═══╝ ╚═════╝╚══════╝"""
 
 
+def _radiance_version():
+    """The image's own version. Baked in from the repo's VERSION file at build time, so the banner
+    cannot drift from the tag; the env var is the fallback when this runs outside the image."""
+    try:
+        with open("/opt/radiance_version") as f:
+            v = f.read().strip()
+        if v:
+            return v
+    except Exception:
+        pass
+    return os.environ.get("RADIANCE_VERSION", "?")
+
+
 def _v(dist):
     try:
         return md.version(dist)
@@ -52,7 +66,7 @@ def _v(dist):
 
 
 def print_banner():
-    ver = os.environ.get("RADIANCE_VERSION", "?")
+    ver = _radiance_version()
     for ln in BANNER.splitlines():
         print(c(ACCENT + ";1", ln))
     print(dim("  vLLM inference server · AMD Radeon AI PRO R9700 · gfx1201 / RDNA4"))
@@ -127,18 +141,17 @@ def section_opts():
 
     print("  " + dim("feature toggles (set to 0 to disable):"))
     for name, dflt, desc in [
-        ("RADIANCE_PRESHUFFLE",     "1", "preshuffled AITER FP8 blockscale GEMM"),
-        ("RADIANCE_ATTN_TUNE",      "1", "RDNA4 unified-attention tiling (fp8 + bf16/auto KV)"),
-        ("RADIANCE_GDN_WMMA",       "1", "gated-delta-net KKt gram + triangular solve on the fp16 matrix cores (vs fp32 scalar path)"),
-        ("RADIANCE_VIT_FLASH",      "1", "native head_dim-72 flash attention for the vision encoder (multimodal)"),
-        ("RADIANCE_FUSE_RMS_QUANT", "1", "fold group-FP8 quant into the RMSNorm epilogue"),
-        ("RADIANCE_FAST_REDUCE",    "1", "P2P one-shot all-reduce for TP=2, byte-identical to RCCL"),
-        ("RADIANCE_AR_QUANT",       "1", "fp8 all-reduce payload for large messages (on; not RCCL-identical)"),
-        ("RADIANCE_DYNAMIC_DRAFT",  "1", "per-request MTP draft-depth controller (needs speculative mtp)"),
-        ("RADIANCE_MOE_ROUTER",     "1", "custom bf16 MoE-gate GEMM for the n in [6,16] band (fine-grained MoE, e.g. Qwen3.6-35B-A3B)"),
+        ("RADIANCE_USE_R4D",          "1", "hand-written gfx1201 kernels: attention, gated delta net, vision, all-reduce, router GEMM"),
+        ("RADIANCE_USE_R4D_GDN",      "1", "R4D gated-delta-net prefill and speculative-decode path"),
+        ("RADIANCE_USE_R4D_AR",       "1", "P2P one-shot all-reduce for TP=2, byte-identical to RCCL"),
+        ("RADIANCE_USE_R4D_AR_QUANT", "1", "compressed all-reduce payload for large messages: rotated 6-bit (on; not RCCL-identical)"),
+        ("RADIANCE_PRESHUFFLE",       "1", "preshuffled AITER FP8 blockscale GEMM"),
+        ("RADIANCE_FUSE_RMS_QUANT",   "1", "fold group-FP8 quant into the RMSNorm epilogue"),
+        ("RADIANCE_DYNAMIC_DRAFT",    "1", "per-request MTP draft-depth controller (needs speculative mtp)"),
+        ("RADIANCE_FAST_DRAFT",       "0", "2-bit MTP draft head behind an exact rerank (opt-in; needs speculative mtp)"),
     ]:
         badge = ok("ON ") if _val(name, dflt) == "1" else warn("OFF")
-        print(f"    {badge} {name:<24} " + dim(desc))
+        print(f"    {badge} {name:<26} " + dim(desc))
 
     print("\n  " + dim("dynamic drafting (RADIANCE_DYNAMIC_DRAFT):"))
     if _val("RADIANCE_DYNAMIC_DRAFT", "1") == "1":
@@ -146,15 +159,12 @@ def section_opts():
         print("        " + dim("n-gram, else verify; batch schedule caps serial MTP forwards at concurrency."))
         for name, dflt, desc in [
             ("RADIANCE_DRAFT_SCHEDULE",   "1:8,2:7,4:6,8:5,16:4", "batch-size MTP-forward ceiling (bs:max_depth, carry-forward)"),
-            ("RADIANCE_DRAFT_TAU",        "0.35", "confidence-product stop threshold"),
+            ("RADIANCE_DRAFT_TAU",        "0.28", "confidence-product stop threshold"),
         ]:
             print(f"        {dim('·')} {name} = {c(ACCENT, _val(name, dflt))}  " + dim(desc))
     else:
         print("        " + dim("off (stock MTP)"))
 
-    print("\n  " + dim("all-reduce size gates (when RADIANCE_FAST_REDUCE=1):"))
-    ar = [("RADIANCE_AR_MAX_KB", "32768"), ("RADIANCE_AR_QUANT_MIN_KB", "128")]
-    print("        " + "  ".join(f"{n}={c(ACCENT, _val(n, d))}" for n, d in ar))
 
     print("\n  " + dim("NUMA binding (RADIANCE_NUMA_BIND / --numa-bind):"))
     active = os.environ.get("RADIANCE_NUMA_ACTIVE", "")
@@ -169,7 +179,6 @@ def section_opts():
     print("\n  " + dim("startup:"))
     for name, dflt, desc in [
         ("RADIANCE_RUN_BWTEST",     "1", "GPU topology + bandwidth sweep at startup (on; backgrounded, ~1 s; set 0 to skip)"),
-        ("RADIANCE_BWTEST_TIMEOUT", "150", "bandwidth sweep timeout, seconds"),
         ("RADIANCE_BANNER_PLAIN",   "0", "disable ANSI color (also NO_COLOR)"),
     ]:
         print(f"        {dim('·')} {name} = {c(ACCENT, _val(name, dflt))}  " + dim(desc))
@@ -230,7 +239,7 @@ def _rocm_version():
 def section_versions():
     hdr("component versions")
     import platform
-    rows = [("radiance", os.environ.get("RADIANCE_VERSION", "?")),
+    rows = [("radiance", _radiance_version()),
             ("vllm", _v("vllm"))]
     hip = None
     try:

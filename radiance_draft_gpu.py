@@ -100,6 +100,30 @@ def capture_gpu(logits, out_conf, scratch):
     _cap_s2[(B,)](logits, V, pm, ps, out_conf, _NSPLIT, 64)
 
 
+@triton.jit
+def _cap_s2_local(pm, ps, om, os_, NSPLIT, BN: tl.constexpr):
+    """Same combine as _cap_s2, but emits the shard's (max, sum-exp) instead of a finished
+    confidence -- the cross-rank logsumexp finishes it."""
+    b = tl.program_id(0)
+    r = tl.arange(0, BN); mask = r < NSPLIT; o = b * NSPLIT + r
+    m = tl.load(pm + o, mask=mask, other=-float("inf"))
+    s = tl.load(ps + o, mask=mask, other=0.0)
+    M = tl.max(m, 0); sc = tl.exp(m - M)
+    tl.store(om + b, M)
+    tl.store(os_ + b, tl.sum(s * sc, 0))
+
+
+def capture_local(logits, out_max, out_sum, scratch):
+    """logits [B,Vlocal] (this rank's vocabulary shard only). Writes the shard's running max into
+    out_max [B] and its sum of exp(l - max) into out_sum [B]. Combining these across ranks with a
+    logsumexp gives exactly the number capture_gpu returns for the gathered row, while moving three
+    floats per row instead of the whole 248320-wide logit row."""
+    B, V = logits.shape
+    pm, ps = scratch
+    _cap_s1[(B, _NSPLIT)](logits, V, pm, ps, _NSPLIT, _CHUNK, _CBLOCK)
+    _cap_s2_local[(B,)](pm, ps, out_max, out_sum, _NSPLIT, 64)
+
+
 def make_scratch(B, device):
     z = lambda: torch.empty(B * _NSPLIT, device=device)
     return z(), z()
