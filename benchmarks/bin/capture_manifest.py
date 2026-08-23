@@ -142,6 +142,7 @@ def main() -> None:
                 "BENCH_CORRECTNESS_MAX_TOKENS",
                 "BENCH_CORRECTNESS_REPETITIONS",
                 "BENCH_CORRECTNESS_LOGPROBS",
+                "BENCH_CORRECTNESS_PROMPTS",
             )
             if key in os.environ
         },
