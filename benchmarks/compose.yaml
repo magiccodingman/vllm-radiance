@@ -71,6 +71,8 @@ services:
       RADIANCE_AR_QUANT: "1"
 
       AITER_ROOT_DIR: /cache/aiter
+      HIP_FORCE_DEV_KERNARG: "${HIP_FORCE_DEV_KERNARG:-0}"
+      TORCH_BLAS_PREFER_HIPBLASLT: "${TORCH_BLAS_PREFER_HIPBLASLT:-0}"
 
 
     devices:

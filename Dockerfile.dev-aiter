@@ -39,7 +39,7 @@ RUN pip install --force-reinstall --no-cache-dir --no-deps /tmp/wheels/*aiter-*.
 COPY patch_*.py install_radiance_hooks.py _patchlib.py /opt/patches/
 RUN set -eu; cd /opt/patches; \
     for p in patch_gfx1201 patch_radiance_dispatch patch_router_gemm patch_unified_attention_lds \
-             patch_gdn_wmma patch_preshuffle install_radiance_hooks \
+             patch_gdn_wmma patch_gdn_aiter_prefill patch_preshuffle install_radiance_hooks \
              patch_unpad patch_mtp_mm_mask patch_mtp_loopbreak patch_qwen3_toolparse patch_from_json_filter \
              patch_dynamo_metrics; do \
       echo "== applying $p =="; python "$p.py"; \

@@ -18,8 +18,8 @@ The default `quick` profile is the everyday A/B gate. It uses one server warmup,
 two bounded decode repetitions at concurrency 1/2/4/8 for TP2 and 1/2/4 for
 the constrained TP1 reference, a 2K prefill sweep,
 and a single 8K context check. `standard` adds a third decode sample and a
-second prefill sample. `qualification` adds sustained decode and concurrent 16K
-context plus a near-32K capacity request and is reserved for milestone builds.
+second prefill sample. `qualification` adds sustained decode and concurrent
+long-context capacity checks and is reserved for milestone builds.
 Each exact workload/concurrency shape gets one unmeasured request wave before
 its first sample. Warmups and every measured repetition use distinct,
 deterministic prompt seeds, so prefix caching cannot leak across samples. This
@@ -36,17 +36,21 @@ TP=1 MTP head requires another 2.37 GiB when only about 1.06 GiB remains, so
 `tp1-eager8k_spec-on` is retained as an explicit diagnostic profile but is not
 part of the routine matrix. CPU offload is not used to force it to fit.
 
-The model is always
-`/nvme/lexar-2/ai/models/Qwen3.8-27B-heretic-ara-fp8-magiccodingman`, and both
-the model configuration and container command are checked before a run. Every
+The default model is
+`/nvme/lexar-2/ai/models/Qwen3.8-27B-heretic-ara-fp8-magiccodingman`. Override
+`MODEL_HOST` and `MODEL_NAME` for another checkpoint; the model configuration
+and resolved container command are checked before every run. Every
 configuration explicitly forces `--kv-cache-dtype=fp8`.
 
-TP=2 remains the production/default 32K envelope. The 28.75 GiB checkpoint
-does not leave KV space on one 31.9 GiB R9700 with compiled execution, so TP=1
-uses an 8K maximum and eager execution at 95% utilization. Its decode
-concurrency sweep remains useful, while long-context/prefill capacity is
-reported separately. CPU offload and near-100% memory settings are not part of
-the routine matrix.
+TP=2 uses a model-neutral 16K server envelope at 85% GPU utilization. This
+reserves about 4.8 GiB outside vLLM's allocation on each 32 GiB card, leaves
+room for a DFlash2 drafter and runtime variation, and does not try to turn the
+performance gate into a capacity test. The 28.75 GiB checkpoint does not leave
+KV space on one 31.9 GiB R9700 with compiled execution, so TP=1 uses an 8K
+maximum and eager execution at 95% utilization. TP1 is a fit-specific reference,
+not a requirement for larger checkpoints such as 35B. Its decode concurrency
+sweep remains useful, while long-context/capacity is reported separately. CPU
+offload and near-100% settings are not part of the routine TP2 matrix.
 
 Set a note for the run with:
 
@@ -81,14 +85,20 @@ Pass `--fail-below -5` to make any common decode-throughput regression worse
 than 5% fail a milestone gate. Inspect the recorded CV before treating a small
 delta as meaningful.
 
-The workload does not try to fill VRAM. `MODEL_HOST`, `MODEL_NAME`,
-`WEIGHT_QUANTIZATION`, `MAX_NUM_BATCHED_TOKENS`, `TP1_GPU_UTIL`,
+The workload does not try to fill VRAM. The canonical TP2 gate is c1/c2/c4/c8
+inside a 16K, 85%-allocation envelope; it never searches for the largest batch
+that fits. `MODEL_HOST`, `MODEL_NAME`,
+`WEIGHT_QUANTIZATION`, `MAX_NUM_BATCHED_TOKENS`, `MAX_NUM_SEQS`, `TP1_GPU_UTIL`,
 `TP2_GPU_UTIL`, `TP1_MAX_MODEL_LEN`, and `TP2_MAX_MODEL_LEN` are profile
 inputs, so the same core workloads can be reused for larger models. Select only
 the configurations a model can safely host; for example a 35B model may use
 `BENCH_CONFIGS=tp2_spec-off` while retaining directly comparable TP2 cases.
 Maximum-context requests are qualification checks, not routine performance
-samples.
+samples. `ATTENTION_BACKEND`, `ADDITIONAL_CONFIG_JSON`, and
+`SPECULATIVE_CONFIG_JSON` provide recorded, command-line-visible experiment
+switches without editing the harness. The latter defaults to the normal MTP
+configuration only when a speculative lane is requested and no explicit JSON
+is supplied.
 
 ## Results
 

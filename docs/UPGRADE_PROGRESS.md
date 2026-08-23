@@ -14,18 +14,24 @@ numbers use native FP8 weights and mandatory FP8 KV cache with the reusable
 
 ## Benchmark contract
 
-- TP2: 90% GPU-memory limit, server can host 32K, routine workloads stop at 8K,
-  decode concurrency 1/2/4/8.
+- TP2: 85% GPU-memory limit, 16K server envelope, routine workloads stop at 8K,
+  decode concurrency 1/2/4/8. This reserves about 4.8 GiB outside vLLM's
+  allocation on each card for a DFlash2 drafter and runtime variation.
 - TP1 reference: native/no-offload, eager, 95%, 8K, decode concurrency 1/2/4.
 - Decode: 256 input + 256 forced output tokens, two repetitions and at least two
   request waves.
 - Prefill/mixed: 2048 input + 64 output; TP2 concurrency 1/4/8, TP1 concurrency 1.
-- A 32K request and longer repetitions are qualification-only. The routine gate
+- Near-envelope context and longer repetitions are qualification-only. An
+  explicitly raised 32K envelope adds a 32K capacity case, but the routine gate
   is not a maximum-throughput or VRAM-saturation search.
 - FP8 KV is a hard precondition checked from the resolved container command.
 - Each shape receives a disjoint-seed warmup wave, and every measured repetition
   has its own deterministic seed. This heats lazy kernels without allowing
   prefix-cache state to leak into a measurement.
+
+This normalized 16K/85% contract supersedes the early 32K/90% server envelope;
+the older runs remain immutable historical evidence and the retained software
+checkpoints are rerun under the normalized contract before final comparison.
 
 The checkpoint lacks calibrated attention q/k/v/prob scale tensors, so vLLM
 records that FP8 KV attention uses scale 1.0. Dynamic KV scale calculation is
@@ -133,8 +139,25 @@ decode c1/c2/c4, -0.23% for 2K prefill, and -0.21% for the near-8K context case.
 Decode CV was at most 0.06%. This confirms that the rebase did not trade away
 single-card performance, and TP1 c8 remains excluded as a capacity confounder.
 
+## Experimental AITER GDN prefill bridge
+
+An opt-in vLLM bridge now passes host-derived sequence lengths into AITER
+0.1.20's reusable GDN schedule and selects its gfx1201 HIP/WMMA K5 recurrence.
+A synthetic variable-length, TP2-shaped correctness test against AITER's Triton
+reference passed: output max absolute error was `4.8828125e-4`, final-state max
+absolute error was `2.962425e-4`, and all values were finite. A full TP2 server
+smoke then passed with the real FP8 model, FP8 KV, and the AITER backend.
+
+The first bounded end-to-end gate did not justify enabling it by default.
+Against the exact AITER 0.1.20 control, 2K prefill output TPS ranged from -1.49%
+to -0.38%, the 8K case was -0.73%, and decode was consistently -1.37% to
+-1.63%. This is below the hoped-for model-level improvement even though the K5
+kernel itself is correct. The backend therefore remains explicit-only through
+`--additional-config={"gdn_prefill_backend":"aiter"}` for future profiling;
+`auto` retains the established Triton/FLA path.
+
 ## Next checkpoints
 
-1. Stage the official AMD PyTorch/Triton pair independently.
-2. Integrate GDN prefill work, then qualify DFlash2 separately with reserved
-   drafter headroom.
+1. Complete and measure the official AMD PyTorch/Triton pair independently.
+2. Retune attention and low-overhead runtime switches under that compiler pair.
+3. Qualify DFlash2 separately within the reserved drafter headroom.

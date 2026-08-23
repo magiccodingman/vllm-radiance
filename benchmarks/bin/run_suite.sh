@@ -18,7 +18,7 @@ TP=
 SPEC=
 CPU_OFFLOAD_GB=0
 SUITE=quick
-MAX_MODEL_LEN=32768
+MAX_MODEL_LEN=16384
 
 usage() {
   echo "Usage: $0 --run-dir DIR --config NAME --tp 1|2 --spec on|off [--max-model-len N] [--cpu-offload-gb N] [--suite smoke|quick|standard|qualification]"
@@ -207,18 +207,20 @@ if [[ $SUITE == standard ]]; then
   exit 0
 fi
 
-# Qualification is reserved for milestone builds: longer steady decode plus
-# concurrent 16K context. It remains bounded and avoids the old 6-8 hour matrix.
+# Qualification is reserved for milestone builds: longer steady decode plus a
+# concurrent near-envelope context check. It remains bounded and avoids the old
+# 6-8 hour matrix while adapting to an explicitly larger capacity envelope.
 for concurrency in "${decode_concurrencies[@]}"; do
   prompts=$((concurrency * 2))
   ((prompts < 4)) && prompts=4
   run_one sustained_decode 256 512 "$concurrency" 1 "$prompts" 0
 done
 if ((TP == 2)); then
-  if ((MAX_MODEL_LEN >= 16448)); then
-    run_one context_16k 16384 64 2 2 2 0
+  if ((MAX_MODEL_LEN >= 8192)); then
+    context_input=$((MAX_MODEL_LEN - 256))
+    run_one context_envelope "$context_input" 64 2 1 2 1
   fi
-  if ((MAX_MODEL_LEN >= 31808)); then
+  if ((MAX_MODEL_LEN >= 32768)); then
     run_one context_32k 31744 64 1 1 1 0
   fi
 fi

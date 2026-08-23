@@ -9,10 +9,14 @@ MODEL_HOST=${MODEL_HOST:-/nvme/lexar-2/ai/models/Qwen3.8-27B-heretic-ara-fp8-mag
 MODEL=/models/$(basename "$MODEL_HOST")
 MODEL_NAME=${MODEL_NAME:-Qwen3.8-27B-heretic-ara-fp8}
 WEIGHT_QUANTIZATION=${WEIGHT_QUANTIZATION:-fp8}
-GPU_MEMORY_UTILIZATION=0.90
+GPU_MEMORY_UTILIZATION=0.85
 READINESS_TIMEOUT=3600
-MAX_MODEL_LEN=32768
+MAX_MODEL_LEN=16384
 MAX_NUM_BATCHED_TOKENS=${MAX_NUM_BATCHED_TOKENS:-2048}
+MAX_NUM_SEQS=${MAX_NUM_SEQS:-8}
+ATTENTION_BACKEND=${ATTENTION_BACKEND:-ROCM_AITER_UNIFIED_ATTN}
+ADDITIONAL_CONFIG_JSON=${ADDITIONAL_CONFIG_JSON:-}
+SPECULATIVE_CONFIG_JSON=${SPECULATIVE_CONFIG_JSON:-}
 ENFORCE_EAGER=0
 DISABLE_CUDAGRAPH=0
 
@@ -93,15 +97,21 @@ server_args=(
   "--tensor-parallel-size=${TP}"
   "--gpu-memory-utilization=${GPU_MEMORY_UTILIZATION}"
   "--max-model-len=${MAX_MODEL_LEN}"
-  --max-num-seqs=8
+  "--max-num-seqs=${MAX_NUM_SEQS}"
   "--max-num-batched-tokens=${MAX_NUM_BATCHED_TOKENS}"
-  --attention-backend=ROCM_AITER_UNIFIED_ATTN
+  "--attention-backend=${ATTENTION_BACKEND}"
 )
 if [[ $WEIGHT_QUANTIZATION != auto ]]; then
   server_args+=("--quantization=${WEIGHT_QUANTIZATION}")
 fi
 if [[ $SPEC == on ]]; then
-  server_args+=('--speculative-config={"method":"mtp","num_speculative_tokens":8,"attention_backend":"ROCM_AITER_UNIFIED_ATTN","disable_padded_drafter_batch":true}')
+  if [[ -z $SPECULATIVE_CONFIG_JSON ]]; then
+    SPECULATIVE_CONFIG_JSON='{"method":"mtp","num_speculative_tokens":8,"attention_backend":"ROCM_AITER_UNIFIED_ATTN","disable_padded_drafter_batch":true}'
+  fi
+  server_args+=("--speculative-config=${SPECULATIVE_CONFIG_JSON}")
+fi
+if [[ -n $ADDITIONAL_CONFIG_JSON ]]; then
+  server_args+=("--additional-config=${ADDITIONAL_CONFIG_JSON}")
 fi
 if ((ENFORCE_EAGER)); then
   server_args+=(--enforce-eager)
@@ -186,6 +196,7 @@ HIP_VISIBLE_DEVICES=$gpu_devices RADIANCE_IMAGE="$IMAGE" "${SCRIPT_DIR}/capture_
   --suite "$SUITE" --kv-cache-dtype fp8 --max-model-len "$MAX_MODEL_LEN" \
   --weight-quantization "$WEIGHT_QUANTIZATION" \
   --max-num-batched-tokens "$MAX_NUM_BATCHED_TOKENS" \
+  --max-num-seqs "$MAX_NUM_SEQS" \
   --enforce-eager "$ENFORCE_EAGER" --disable-cudagraph "$DISABLE_CUDAGRAPH" --notes "$NOTES"
 
 MODEL_HOST="$MODEL_HOST" MODEL_NAME="$MODEL_NAME" "${SCRIPT_DIR}/run_suite.sh" \

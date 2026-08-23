@@ -46,6 +46,7 @@ def main() -> None:
     parser.add_argument("--disable-cudagraph", type=int, choices=(0, 1), required=True)
     parser.add_argument("--weight-quantization", required=True)
     parser.add_argument("--max-num-batched-tokens", type=int, required=True)
+    parser.add_argument("--max-num-seqs", type=int, required=True)
     parser.add_argument("--notes", default="")
     args = parser.parse_args()
 
@@ -72,6 +73,7 @@ def main() -> None:
             "disable_cudagraph": bool(args.disable_cudagraph),
             "weight_quantization": args.weight_quantization,
             "max_num_batched_tokens": args.max_num_batched_tokens,
+            "max_num_seqs": args.max_num_seqs,
             "container": args.container,
             "image": args.image,
             "image_inspect": command("docker", "image", "inspect", args.image),
@@ -116,7 +118,11 @@ def main() -> None:
         },
         "environment": {
             key: os.environ[key]
-            for key in ("HIP_VISIBLE_DEVICES",)
+            for key in (
+                "HIP_VISIBLE_DEVICES",
+                "HIP_FORCE_DEV_KERNARG",
+                "TORCH_BLAS_PREFER_HIPBLASLT",
+            )
             if key in os.environ
         },
     }
