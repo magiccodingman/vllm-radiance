@@ -113,9 +113,9 @@ services:
     devices:
       - /dev/kfd:/dev/kfd
       - /dev/dri:/dev/dri
-    group_add:                # GPU access: set to YOUR host's GIDs:
-      - "RENDER_GID"          #   getent group render | cut -d: -f3
-      - "VIDEO_GID"           #   getent group video  | cut -d: -f3
+    group_add:                # Current host defaults; override if the group IDs change.
+      - "${RENDER_GID:-991}"   #   getent group render | cut -d: -f3
+      - "${VIDEO_GID:-44}"     #   getent group video  | cut -d: -f3
     cap_add:
       - SYS_PTRACE            # py-spy
       - SYS_NICE              # numactl mempolicy syscalls (only needed if you enable RADIANCE_NUMA_BIND)
