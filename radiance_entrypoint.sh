@@ -91,7 +91,7 @@ if [ "${RADIANCE_RUN_BWTEST:-0}" = "1" ] && ! command -v rocm-bandwidth-test >/d
 fi
 if [ "${RADIANCE_RUN_BWTEST:-0}" = "1" ] && command -v rocm-bandwidth-test >/dev/null 2>&1; then
   (
-    report=$(timeout "${RADIANCE_BWTEST_TIMEOUT:-150}" rocm-bandwidth-test 2>&1) \
+    report=$(timeout 150 rocm-bandwidth-test 2>&1) \
       || report="${report}"$'\n'"(rocm-bandwidth-test exited non-zero / timed out)"
     # same colour opt-out the banner honours, so a log scraper gets plain text everywhere
     _c=$'\033[1;38;5;39m'; _r=$'\033[0m'
@@ -101,8 +101,9 @@ if [ "${RADIANCE_RUN_BWTEST:-0}" = "1" ] && command -v rocm-bandwidth-test >/dev
   ) &
 fi
 
-# Synchronous banner + arch / P2P / optimizations / versions checks.
-python /opt/radiance_preamble.py || true
+# Synchronous banner + arch / P2P / optimizations / versions checks. The serve's own args are
+# passed through so the banner can report the attention backend that was actually selected.
+python /opt/radiance_preamble.py "$@" || true
 
 # Hand off. exec so vLLM becomes PID 1 and receives signals directly; the backgrounded
 # bandwidth job keeps its inherited stdout and prints its report when it finishes. When

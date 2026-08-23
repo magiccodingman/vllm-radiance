@@ -5,18 +5,19 @@ Mirrors vLLM's CustomAllreduce (ca_comm) interface, so it slots into CudaCommuni
 existing size-gated dispatch. should_custom_ar returns True only for small messages in the win band;
 larger or other messages fall through to RCCL.
 
-Kernel: radiance_ar_ext (pybind11 + HIP .so), PUSH model. Each rank writes its input into the peer's
-IPC scratch, then reduces (local input + peer data now in my scratch) into out. Only scratch and flags
+Kernels: r4d.ar_oneshot_2rank_exact (exact bf16) and r4d.ar_oneshot_2rank_wht6 (Walsh-Hadamard rotated
+6-bit payload, used for large messages when RADIANCE_USE_R4D_AR_QUANT=1). Both come from the R4D gfx1201 kernel
+library; both are one-shot push all-reduces for exactly two P2P-connected ranks, which is what their
+names say, and they share the same scratch, flags and seq counters. PUSH model. Each rank writes its
+input into the peer's IPC scratch, then reduces (local input + peer data now in the local scratch) into out. Only scratch and flags
 are IPC-shared; input/output stay local, so no cudagraph buffer registration is needed. cudagraph-safe:
 the sequence number is a device-resident counter the kernel increments (a host-passed seq would freeze
 at capture), and scratch is double-buffered by seq parity. Multi-block: each block owns a contiguous
 chunk and drives its own flag handshake, spreading the push across CUs (PCIe) and the reduce across CUs.
 
 Env:
-  RADIANCE_FAST_REDUCE (1)     1 = install the kernel on the TP group, 0 = RCCL
-  RADIANCE_AR_MAX_KB (32768)   messages up to this size use the kernel; larger fall back to RCCL
-  RADIANCE_AR_QUANT (1)        1 = quantize the payload to block-scaled fp8 (e4m3) for large messages
-  RADIANCE_AR_QUANT_MIN_KB (128) fp8 only for messages >= this size (smaller stay on the bf16 kernel)
+  RADIANCE_USE_R4D_AR (1)      1 = install the kernel on the TP group, 0 = RCCL
+  RADIANCE_USE_R4D_AR_QUANT (1) 1 = compress the payload (rotated 6-bit, group-scaled) for large messages
 """
 import os
 import sys
@@ -26,6 +27,14 @@ import torch
 import torch.distributed as dist
 
 _DTYPE_CODE = {torch.bfloat16: 0, torch.float16: 1, torch.float32: 2}
+
+# Largest message the kernel takes; anything above it falls back to RCCL. Sized to hold one prefill
+# chunk's all-reduce (4096 tokens x 5120 channels x bf16 = 40 MiB), so a serve running the shipped
+# --max-num-batched-tokens keeps the kernel for prefill as well as decode. Costs 2x this in IPC
+# scratch per rank, which is trivial on 32 GB. The kernel is bit-identical to RCCL at every size.
+_MAX_BYTES = 49152 * 1024
+# Below this the exact bf16 kernel wins: compression only pays once the transfer is bandwidth-bound.
+_QUANT_MIN_BYTES = 128 * 1024
 
 
 def _log(msg):
@@ -39,6 +48,8 @@ class RadianceAllreduce:
 
     def __init__(self, group, device):
         self.disabled = True
+        self._ar_exact = None
+        self._ar_wht6 = None
         self.group = group
         try:
             self.world_size = dist.get_world_size(group)
@@ -46,33 +57,38 @@ class RadianceAllreduce:
         except Exception as e:
             _log(f"custom AR: no process group ({e!r})")
             return
-        if self.world_size != 2:
-            _log(f"custom AR disabled: world_size={self.world_size} (only 2 supported)")
-            return
-
         try:
-            import radiance_ar_ext as ext
+            import r4d as ext
         except Exception as e:
-            _log(f"custom AR disabled: radiance_ar_ext import failed ({e!r})")
+            _log(f"custom AR disabled: r4d import failed ({e!r})")
             return
         self._ext = ext
+
+        # "exactly 2 ranks" is a property of the kernel, not of this file, so ask the library
+        # whether it has an all-reduce for this group instead of keeping a copy of the number.
+        # The dtype in the question is the production one; the kernel takes fp16 and fp32 through
+        # the same entry point, and should_custom_ar() is what gates a message's dtype per call.
+        name = ext.select("allreduce", world_size=self.world_size, exact=1, dtype="bf16")
+        if name is None:
+            _log(f"custom AR disabled: no exact all-reduce kernel for "
+                 f"world_size={self.world_size}")
+            return
+        self._ar_exact = getattr(ext, name)
 
         if isinstance(device, int):
             device = torch.device(f"cuda:{device}")
         self.device = device
-        # 32MB covers decode and prefill messages; larger falls back to RCCL. Buffer cost is
-        # 2*max_bytes/rank, trivial on 32GB. The kernel is bit-identical to RCCL at every size.
-        self.max_bytes = int(os.environ.get("RADIANCE_AR_MAX_KB", "32768")) * 1024
+        self.max_bytes = _MAX_BYTES
         self.max_bytes = (self.max_bytes // 16) * 16     # 16B (uint4) alignment
         self.slot16 = self.max_bytes // 16               # per-slot capacity in 16B words
         self.drain = 3        # s_wait_storecnt drain (correct for fine-grained/uncached scratch)
         self.acq = 0          # no explicit acquire fence (uncached reads are already fresh)
         self.nt = 1024        # threads/block (tuned)
         self.min_nb = 4       # block count scales with message size, clamped to [min_nb, max_nb]
-        self.max_nb = min(24, int(ext.MAX_BLOCKS))
+        self.max_nb = min(24, int(ext.AR_MAX_BLOCKS))
         self.words_per_block = 1400   # 16B words/block target for the block-count heuristic
         fine = True           # fine-grained (uncached) IPC scratch: posts straight to the fabric
-        maxb = int(ext.MAX_BLOCKS)
+        maxb = int(ext.AR_MAX_BLOCKS)
 
         try:
             torch.cuda.set_device(self.device)
@@ -84,8 +100,8 @@ class RadianceAllreduce:
             dist.all_gather_object(sc_handles, sc_h, group=group)
             dist.all_gather_object(fl_handles, fl_h, group=group)
             peer = 1 - self.rank
-            self._peer_scratch = ext.open_shared(sc_handles[peer])
-            self._peer_flags = ext.open_shared(fl_handles[peer])
+            self._peer_scratch = ext.ar_ipc_open(sc_handles[peer])
+            self._peer_flags = ext.ar_ipc_open(fl_handles[peer])
             # per-BLOCK device-resident seq counters (kernel increments -> replay-safe;
             # both ranks run identical graph sequences so seq_ctr[b] stays in lockstep)
             self._seq = torch.zeros(maxb, dtype=torch.int32, device=self.device)
@@ -98,36 +114,51 @@ class RadianceAllreduce:
              f"finegrained={fine_used} drain={self.drain} acq={self.acq} nt={self.nt} "
              f"nb={self.min_nb}..{self.max_nb})")
 
-        # Optional fp8 payload path (RADIANCE_AR_QUANT). Additive; shares this class's scratch,
-        # flags and seq counters. Only large (bandwidth-bound) messages take it; smaller ones keep
-        # the exact bf16 kernel above. On by default; set 0 for the exact (RCCL-identical) bf16 path.
-        self.ar_quant = os.environ.get("RADIANCE_AR_QUANT", "1") == "1"
-        self.quant_min_bytes = int(os.environ.get("RADIANCE_AR_QUANT_MIN_KB", "128")) * 1024
-        self.qnt = 1024        # threads/block for the fp8 push (tuned; saturates PCIe)
-        self.qmax_nb = 48      # block cap for the fp8 path (tuned)
+        # Optional compressed payload path (RADIANCE_USE_R4D_AR_QUANT). Additive; shares this class's
+        # scratch, flags and seq counters. Only large (bandwidth-bound) messages take it; smaller
+        # ones keep the exact bf16 kernel above. On by default; set 0 for the exact
+        # (RCCL-identical) bf16 path.
+        self.ar_quant = os.environ.get("RADIANCE_USE_R4D_AR_QUANT", "1") == "1"
+        self.quant_min_bytes = _QUANT_MIN_BYTES
+        self.qnt = 1024        # threads/block for the compressed push (wire-bound; not sensitive)
+        self.qmax_nb = 48      # block cap for the compressed path
         self._qext = None
         self._qgroup = 0
+        self._locpk = None
         if self.ar_quant:
             try:
-                import radiance_ar_quant_ext as qext
+                import r4d as qext
+                self._qgroup = int(qext.AR_WHT6_GROUP)
+                # numel is the one per-message term in the question: a group is the smallest
+                # message this path will send, and _quant_ok() enforces the multiple per call.
+                qname = qext.select("allreduce", world_size=self.world_size, exact=0,
+                                    dtype="bf16", numel=self._qgroup)
+                if qname is None:
+                    raise RuntimeError("no lossy all-reduce kernel in this build")
+                self._ar_wht6 = getattr(qext, qname)
                 self._qext = qext
-                self._qgroup = int(qext.GROUP)
-                _log(f"AR_QUANT ON (fp8 payload; min={self.quant_min_bytes // 1024}KB "
-                     f"group={self._qgroup} nt={self.qnt} max_nb={self.qmax_nb})")
+                # This rank's half, kept so the reduce folds exactly the bytes it sent. Same
+                # scale_off split as the peer scratch. Held on the instance for a stable address
+                # under cudagraph replay.
+                loc_bytes = self.max_bytes // 2 + self.max_bytes // 32 + 4096
+                self._locpk = torch.empty(loc_bytes, dtype=torch.uint8, device=self.device)
+                _log(f"AR_QUANT ON (rotated {int(qext.AR_WHT6_BITS)}-bit packed payload; "
+                     f"min={self.quant_min_bytes // 1024}KB group={self._qgroup} "
+                     f"nt={self.qnt} max_nb={self.qmax_nb} local={loc_bytes >> 20}MB)")
             except Exception as e:
-                _log(f"AR_QUANT disabled: radiance_ar_quant_ext import failed ({e!r})")
+                _log(f"AR_QUANT disabled: {e!r}")
                 self.ar_quant = False
 
     def _alloc(self, nbytes, fine):
         """Allocate a shared buffer, falling back fine->coarse if fine-grained IPC fails.
         Deterministic across ranks (same env/HW), so the fallback stays symmetric."""
         try:
-            ptr, h = self._ext.alloc_shared(nbytes, fine)
+            ptr, h = self._ext.ar_ipc_alloc(nbytes, fine)
             return ptr, h, fine
         except Exception as e:
             if fine:
                 _log(f"fine-grained alloc failed ({e!r}); falling back to coarse")
-                ptr, h = self._ext.alloc_shared(nbytes, False)
+                ptr, h = self._ext.ar_ipc_alloc(nbytes, False)
                 return ptr, h, False
             raise
 
@@ -156,7 +187,7 @@ class RadianceAllreduce:
         return nb
 
     def _quant_ok(self, inp: torch.Tensor) -> bool:
-        # fp8 path only for large (bandwidth-bound) bf16/fp16 messages that tile the scale group.
+        # compressed path only for large (bandwidth-bound) bf16/fp16 messages that tile the group.
         if not self.ar_quant or self._qext is None:
             return False
         if inp.dtype not in (torch.bfloat16, torch.float16):
@@ -181,15 +212,16 @@ class RadianceAllreduce:
         nbytes = inp.numel() * inp.element_size()
         stream = torch.cuda.current_stream().cuda_stream
         if self._quant_ok(inp):
-            self._qext.all_reduce_fp8(
+            self._ar_wht6(
                 self._peer_scratch, self._scratch, self._peer_flags, self._flags,
-                self._seq.data_ptr(), self.max_bytes, self.max_bytes // 2,
+                self._seq.data_ptr(), self._locpk.data_ptr(),
+                self.max_bytes, self.max_bytes // 2,
                 inp.data_ptr(), out.data_ptr(), inp.numel(),
                 _DTYPE_CODE[inp.dtype], stream, self._nblocks_q(nbytes), self.qnt,
                 self.drain, self.acq,
             )
         else:
-            self._ext.all_reduce_mb(
+            self._ar_exact(
                 self._peer_scratch, self._scratch, self._peer_flags, self._flags,
                 self._seq.data_ptr(), self.slot16,
                 inp.data_ptr(), out.data_ptr(), inp.numel(),
@@ -207,10 +239,15 @@ class RadianceAllreduce:
 
 def install_custom_ar():
     """Wrap CudaCommunicator.all_reduce so small TP messages take the one-shot kernel and everything
-    else falls through to RCCL. We wrap rather than replace ca_comm because vLLM's RocmAiter fusion
+    else falls through to RCCL. Wrapping rather than replacing ca_comm is required: vLLM's RocmAiter fusion
     pass asserts isinstance(ca_comm, CustomAllreduce), and ca_comm is already inert on ROCm. Env-gated
-    by RADIANCE_FAST_REDUCE, idempotent."""
-    if os.environ.get("RADIANCE_FAST_REDUCE", "1") != "1":
+    by RADIANCE_USE_R4D_AR, idempotent."""
+    # RADIANCE_USE_R4D is the master switch for the whole libr4d integration (patch_r4d.py):
+    # with it off the TP group keeps RCCL, exactly as in an image built without the library.
+    if os.environ.get("RADIANCE_USE_R4D", "1") != "1":
+        _log("custom all-reduce not installed: RADIANCE_USE_R4D=0")
+        return
+    if os.environ.get("RADIANCE_USE_R4D_AR", "1") != "1":
         return
     from vllm.distributed.device_communicators.cuda_communicator import CudaCommunicator
 
@@ -242,4 +279,4 @@ def install_custom_ar():
     CudaCommunicator.__init__ = _patched_init
     CudaCommunicator.all_reduce = _patched_all_reduce
     CudaCommunicator._radiance_ar_patched = True
-    _log("fast-reduce hook armed (RADIANCE_FAST_REDUCE=1, all_reduce wrap)")
+    _log("fast-reduce hook armed (RADIANCE_USE_R4D_AR=1, all_reduce wrap)")

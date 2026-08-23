@@ -34,7 +34,9 @@ services:
       # max_num_scheduled_tokens=2048, so this just makes it explicit.
       - --max-num-batched-tokens=${MAX_NUM_BATCHED_TOKENS:-2048}
       - --kv-cache-dtype=fp8
-      - --attention-backend=ROCM_AITER_UNIFIED_ATTN
+      # R4D is the fastest qualified head-256/GQA6 backend on gfx1201. Set
+      # ATTENTION_BACKEND=ROCM_AITER_UNIFIED_ATTN for the measured fallback.
+      - --attention-backend=${ATTENTION_BACKEND:-R4D}
       # Automatic prefix caching (APC) for shared prefixes (system prompts, RAG / agentic context).
       # Both flags are required and ON here: this is a GDN hybrid, and hybrid models default their APC
       # support flag off ("experimental"), so vLLM SILENTLY disables prefix caching unless
@@ -53,7 +55,7 @@ services:
       # upside (editing/RAG) but needs GPU_UTIL=0.90 to stay safe at 8 concurrent sequences (else CUDA OOM).
       # Baseline serving is deliberately non-speculative. Enable this explicitly
       # for the separate MTP milestone after validating the base engine.
-      # - '--speculative-config={"method":"mtp","num_speculative_tokens":${MTP_NSPEC:-8},"attention_backend":"ROCM_AITER_UNIFIED_ATTN","disable_padded_drafter_batch":true}'
+      # - '--speculative-config={"method":"mtp","num_speculative_tokens":${MTP_NSPEC:-8},"attention_backend":"R4D","disable_padded_drafter_batch":true}'
       # disable_padded_drafter_batch (above) is incompatible with async scheduling; vLLM would
       # otherwise auto-enable async then disable it with a runtime warning. Turn it off explicitly.
       - --no-async-scheduling
@@ -81,17 +83,17 @@ services:
       VLLM_ROCM_USE_AITER_FP8BMM: "0"
       VLLM_ROCM_USE_AITER_FP4BMM: "0"
       VLLM_ROCM_USE_AITER_RMSNORM: "0"
-      # radiance rms+group-fp8-quant fusion coverage fix (also baked default 1; explicit here).
+      # libr4d master switch: R4D attention, GDN, ViT, TP2 all-reduce, and
+      # skinny router GEMM. Unsupported geometries fall back per operator.
+      RADIANCE_USE_R4D: "${RADIANCE_USE_R4D:-1}"
+      RADIANCE_USE_R4D_GDN: "${RADIANCE_USE_R4D_GDN:-1}"
+      RADIANCE_R4D_REPORT: "${RADIANCE_R4D_REPORT:-1}"
+      RADIANCE_USE_R4D_AR: "${RADIANCE_USE_R4D_AR:-1}"
+      # WHT6 payload for large TP2 reductions. Quantized, so set 0 for the
+      # exact bf16 R4D all-reduce control.
+      RADIANCE_USE_R4D_AR_QUANT: "${RADIANCE_USE_R4D_AR_QUANT:-1}"
+      # radiance rms+group-fp8-quant fusion coverage (also baked default 1).
       RADIANCE_FUSE_RMS_QUANT: "1"
-      # gated-delta-net KKt gram on the fp16 matrix cores (WMMA) instead of the fp32 scalar path;
-      # much faster prefill + cold start on RDNA4. Baked default 1; set "0" for the stock fp32 dot.
-      RADIANCE_GDN_WMMA: "1"
-      # native head_dim-72 flash attention for the vision encoder (multimodal). ~1.5-2x vs SDPA on
-      # RDNA4; only used when serving vision (no effect under --language-model-only). Default 1.
-      RADIANCE_VIT_FLASH: "1"
-      # fp8 all-reduce payload for large (prefill) messages; baked ON. Not bit-identical to RCCL;
-      # set "0" for the exact bf16 all-reduce.
-      RADIANCE_AR_QUANT: "1"
       # optional NUMA pinning of the vLLM fleet to the GPU-local node(s). Off by default (no-op on
       # single-node hosts). Set "auto" to detect, or explicit nodes (e.g. "0" / "0,1"). Requires the
       # SYS_NICE cap above. Equivalent to passing --numa-bind in command:.
@@ -102,10 +104,10 @@ services:
       # disable (byte-identical stock MTP). The two knobs below are the only tunables.
       RADIANCE_DYNAMIC_DRAFT: "1"
       RADIANCE_DRAFT_SCHEDULE: "1:8,2:7,4:6,8:5,16:4"
-      RADIANCE_DRAFT_TAU: "0.35"
-      # custom bf16 MoE-gate GEMM for the n in [6,16] band rocBLAS serves poorly (fine-grained MoE,
-      # e.g. Qwen3.6-35B-A3B). Baked ON; inert for models whose gate is not [256,2048]. Set "0" for rocBLAS.
-      RADIANCE_MOE_ROUTER: "1"
+      RADIANCE_DRAFT_TAU: "${RADIANCE_DRAFT_TAU:-0.28}"
+      # Exact-rerank int2 MTP head. Opt-in until model-level qualification;
+      # it has no effect when speculative MTP is disabled.
+      RADIANCE_FAST_DRAFT: "${RADIANCE_FAST_DRAFT:-0}"
       NCCL_PROTO: Simple
       # throttle inductor compile workers to limit peak compile-time RAM (defensive).
       TORCHINDUCTOR_COMPILE_THREADS: "4"

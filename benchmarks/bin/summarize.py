@@ -147,7 +147,12 @@ def summarize_telemetry(run_root: Path) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("run_root", type=Path)
+    parser.add_argument("--telemetry-only", action="store_true")
     args = parser.parse_args()
+
+    if args.telemetry_only:
+        summarize_telemetry(args.run_root)
+        return
 
     rows: list[dict[str, object]] = []
     for path in sorted(args.run_root.glob("**/raw/*.json")):

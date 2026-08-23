@@ -12,8 +12,8 @@ docker-compose.override.yml
 models/
 vllm-cache/
 benchmarks/runs/
-# build outputs of the Makefile dev tool: the image compiles its own kernels from the .hip
-# sources, and rocm-bandwidth-test is built in stage 1. A stale local copy must never be
-# mistaken for what the image ships.
+# local R4D checkout/build output; the image fetches its own immutable pin
+libr4d/
+# build outputs; rocm-bandwidth-test is built in stage 1
 *.so
 rocm-bandwidth-test

@@ -20,8 +20,8 @@ services:
       - --max-model-len=16384
       - --max-num-seqs=8
       - --max-num-batched-tokens=2048
-      - --attention-backend=ROCM_AITER_UNIFIED_ATTN
-#      - '--speculative-config={"method":"mtp","num_speculative_tokens":8,"attention_backend":"ROCM_AITER_UNIFIED_ATTN","disable_padded_drafter_batch":true}'
+      - --attention-backend=R4D
+#      - '--speculative-config={"method":"mtp","num_speculative_tokens":8,"attention_backend":"R4D","disable_padded_drafter_batch":true}'
       - --no-async-scheduling
       - --host=0.0.0.0
       - --port=8000
@@ -47,11 +47,17 @@ services:
 
       RADIANCE_PRESHUFFLE: "${RADIANCE_PRESHUFFLE:-1}"
       RADIANCE_ATTN_TUNE: "${RADIANCE_ATTN_TUNE:-1}"
-      RADIANCE_FAST_REDUCE: "${RADIANCE_FAST_REDUCE:-1}"
-      RADIANCE_AR_MAX_KB: "${RADIANCE_AR_MAX_KB:-32768}"
+      RADIANCE_USE_R4D: "${RADIANCE_USE_R4D:-1}"
+      RADIANCE_USE_R4D_GDN: "${RADIANCE_USE_R4D_GDN:-1}"
+      RADIANCE_R4D_REPORT: "${RADIANCE_R4D_REPORT:-1}"
+      RADIANCE_USE_R4D_AR: "${RADIANCE_USE_R4D_AR:-1}"
+      RADIANCE_USE_R4D_AR_QUANT: "${RADIANCE_USE_R4D_AR_QUANT:-1}"
       RADIANCE_FUSE_RMS_QUANT: "${RADIANCE_FUSE_RMS_QUANT:-1}"
       RADIANCE_DYNAMIC_DRAFT: "${RADIANCE_DYNAMIC_DRAFT:-1}"
       RADIANCE_NGRAM_EXTENSION: "${RADIANCE_NGRAM_EXTENSION:-1}"
+      RADIANCE_DRAFT_SCHEDULE: "${RADIANCE_DRAFT_SCHEDULE:-1:8,2:7,4:6,8:5,16:4}"
+      RADIANCE_DRAFT_TAU: "${RADIANCE_DRAFT_TAU:-0.28}"
+      RADIANCE_FAST_DRAFT: "${RADIANCE_FAST_DRAFT:-0}"
 
       VLLM_CACHE_ROOT: /cache/vllm
       TORCHINDUCTOR_CACHE_DIR: /cache/inductor
@@ -64,11 +70,6 @@ services:
       LMCACHE_MAX_LOCAL_DISK_SIZE: "500.0"
       LMCACHE_CHUNK_SIZE: "256"
       LMCACHE_EXTRA_CONFIG: '{"use_odirect":true,"disk_io_threads":8}'
-
-      RADIANCE_GDN_WMMA: "${RADIANCE_GDN_WMMA:-1}"
-      RADIANCE_VIT_FLASH: "${RADIANCE_VIT_FLASH:-1}"
-      RADIANCE_AR_QUANT: "${RADIANCE_AR_QUANT:-1}"
-      RADIANCE_AR_QUANT_MIN_KB: "${RADIANCE_AR_QUANT_MIN_KB:-128}"
 
       AITER_ROOT_DIR: /cache/aiter
       HIP_FORCE_DEV_KERNARG: "${HIP_FORCE_DEV_KERNARG:-0}"
