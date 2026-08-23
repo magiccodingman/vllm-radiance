@@ -79,20 +79,61 @@ no code change. If you override these with `--build-arg`, move them together and
 
 ## Run
 
-`docker-compose.yml` is the canonical way to serve. Point it at your model directory and your GPU group GIDs,
-then:
+`docker-compose.yml` is the canonical way to serve. Start from the portable
+environment template:
 
 ```bash
-# The host default is /nvme/lexar-2/ai/models; override MODELS if needed.
+cp .env.example .env
+# Edit MODELS, MODEL_PATH, and SERVED_MODEL_NAME in the private .env.
+mkdir -p vllm-cache
 docker compose up -d          # start; follow with: docker compose logs -f
 docker compose down           # stop
 ```
 
-The compose defaults target the local
-`Qwen3.8-27B-heretic-ara-fp8-magiccodingman` checkpoint with native FP8 weights,
-mandatory FP8 KV, eight maximum sequences, a 16K envelope, and 85% GPU
-allocation. Speculative decoding is commented out for a clean baseline. Override
-`MODEL_PATH`, `SERVED_MODEL_NAME`, and `MODELS` without editing the file.
+The public Compose contains no machine-local paths or group IDs. Its portable
+fallbacks are `./models`, `./vllm-cache`, `/models/model`, and the published
+`magiccodingman/vllm-radiance:latest` image. The tuned starting envelope uses
+native FP8 weights, mandatory FP8 KV, TP2, a 16K maximum length, an eight-request
+admission ceiling, and 85% GPU allocation. Speculative decoding remains
+commented out for the correctness-qualified baseline. Override every setting in
+`.env` without editing the public file.
+
+For source development, copy `docker-compose.dev.example.yml` to
+`docker-compose.dev.yml` and layer it explicitly:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+```
+
+The developer overlay and `.env` are both gitignored and excluded from Docker
+build contexts. The release pipeline fails closed if a developer overlay is
+ever force-added, preventing local paths and image tags from reaching a release.
+
+### Context and concurrency capacity
+
+`MAX_NUM_SEQS` is an admission ceiling, not a guarantee that every admitted
+request can remain fully resident at `MAX_MODEL_LEN`. The following conservative
+pairs were measured on two 32 GiB R9700s with the native-FP8 Qwen3.8-27B target,
+FP8 KV, the 2.34 GiB selective-FP8 DFlash2 K5 drafter, TP2 `PIECEWISE` graphs,
+85% GPU allocation, and no CPU/KV offload:
+
+| Maximum context per request | Suggested `MAX_NUM_SEQS` | Validated simultaneous submissions |
+|---:|---:|---:|
+| 8K | 8 | 8 |
+| 16K | 7 | 8 |
+| 32K | 5 | 6 |
+| 64K | 3 | 3 |
+| 128K | 2 | 2 |
+| 256K | 1 | 1 |
+
+All submissions completed. The larger 16K/32K bursts use normal scheduler
+queueing; the suggested values stay below the engine-reported fully resident KV
+capacity. Minimum observed physical headroom was 4.41 GiB per GPU. These values
+are deliberately model/profile-specific—larger models, BF16 weights/KV,
+different graph modes, or a different drafter need their own capacity check.
+DFlash2 itself remains experimental because strict greedy equivalence has not
+qualified; the table proves memory/serving capacity, not losslessness. See
+[docs/COMPOSE_CAPACITY.md](docs/COMPOSE_CAPACITY.md) for exact runs and method.
 
 To serve the fine-grained-MoE **Qwen3.6-35B-A3B-FP8**, point it
 at that model and raise the batch-token budget: `--max-num-batched-tokens` must be **≥ 2240** (align mode
@@ -114,8 +155,9 @@ card: the drafter has a head-512 layer, so pass `"attention_backend":"ROCM_AITER
 speculative config (the usual `flash_attn` caps at head 256). For example:
 `--speculative-config '{"method":"mtp","model":"/models/google/gemma-4-31B-it-assistant","num_speculative_tokens":8,"attention_backend":"ROCM_AITER_UNIFIED_ATTN","disable_padded_drafter_batch":true}' --no-async-scheduling`.
 
-All tunables are `${VAR:-default}` in the compose file; override via the shell or a `.env` file without
-editing it. The full knob list (kernel toggles, draft controller, AITER routing, …) is in
+All tunables are `${VAR:-default}` in the compose file; override via the shell,
+a private `.env`, or an ignored developer overlay without editing it. The full
+knob list (kernel toggles, draft controller, AITER routing, …) is in
 [DOCKERHUB.md](DOCKERHUB.md).
 
 ## What's inside

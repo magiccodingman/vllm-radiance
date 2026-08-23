@@ -7,6 +7,8 @@ __pycache__/
 .DS_Store
 # local deploy state (bind-mounted at runtime, never built in)
 .env
+docker-compose.dev.yml
+docker-compose.override.yml
 models/
 vllm-cache/
 benchmarks/runs/

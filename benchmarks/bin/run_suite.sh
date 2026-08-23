@@ -14,6 +14,7 @@ QUICK_CONTEXT_TOKENS=${BENCH_QUICK_CONTEXT_TOKENS:-8192}
 TEMPERATURE=${BENCH_TEMPERATURE:-0}
 WORKLOAD_FILTER=${BENCH_WORKLOADS:-all}
 CORRECTNESS_PROMPTS=${BENCH_CORRECTNESS_PROMPTS:-${BENCH_ROOT}/fixtures/correctness-prompts.json}
+CAPACITY_CASES=${BENCH_CAPACITY_CASES:-"8192:8 16384:7 32768:5 65536:3"}
 
 RUN_DIR=
 CONFIG=
@@ -61,7 +62,7 @@ wants_workload() {
   [[ ,${WORKLOAD_FILTER}, == *,all,* || ,${WORKLOAD_FILTER}, == *,$1,* ]]
 }
 for requested in ${WORKLOAD_FILTER//,/ }; do
-  [[ $requested == all || $requested == decode || $requested == prefill || $requested == context || $requested == correctness ]] || {
+  [[ $requested == all || $requested == decode || $requested == prefill || $requested == context || $requested == capacity || $requested == correctness ]] || {
     echo "Unknown BENCH_WORKLOADS entry: $requested" >&2
     exit 2
   }
@@ -225,6 +226,35 @@ if wants_workload context; then
     ((context_input + 64 > MAX_MODEL_LEN)) && context_input=$((MAX_MODEL_LEN - 64))
     run_one context_quick "$context_input" 64 1 1 1 1
   fi
+fi
+
+# Explicit full-envelope capacity qualification. Each CASE is
+# context_tokens:concurrency; unlike ordinary performance workloads this sends
+# exactly one full wave and is intended to prove that the advertised requests
+# can coexist without CPU/KV offload. Keep the model/server MAX_MODEL_LEN at
+# least as large as the biggest case.
+# Capacity is intentionally explicit-only: BENCH_WORKLOADS=all is the ordinary
+# benchmark suite and must not unexpectedly acquire large, slow admission tests.
+if [[ ,${WORKLOAD_FILTER}, == *,capacity,* ]]; then
+  for case_spec in $CAPACITY_CASES; do
+    [[ $case_spec =~ ^([1-9][0-9]*):([1-9][0-9]*)$ ]] || {
+      echo "BENCH_CAPACITY_CASES entries must be context_tokens:concurrency" >&2
+      exit 2
+    }
+    context_tokens=${BASH_REMATCH[1]}
+    concurrency=${BASH_REMATCH[2]}
+    ((context_tokens <= MAX_MODEL_LEN)) || {
+      echo "Capacity case ${case_spec} exceeds MAX_MODEL_LEN=${MAX_MODEL_LEN}" >&2
+      exit 2
+    }
+    input_tokens=$((context_tokens - 64))
+    ((input_tokens > 0)) || {
+      echo "Capacity context must exceed the 64 output tokens: ${case_spec}" >&2
+      exit 2
+    }
+    run_one "capacity_${context_tokens}" "$input_tokens" 64 \
+      "$concurrency" 1 "$concurrency" 0
+  done
 fi
 
 if [[ $SUITE == quick ]]; then

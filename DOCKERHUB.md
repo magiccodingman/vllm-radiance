@@ -260,7 +260,7 @@ With an empty cache the first start spends a few extra minutes compiling Triton 
 | `--attention-backend` | `ROCM_AITER_UNIFIED_ATTN` | required for the tuned attention path |
 | `--max-model-len` | model dependent | context length per request |
 | `--max-num-seqs` | workload dependent | max concurrent sequences |
-| `--gpu-memory-utilization` | `0.90` to `0.97` | VRAM fraction for weights + KV |
+| `--gpu-memory-utilization` | `0.85` starting point | Leaves measured runtime/drafter headroom; raise only after a model-specific capacity qualification |
 | `--enable-prefix-caching` | on for shared prefixes | enables automatic prefix caching; **required**: hybrid (GDN/mamba) models leave it off by default even though the engine default looks on |
 | `--mamba-cache-mode` | `align` (hybrid models) | makes the linear-attention (GDN) layers prefix-cacheable; pair with `--enable-prefix-caching` on this hybrid. `none` disables mamba-layer caching; `all` is unsupported by this model |
 | `--numa-bind` | omit (off) | multi-NUMA-node hosts only: pin the fleet to the GPU-local node(s). `auto` / `<nodes>` / `interleave` / `preferred=<n>` / `none`. Same as `RADIANCE_NUMA_BIND`; needs `--cap-add SYS_NICE`. See NUMA pinning above. |
