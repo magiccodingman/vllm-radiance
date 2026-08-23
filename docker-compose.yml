@@ -48,8 +48,8 @@ services:
       # per linear-attn layer (slightly lower max concurrency at full context). Remove both flags to
       # disable. Do NOT use --mamba-cache-mode=all (unsupported by this model) and do NOT set
       # VLLM_SSM_CONV_STATE_LAYOUT=DS (asserts under MTP + align).
-      - --enable-prefix-caching
-      - --mamba-cache-mode=align
+      - ${PREFIX_CACHING_FLAG:---enable-prefix-caching}
+      - --mamba-cache-mode=${MAMBA_CACHE_MODE:-align}
       # Baseline serving is deliberately non-speculative. For Qwen's in-checkpoint
       # MTP head, opt in from .env without editing this file; see
       # RADIANCE_SPECULATIVE_CONFIG and RADIANCE_FAST_DRAFT below.
@@ -109,6 +109,12 @@ services:
       # one CLI argument unless an explicit --speculative-config is already present.
       # Qwen fast-MTP example is provided (commented) in .env.example.
       RADIANCE_SPECULATIVE_CONFIG: "${RADIANCE_SPECULATIVE_CONFIG:-}"
+      # Optional raw vLLM compilation-config JSON, handled like the speculative
+      # config above. The measured DFlash2 profile uses PIECEWISE graphs.
+      RADIANCE_COMPILATION_CONFIG: "${RADIANCE_COMPILATION_CONFIG:-}"
+      # DFlash2 requires the V2-compatible model runner. Normal Radiance retains
+      # the pinned stack's default unless this is explicitly enabled.
+      VLLM_USE_V2_MODEL_RUNNER: "${VLLM_USE_V2_MODEL_RUNNER:-0}"
       NCCL_PROTO: Simple
       # throttle inductor compile workers to limit peak compile-time RAM (defensive).
       TORCHINDUCTOR_COMPILE_THREADS: "4"

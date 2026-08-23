@@ -48,6 +48,22 @@ if [ -n "${RADIANCE_SPECULATIVE_CONFIG:-}" ]; then
   fi
 fi
 
+# The DFlash2 profile also needs an explicit graph mode. Keep this optional so
+# ordinary Radiance retains vLLM's normal compilation defaults.
+if [ -n "${RADIANCE_COMPILATION_CONFIG:-}" ]; then
+  _has_compilation_config=0
+  for _arg in "$@"; do
+    case "$_arg" in
+      --compilation-config|--compilation-config=*) _has_compilation_config=1; break ;;
+    esac
+  done
+  if [ "$_has_compilation_config" -eq 1 ]; then
+    echo "[radiance] WARN RADIANCE_COMPILATION_CONFIG ignored because --compilation-config was passed explicitly" >&2
+  else
+    set -- "$@" "--compilation-config=${RADIANCE_COMPILATION_CONFIG}"
+  fi
+fi
+
 # NUMA node ids local to the *visible* AMD GPUs, PCI-bus-ordered to match HIP enumeration.
 _numa_gpu_nodes() {
   local vis n; local -a ordered=() sel=() nodes=()

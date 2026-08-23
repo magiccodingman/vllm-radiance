@@ -193,7 +193,7 @@ Kernel control cases can likewise override the compose defaults from the host,
 including `RADIANCE_PRESHUFFLE`, `RADIANCE_USE_R4D`,
 `RADIANCE_USE_R4D_GDN`, `RADIANCE_USE_R4D_AR`,
 `RADIANCE_USE_R4D_AR_QUANT`, `RADIANCE_FAST_DRAFT`,
-`RADIANCE_SPECULATIVE_CONFIG`, and
+`RADIANCE_SPECULATIVE_CONFIG`, `RADIANCE_COMPILATION_CONFIG`, and
 `VLLM_ROCM_USE_AITER_LINEAR`. Their resolved values are retained by the
 container inspection in each manifest; explicitly supplied values are also
 listed in the manifest environment section.

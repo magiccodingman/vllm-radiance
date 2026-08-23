@@ -119,6 +119,30 @@ Fast MTP remains opt-in because the current strict cross-mode output gate has no
 qualified; the BetterBench result is a performance measurement, not a default-use
 correctness claim.
 
+### Optional DFlash2/V2 drafter
+
+The measured high-throughput DFlash2 K7 profile is also selectable entirely
+from `.env`. Place the selective-FP8 drafter beneath the mounted `MODELS`
+directory (Hugging Face repository
+`magiccodingman/Qwen3.8-27B-heretic-ara-DFlash2-fp8`), adjust its in-container
+path if necessary, and use:
+
+```dotenv
+MAX_MODEL_LEN=8192
+PREFIX_CACHING_FLAG=--no-enable-prefix-caching
+MAMBA_CACHE_MODE=none
+VLLM_USE_V2_MODEL_RUNNER=1
+RADIANCE_COMPILATION_CONFIG='{"cudagraph_mode":"PIECEWISE"}'
+RADIANCE_SPECULATIVE_CONFIG='{"method":"dflash","model":"/models/Qwen3.8-27B-heretic-ara-DFlash2-fp8-magiccodingman","num_speculative_tokens":7,"draft_tensor_parallel_size":2,"attention_backend":"TRITON_ATTN","max_model_len":8192}'
+```
+
+This selects the V2-compatible runner, the measured `PIECEWISE` graph mode,
+TP2 draft sharding, and `TRITON_ATTN` for the drafter while retaining R4D for
+the target. Prefix caching is disabled here to match the published BetterBench
+contract. K7 was the measured c1/c2/c4/c8 winner; K5 remains a useful lower-depth
+control. DFlash2 is experimental and failed the strict cross-mode gate, so this
+profile is intentionally an explicit alternative rather than the default.
+
 For source development, copy `docker-compose.dev.example.yml` to
 `docker-compose.dev.yml` and layer it explicitly:
 

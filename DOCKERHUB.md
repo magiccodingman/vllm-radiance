@@ -48,6 +48,7 @@ defaults. Do not substitute an unpinned `main` checkout or generic PyTorch
 | `RADIANCE_DRAFT_TAU` | `0.28` | confidence-product stop threshold |
 | `RADIANCE_FAST_DRAFT` | `0` | opt-in INT2-g128 MTP head with exact top-32 reranking |
 | `RADIANCE_SPECULATIVE_CONFIG` | unset | raw vLLM speculative-config JSON appended by the entrypoint; explicit CLI config wins |
+| `RADIANCE_COMPILATION_CONFIG` | unset | raw vLLM compilation-config JSON appended by the entrypoint; explicit CLI config wins |
 | `RADIANCE_RUN_BWTEST` | `1` | background topology/P2P bandwidth report at startup |
 
 R4D attention is selected with `--attention-backend=R4D`. AITER attention and
@@ -67,6 +68,22 @@ The first enables R4D MTP with dynamic K8-as-a-ceiling drafting; the second
 enables the INT2-g128 draft-head copy with exact top-32 reranking. An explicit
 `--speculative-config` command argument overrides the environment value. Gemma-4
 is the head-512 exception and must use the AITER backend shown below.
+
+For the experimental DFlash2/V2 alternative, use the complete matching profile
+below (replace the drafter path if its directory name differs):
+
+```dotenv
+MAX_MODEL_LEN=8192
+PREFIX_CACHING_FLAG=--no-enable-prefix-caching
+MAMBA_CACHE_MODE=none
+VLLM_USE_V2_MODEL_RUNNER=1
+RADIANCE_COMPILATION_CONFIG='{"cudagraph_mode":"PIECEWISE"}'
+RADIANCE_SPECULATIVE_CONFIG='{"method":"dflash","model":"/models/Qwen3.8-27B-heretic-ara-DFlash2-fp8-magiccodingman","num_speculative_tokens":7,"draft_tensor_parallel_size":2,"attention_backend":"TRITON_ATTN","max_model_len":8192}'
+```
+
+That is the measured selective-FP8 K7 lane: R4D target attention, Triton draft
+attention, draft TP2, and piecewise graphs. It remains opt-in because strict
+cross-mode equivalence has not qualified.
 
 ## Tested so far
 
