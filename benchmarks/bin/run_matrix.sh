@@ -6,9 +6,9 @@ BENCH_ROOT=$(cd -- "${SCRIPT_DIR}/.." && pwd)
 RUNS_DIR=${BENCH_RUNS_DIR:-${BENCH_ROOT}/runs}
 IMAGE=${RADIANCE_IMAGE:-vllm-radiance:dev}
 SUITE=${BENCH_SUITE:-quick}
-# The everyday gate is deliberately non-speculative. Add tp2_spec-on explicitly
-# at milestone checkpoints; TP1 MTP does not fit this 27B model without offload.
-CONFIGS=${BENCH_CONFIGS:-tp2_spec-off,tp1-eager8k_spec-off}
+# The portable everyday gate is deliberately TP2 and non-speculative. Add the
+# fit-specific TP1 reference or tp2_spec-on explicitly at relevant checkpoints.
+CONFIGS=${BENCH_CONFIGS:-tp2_spec-off}
 IMAGE_SLUG=$(printf '%s' "$IMAGE" | tr '/:@' '---' | tr -cd 'a-zA-Z0-9_.-')
 MODEL_SLUG=$(basename "${MODEL_HOST:-/nvme/lexar-2/ai/models/Qwen3.8-27B-heretic-ara-fp8-magiccodingman}" | tr -cd 'a-zA-Z0-9_.-')
 RUN_ID=$(date -u +%Y%m%dT%H%M%SZ)_${IMAGE_SLUG}_${MODEL_SLUG}_${SUITE}

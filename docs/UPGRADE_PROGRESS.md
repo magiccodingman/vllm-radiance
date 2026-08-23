@@ -18,6 +18,9 @@ numbers use native FP8 weights and mandatory FP8 KV cache with the reusable
   decode concurrency 1/2/4/8. This reserves about 4.8 GiB outside vLLM's
   allocation on each card for a DFlash2 drafter and runtime variation.
 - TP1 reference: native/no-offload, eager, 95%, 8K, decode concurrency 1/2/4.
+  It is explicitly selected for this 27B baseline and is not part of the
+  model-neutral default, so larger checkpoints do not inherit a capacity-edge
+  single-card run.
 - Decode: 256 input + 256 forced output tokens, two repetitions and at least two
   request waves.
 - Prefill/mixed: 2048 input + 64 output; TP2 concurrency 1/4/8, TP1 concurrency 1.

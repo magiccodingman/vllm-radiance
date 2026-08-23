@@ -33,10 +33,11 @@ experiment; temperature is part of the comparison key.
 `bin/run_matrix.sh` defaults to the model-neutral, non-speculative gate:
 
 1. TP=2, speculative decoding off.
-2. TP=1 native FP8 at 8K with eager execution, speculative decoding off.
 
-Add `tp2_spec-on` explicitly at milestone checkpoints. The current 27B model's
-TP=1 MTP head requires another 2.37 GiB when only about 1.06 GiB remains, so
+Add the current-model TP1 reference with
+`BENCH_CONFIGS=tp2_spec-off,tp1-eager8k_spec-off`, and add `tp2_spec-on`
+explicitly at speculative milestones. The current 27B model's TP=1 MTP head
+requires another 2.37 GiB when only about 1.06 GiB remains, so
 `tp1-eager8k_spec-on` is retained as an explicit diagnostic profile but is not
 part of the routine matrix. CPU offload is not used to force it to fit.
 
