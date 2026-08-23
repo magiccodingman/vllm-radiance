@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
-"""gfx1201 (R9700 / RDNA4) logic patches for vLLM on ROCm. Idempotent string replacement on the
-installed site-packages copies; re-running is safe.
+"""gfx1201 (R9700 / RDNA4) platform discovery patch for pinned vLLM main.
+
+Current vLLM has its own deliberately separate RDNA4 AITER route. Do not widen
+the CDNA AITER gate: that would expose gfx1201 to CK/MFMA/ASM kernels without
+RDNA device code. The old sampler and Triton-driver workarounds are also gone;
+upstream now owns those decisions.
 
 The amdsmi-enumeration failures (platform undetected, device_count==0, get_device_name IndexError,
 gcn-arch query) are not patched here: one root cause (amdsmi locked out after HIP init), fixed at
@@ -29,42 +33,5 @@ def main():
         '_env = _os.environ.get("RADIANCE_GFX_ARCH")',
         "honor RADIANCE_GFX_ARCH env",
     )
-    # A. AITER enablement: vLLM gates AITER on MI3xx; treat gfx12x as capable too.
-    apply(
-        SP / "vllm/_aiter_ops.py",
-        "        from vllm.platforms.rocm import on_mi3xx\n\n        return on_mi3xx()",
-        "        from vllm.platforms.rocm import on_gfx12x, on_mi3xx\n\n"
-        "        return on_mi3xx() or on_gfx12x()",
-        "on_mi3xx() or on_gfx12x()",
-        "is_aiter_found_and_supported: allow gfx12x",
-    )
-    # B. Triton HIPDriver.is_active(): stock gates on torch.cuda.is_available(), which is False in
-    #    vLLM's GPU-less inspection subprocess where aiter touches the driver at import. A ROCm torch
-    #    build always targets HIP, so gate on torch.version.hip.
-    apply(
-        SP / "triton/backends/amd/driver.py",
-        "            return torch.cuda.is_available() and (torch.version.hip is not None)",
-        "            return torch.version.hip is not None",
-        "            return torch.version.hip is not None",
-        "Triton HIPDriver.is_active: gate on torch.version.hip",
-    )
-    # C. AITER sampler gate: VLLM_ROCM_USE_AITER=1 also selects AITER's top-k/top-p sampler, whose
-    #    C++/HIP kernel fails to build on RDNA4. Gate to MI3xx; gfx12x uses the native sampler.
-    apply(
-        SP / "vllm/v1/sample/ops/topk_topp_sampler.py",
-        '            logprobs_mode not in ("processed_logits", "processed_logprobs")\n'
-        "            and rocm_aiter_ops.is_enabled()\n"
-        "        ):",
-        '            logprobs_mode not in ("processed_logits", "processed_logprobs")\n'
-        "            and rocm_aiter_ops.is_enabled()\n"
-        "            # gfx1201: AITER's sampler C++/HIP kernel fails to build on RDNA4.\n"
-        "            # Gate to MI3xx; gfx12x uses the native sampler.\n"
-        '            and __import__("vllm.platforms.rocm", fromlist=["on_mi3xx"]).on_mi3xx()\n'
-        "        ):",
-        "AITER's sampler C++/HIP kernel fails to build on RDNA4",
-        "topk_topp_sampler: gate AITER sampler to MI3xx",
-    )
-
-
 if __name__ == "__main__":
     main()

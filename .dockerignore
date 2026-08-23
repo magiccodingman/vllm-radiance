@@ -9,6 +9,7 @@ __pycache__/
 .env
 models/
 vllm-cache/
+benchmarks/runs/
 # build outputs of the Makefile dev tool: the image compiles its own kernels from the .hip
 # sources, and rocm-bandwidth-test is built in stage 1. A stale local copy must never be
 # mistaken for what the image ships.

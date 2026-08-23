@@ -13,7 +13,7 @@ ANCHOR = (
     "def rocm_unquantized_gemm_impl(\n"
     "    x: torch.Tensor, weight: torch.Tensor, bias: torch.Tensor | None = None\n"
     ") -> torch.Tensor:\n"
-    "    from vllm.platforms.rocm import on_gfx1x, on_gfx9, on_gfx950\n"
+    "    from vllm.platforms.rocm import on_gfx1x, on_gfx9, on_gfx950, on_gfx1250\n"
 )
 NEW = (
     "try:\n"
@@ -24,7 +24,7 @@ NEW = (
     "def rocm_unquantized_gemm_impl(\n"
     "    x: torch.Tensor, weight: torch.Tensor, bias: torch.Tensor | None = None\n"
     ") -> torch.Tensor:\n"
-    "    from vllm.platforms.rocm import on_gfx1x, on_gfx9, on_gfx950\n"
+    "    from vllm.platforms.rocm import on_gfx1x, on_gfx9, on_gfx950, on_gfx1250\n"
     "    # --- RADIANCE router GEMM kernel (patch_router_gemm.py) ---\n"
     "    if (_radiance_router is not None and _radiance_router.ENABLED and bias is None\n"
     "            and weight.dim() == 2 and weight.shape[0] == 256 and weight.shape[1] == 2048\n"
