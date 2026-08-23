@@ -276,3 +276,20 @@ about 13 minutes with zero failed requests. Three-sample decode CV was
 229.10 TPS. The concurrent 16,128-token context case completed both requests.
 Peak qualification VRAM was 83.44%, leaving at least 5.28 GiB free per R9700;
 peak junction temperature was 79 C and peak board power was 249 W.
+
+## DFlash2 continuation (!6)
+
+The follow-up optimization recovered 98.1-99.8% of ordinary Radiance base
+decode performance under the DFlash-compatible V2 runner by replacing eager
+execution with `PIECEWISE` graphs. A selective-FP8 K5 drafter then qualified
+operationally at 93.78 / 138.18 / 225.96 / 399.81 output TPS for c1/c2/c4/c8,
+with about 4.41 GiB physical headroom per R9700. Sustained c8 decode reached
+541.74 TPS.
+
+Strict greedy equivalence still fails deterministically (1/8 exact prompts in
+the matched 128-token gate), so DFlash remains disabled by default. The controls
+attribute the result to speculative target-verification shape numerics rather
+than FP8 KV, V2 itself, prefix cache, hybrid-GDN state corruption, the drafter,
+or custom TP2 reduction. The complete experiment matrix, exact run IDs,
+checksums, upstream audit, negative results, and deployment recommendation are
+in [DFLASH2_OPTIMIZATION.md](DFLASH2_OPTIMIZATION.md).

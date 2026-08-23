@@ -205,7 +205,9 @@ Each timestamped directory beneath `runs/` includes exact manifests, resolved
 server commands, raw vLLM JSON, logs, two-second GPU/host telemetry, checksums,
 and consolidated CSV/JSON/Markdown summaries. `telemetry-summary.json` and
 `.csv` promote each case's peak VRAM/use/power/temperature and minimum VRAM and
-host-memory headroom so model-size changes remain auditable. Fixed seed
-`20260822`, exact
-input/output lengths, forced output length, warmups, and repetitions make runs
-directly comparable across future images and forks.
+host-memory headroom so model-size changes remain auditable. Only GPUs named
+by the configuration's recorded `HIP_VISIBLE_DEVICES` are
+promoted; the host's 2 GiB integrated GPU is intentionally excluded from
+inference headroom summaries while its raw samples remain available.
+Fixed seed `20260822`, exact input/output lengths, forced output length, warmups,
+and repetitions make runs directly comparable across future images and forks.

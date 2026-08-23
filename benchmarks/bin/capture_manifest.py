@@ -113,6 +113,8 @@ def main() -> None:
                 "findmnt", "-T", "/nvme/lexar-2", "-o", "TARGET,SOURCE,FSTYPE,OPTIONS"
             ),
             "gpu_products": command("rocm-smi", "--showproductname"),
+            "gpu_vbios": command("rocm-smi", "--showvbios"),
+            "gpu_firmware": command("rocm-smi", "--showfwinfo"),
             "gpu_topology": command("rocm-smi", "--showtopo"),
             "docker_version": command("docker", "version"),
             "docker_root": command("docker", "info", "--format", "{{.DockerRootDir}}"),
