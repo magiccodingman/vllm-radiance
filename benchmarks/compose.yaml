@@ -19,7 +19,7 @@ services:
       - --gpu-memory-utilization=0.85
       - --max-model-len=16384
       - --max-num-seqs=8
-      - --max-num-batched-tokens=2048
+      - --max-num-batched-tokens=${MAX_NUM_BATCHED_TOKENS:-4096}
       - --attention-backend=R4D
 #      - '--speculative-config={"method":"mtp","num_speculative_tokens":8,"attention_backend":"R4D","disable_padded_drafter_batch":true}'
       - --no-async-scheduling

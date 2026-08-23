@@ -1,21 +1,21 @@
 # vllm-radiance
 
-vLLM inference server for the AMD Radeon AI PRO R9700 (gfx1201 / RDNA4). Bundles a working ROCm + PyTorch + Triton + AITER + vLLM stack with the RDNA4 patches and custom kernels needed to run vLLM on this card, so you don't have to build the stack yourself.
+vLLM inference server for the AMD Radeon AI PRO R9700 (gfx1201 / RDNA4), combining a pinned post-0.27
+vLLM-main ROCm stack with libr4d's hand-written RDNA4 kernels and Radiance's FP8/speculative paths.
 
-> **Status: experimental.** The GitLab upgrade branch is
-> `0.6.0-dev.a014e35`; the published `stilldeadcode/*:0.5.8` examples below
-> describe the last upstream Docker Hub release and are retained as legacy
-> deployment reference. Current pins, normalized Qwen3.8 results, and DFlash2
-> qualification are in `docs/UPGRADE_PROGRESS.md`.
+> **Status: experimental.** This fork publishes as `magiccodingman/vllm-radiance`.
+> `stilldeadcode/vllm-radiance:0.7.4` is DeadCode's separate upstream release
+> and the external comparison baseline. Current pins and qualification evidence
+> are in `docs/UPGRADE_PROGRESS.md` and `docs/LIBR4D_BETTERBENCH.md`.
 
-The upgrade branch is validated primarily with
+The current fork is validated primarily with
 `Qwen3.8-27B-heretic-ara-fp8-magiccodingman`, mandatory FP8 KV, and two R9700s
 (TP2). Its reusable default is 16K, 85% GPU allocation, and at most eight
 sequences; it deliberately leaves VRAM headroom instead of finding the largest
 batch that fits. Earlier 0.5.8 performance numbers below remain useful history,
 but are not claims about the new compiler stack.
 
-## Upgrade branch stack (`0.6.0-dev.a014e35`)
+## Current fork stack (`0.7.4-dev.a014e35-r4d0.4.0`)
 
 | Component | Exact version/pin |
 |---|---|
@@ -24,11 +24,36 @@ but are not claims about the new compiler stack.
 | Triton | AMD 3.7.1 commit `f0b55c07da61c71775bef6d1a15ebf846430ac75` |
 | torchvision | 0.27.1 |
 | AITER | 0.1.20 (`fc2e5d57fb5b8ad8e7e23f7103071dde798ea618`) |
+| libr4d | 0.4.0 (`000d5f91d0e47ee9faf3b5466f0a12995f0cbfd6`) |
 | ROCm userspace | 7.14, bundled |
 
 Use the repository `docker-compose.yml` for the current local image and model
 defaults. Do not substitute an unpinned `main` checkout or generic PyTorch
 2.13/upstream Triton pair.
+
+### Current kernel and draft controls
+
+| Env var | Default | Purpose |
+|---|---:|---|
+| `RADIANCE_USE_R4D` | `1` | master switch for the hand-written libr4d operator family |
+| `RADIANCE_USE_R4D_GDN` | `1` | R4D GDN prefill, decode, and speculative-state paths |
+| `RADIANCE_USE_R4D_AR` | `1` | exact TP2 P2P all-reduce, with safe RCCL fallback |
+| `RADIANCE_USE_R4D_AR_QUANT` | `1` | rotated six-bit compressed collective for qualifying large messages; numerically lossy |
+| `RADIANCE_R4D_REPORT` | `1` | report libr4d version and resolved kernel coverage at startup |
+| `RADIANCE_PRESHUFFLE` | `1` | Radiance preshuffled block-FP8 target GEMM dispatcher |
+| `RADIANCE_FUSE_RMS_QUANT` | `1` | fused RMSNorm plus FP8 quantization |
+| `RADIANCE_DYNAMIC_DRAFT` | `1` | confidence- and batch-aware MTP depth controller |
+| `RADIANCE_NGRAM_EXTENSION` | `1` | verbatim n-gram tail for speculative drafting |
+| `RADIANCE_DRAFT_SCHEDULE` | `1:8,2:7,4:6,8:5,16:4` | MTP maximum depth by active batch size |
+| `RADIANCE_DRAFT_TAU` | `0.28` | confidence-product stop threshold |
+| `RADIANCE_FAST_DRAFT` | `0` | opt-in INT2-g128 MTP head with exact top-32 reranking |
+| `RADIANCE_RUN_BWTEST` | `1` | background topology/P2P bandwidth report at startup |
+
+R4D attention is selected with `--attention-backend=R4D`. AITER attention and
+the older operator implementations remain fallbacks/controls. The portable
+Compose defaults to native FP8 weights, FP8 KV, TP2, 16K, 85% allocation,
+eight admitted sequences, and 4,096 batched tokens. Speculative decoding is
+commented out because its strict cross-mode output gate has not qualified.
 
 ## Tested so far
 
@@ -42,7 +67,7 @@ Three setups have been run and measured:
 
 Untested (may or may not work): any other model, non-FP8 weights, single GPU, more than two GPUs, non-R9700 hardware. Treat the defaults below as a starting point for these three setups, not a general recommendation.
 
-**Fine-grained MoE (Qwen3.6-35B-A3B-FP8).** Supported and tuned. Two MoE paths are baked in and activate automatically for it: RDNA4-tuned fused-MoE Triton configs (removes the stock config's `M>=96` cliff, lower prefill TTFT, lossless) and a custom bf16 MoE-gate GEMM (`RADIANCE_MOE_ROUTER`, on by default) for the skinny `n` in `[6,16]` band that rocBLAS serves poorly. One serving requirement: with `--mamba-cache-mode=align` this model's attention block size is 2240, and align asserts `block_size <= max_num_batched_tokens`, so pass **`--max-num-batched-tokens >= 2240`** (2560 is a clean default; the compose ships 2048, which is fine for the 27B but must be raised for the 35B).
+**Fine-grained MoE (Qwen3.6-35B-A3B-FP8).** Supported and tuned. Two MoE paths are baked in and activate automatically for it: RDNA4-tuned fused-MoE Triton configs (removes the stock config's `M>=96` cliff, lower prefill TTFT, lossless) and a custom bf16 MoE-gate GEMM (`RADIANCE_MOE_ROUTER`, on by default) for the skinny `n` in `[6,16]` batch band that rocBLAS serves poorly (~2.5x faster cold, bit-identical output; wvSplitK already covers `n<=5`). A serving requirement: with `--mamba-cache-mode=align` this model's attention block size is 2240, and align asserts `block_size <= max_num_batched_tokens`, so keep **`--max-num-batched-tokens >= 2240`**; the Compose default is 4096.
 
 **Gemma-4-31B-it-FP8.** Supported (0.4.0), e.g. `RedHatAI/gemma-4-31B-it-FP8-block`. Quantization is auto-detected from `config.json` (compressed-tensors, 128x128 blocks) and the RDNA4-tuned block-FP8 GEMM configs for its shapes load automatically (measured -5% TTFT at 8K prompt, decode unchanged). Text and vision both work. It is not a GDN hybrid, so drop `--mamba-cache-mode`; it also uses its own chat template and parsers rather than the Qwen ones. It carries a lot of KV (60 layers: 50 sliding-window + 10 global head-512), so at a given `--gpu-memory-utilization` it wants a smaller `--max-model-len` than the Qwen models. Long-context prefill is tuned for its head-512 global-attention layers (a head-size-keyed 2D attention config, measured up to -38% TTFT at 64K, -46% at 120K vs the untuned kernel; inert on other head sizes).
 
@@ -54,7 +79,16 @@ Untested (may or may not work): any other model, non-FP8 weights, single GPU, mo
 
 vLLM's ROCm builds target datacenter cards (MI300 / CDNA). RDNA4 workstation cards like the R9700 (gfx1201) don't work out of the box: AITER isn't enabled for the arch, GPU enumeration fails, several kernels need patching, and the vendor attention and GEMM paths aren't tuned for RDNA4. This image pins a working combination, builds AITER from source for gfx1201, applies the fixes, and adds tuned kernels.
 
-## Stack
+## Legacy upstream 0.5.8 reference
+
+Everything below this heading documents the historical upstream 0.5.8 image
+and is retained for migration context. Its AITER attention flags, old
+`RADIANCE_FAST_REDUCE` / `RADIANCE_AR_QUANT` names, 0.92 memory setting, and
+`stilldeadcode/*:0.5.8` examples are not the current fork defaults. New
+deployments should use the repository's portable `docker-compose.yml` and the
+current controls above.
+
+### Historical stack
 
 Everything below is compiled from source for `gfx1201` in the image build (0.5.0 onward); nothing is
 pulled from a prebuilt wheel index.

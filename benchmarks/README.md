@@ -57,6 +57,11 @@ maximum and eager execution at 95% utilization. TP1 is a fit-specific reference,
 not a requirement for larger checkpoints such as 35B. Its decode concurrency
 sweep remains useful, while long-context/capacity is reported separately. CPU
 offload and near-100% settings are not part of the routine TP2 matrix.
+The default scheduler budget is 4,096 batched tokens. This is the measured R4D
+chunked-prefill/MTP operating point and, for Qwen hidden size 5,120, keeps the
+40 MiB TP2 collective payload within libr4d's exact-message ceiling. Override it
+for a separately labeled model/shape experiment; do not silently compare a
+2,048-token run with a 4,096-token run.
 
 Set a note for the run with:
 
@@ -185,18 +190,46 @@ Focused diagnostics may set a whitespace-separated
 it unset and therefore remains c1/c2/c4/c8.
 
 Kernel control cases can likewise override the compose defaults from the host,
-including `RADIANCE_PRESHUFFLE`, `RADIANCE_FAST_REDUCE`,
-`RADIANCE_AR_QUANT`, `RADIANCE_GDN_WMMA`, and
+including `RADIANCE_PRESHUFFLE`, `RADIANCE_USE_R4D`,
+`RADIANCE_USE_R4D_GDN`, `RADIANCE_USE_R4D_AR`,
+`RADIANCE_USE_R4D_AR_QUANT`, `RADIANCE_FAST_DRAFT`, and
 `VLLM_ROCM_USE_AITER_LINEAR`. Their resolved values are retained by the
 container inspection in each manifest; explicitly supplied values are also
 listed in the manifest environment section.
+
+### BetterBench publication lane
+
+The synthetic harness remains the fast smoke/quick engineering gate. Published
+cross-mode results use BetterBench v0.2.2 at exact commit
+`575cc3925bac922d6ad4a39e62502673799979d9`, installed in the registered
+`/nvme/ediloca-1/venv/vllm-bench-env` environment. The wrapper refuses to run
+against another checkout. It records the profile, commit, version, raw JSON,
+standalone HTML, Markdown report, server manifest, and one-second telemetry.
+
+`standard` is the 10-pass/category comparison profile; `qualification` doubles
+that to 20 passes/category. Both use corpus v1, greedy temperature-zero decoding,
+seed `20260823`, unique nonce prefixes, c1/c2/c4/c8, and cold 2K/4K/7K prefill:
+
+```bash
+PREFIX_CACHING=off MAX_NUM_BATCHED_TOKENS=4096 \
+BETTERBENCH_PROFILE=standard \
+benchmarks/bin/run_configuration.sh \
+  --run-root benchmarks/runs/RUN_ID --label CONFIG \
+  --tp 2 --spec off --image IMAGE --max-model-len 8192 \
+  --suite betterbench --notes 'exact experiment description'
+```
+
+Prefix caching is explicitly off across vLLM versions for the cross-image lane;
+BetterBench also prefixes every prompt with a unique nonce. `run_betterbench.sh`
+enforces the shared 8K envelope so non-spec, MTP, and DFlash results cannot
+quietly drift into unlike capacity profiles.
 
 ### Experimental DFlash2 lane
 
 DFlash2 remains explicit-only. The best bounded headroom profile found on the
 dual R9700 host uses the selective-FP8 drafter at
 `/nvme/lexar-2/ai/models/Qwen3.8-27B-heretic-ara-DFlash2-fp8-magiccodingman`,
-five speculative tokens, draft TP2, `TRITON_ATTN` for the drafter, the V2 model
+seven speculative tokens, draft TP2, `TRITON_ATTN` for the drafter, the V2-compatible model
 runner, and `PIECEWISE` graph mode. The native-FP8 target, FP8 KV, 8K DFlash
 envelope, 85% allocation, and normal Radiance target paths remain unchanged.
 It is an experimental benchmark profile—not the compose default—because strict
@@ -206,17 +239,22 @@ Use explicit JSON so manifests retain the full experiment contract:
 
 ```bash
 VLLM_USE_V2_MODEL_RUNNER=1 \
-RADIANCE_AR_QUANT=0 \
-TP2_MAX_MODEL_LEN=8192 \
+RADIANCE_USE_R4D_AR_QUANT=1 \
+MAX_NUM_BATCHED_TOKENS=4096 \
 COMPILATION_CONFIG_JSON='{"cudagraph_mode":"PIECEWISE"}' \
-SPECULATIVE_CONFIG_JSON='{"method":"dflash","model":"/models/Qwen3.8-27B-heretic-ara-DFlash2-fp8-magiccodingman","num_speculative_tokens":5,"draft_tensor_parallel_size":2,"attention_backend":"TRITON_ATTN","max_model_len":8192}' \
-BENCH_CONFIGS=tp2_spec-on BENCH_SUITE=quick \
-benchmarks/bin/run_matrix.sh
+SPECULATIVE_CONFIG_JSON='{"method":"dflash","model":"/models/Qwen3.8-27B-heretic-ara-DFlash2-fp8-magiccodingman","num_speculative_tokens":7,"draft_tensor_parallel_size":2,"attention_backend":"TRITON_ATTN","max_model_len":8192}' \
+BETTERBENCH_PROFILE=standard \
+benchmarks/bin/run_configuration.sh \
+  --run-root benchmarks/runs/RUN_ID --label tp2-r4d-dflash-k7 \
+  --tp 2 --spec on --image IMAGE --max-model-len 8192 --suite betterbench
 ```
 
-`RADIANCE_AR_QUANT=0` is deliberate for this lane: disabling FP8 all-reduce
-payload quantization improved strict matches during isolation. The custom TP2
-all-reduce itself remains enabled and was independently exonerated.
+K5 remains an important matched control. K7 won the 10-pass BetterBench corpus
+and c1/c2/c4/c8 sweep, but DFlash remains explicit-only because strict greedy
+equivalence against matched non-spec passes only 3/8 fixed prompts. K5, K7, and
+MTP were repeatable and produced the same fixed output stream, which localizes
+the difference to the shared speculative/runner numerical path without
+weakening the gate.
 
 ## Results
 

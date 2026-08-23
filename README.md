@@ -1,12 +1,13 @@
 # vllm-radiance
 
-A vLLM inference server image for the **AMD Radeon AI PRO R9700 (gfx1201 / RDNA4)**. It bundles a working
-ROCm + PyTorch + Triton + AITER + vLLM stack with the RDNA4 patches and custom kernels needed to run vLLM on
-this card, plus RDNA4-tuned GEMM / attention / all-reduce paths and a dynamic MTP draft controller, so you
-don't have to build the stack yourself.
+A vLLM inference server image for the **AMD Radeon AI PRO R9700 (gfx1201 / RDNA4)**. It combines a pinned
+post-0.27 vLLM-main ROCm stack with [libr4d](https://codeberg.org/StillDeadcode/libr4d)'s hand-written
+RDNA4 attention, gated-delta-net, vision, all-reduce, and router kernels, while retaining Radiance's tuned
+FP8 GEMM and speculative-decoding paths.
 
-> **Status: experimental.** The upgrade branch pins an exact post-0.27 vLLM-main commit and the
-> corresponding AMD ROCm compiler stack; see [docs/UPGRADE_PROGRESS.md](docs/UPGRADE_PROGRESS.md).
+> **Status: experimental.** The fork pins an exact post-0.27 vLLM-main commit and the corresponding AMD
+> ROCm compiler stack; see [docs/UPGRADE_PROGRESS.md](docs/UPGRADE_PROGRESS.md) and
+> [docs/LIBR4D_BETTERBENCH.md](docs/LIBR4D_BETTERBENCH.md).
 > The current regression model is **Qwen3.8-27B FP8**. Earlier Radiance work was measured on
 > **Qwen3.6-27B-FP8**, **Qwen3.6-35B-A3B-FP8** (fine-grained MoE, 256 experts / top-8), and
 > **Gemma-4-31B-it-FP8** (block-fp8, sliding + global attention, vision), all with fp8 (or bf16/`auto`) KV
@@ -14,10 +15,11 @@ don't have to build the stack yourself.
 > 3+ GPUs, and non-R9700 hardware are untested. Expect rough edges and breaking changes. Not production
 > hardened. Use at your own risk.
 
-This repository is the **source** for the image published as `stilldeadcode/vllm-radiance` on Docker Hub.
-See **[DOCKERHUB.md](DOCKERHUB.md)** for the complete environment-variable / knob
-reference and legacy published-image examples. The current pinned stack and
-measurements live in **[docs/UPGRADE_PROGRESS.md](docs/UPGRADE_PROGRESS.md)**.
+This is the `magiccodingman/vllm-radiance` fork. It tracks and credits DeadCode's upstream
+[vllm-radiance](https://codeberg.org/StillDeadcode/vllm-radiance) and libr4d releases, but deliberately
+diverges by carrying pinned vLLM-main/DFlash2 plus the AMD PyTorch 2.12 and Triton 3.7.1 compiler pair.
+The GitLab pipeline publishes this fork as `magiccodingman/vllm-radiance`; the immutable upstream
+`stilldeadcode/vllm-radiance` images are external comparison baselines, not products of this repository.
 
 ## Build
 
@@ -32,9 +34,8 @@ That single command builds everything from source, in four stages. **builder** c
 torchvision, AITER, and vLLM for `PYTORCH_ROCM_ARCH=gfx1201` against the official `rocm/dev-ubuntu-24.04`
 base (digest-pinned) and leaves the wheels in `/wheels` (it also builds `rocm-bandwidth-test` for the startup
 sweep). **rocmprune** (`prune_rocm.sh`) cuts the 19 GB ROCm tree down to this one GPU architecture.
-**assemble** installs the wheels, applies the RDNA4 correctness patches, and compiles the
-custom HIP kernels (`router_gemm.hip`, `radiance_ar_ext.hip`, `radiance_ar_quant_ext.hip`) with the image's own
-`hipcc`. **final** is the release image: a clean `ubuntu:24.04` that receives only the pruned ROCm tree, the
+**assemble** installs the wheels, applies the guarded RDNA4 patches, and builds exact libr4d v0.4.0 source
+with the image's own `hipcc`. **final** is the release image: a clean `ubuntu:24.04` that receives only the pruned ROCm tree, the
 venv, and the entrypoint, so neither the build toolchain nor the wheels ever reach the published image. No
 prebuilt component wheels, no rotating wheel indexes, and no checked-in binaries go into the image. It is a
 long build (a full PyTorch compile); expect it to run for hours on a many-core box.
@@ -46,7 +47,7 @@ the compiler stack:
 ```bash
 docker build -f Dockerfile.patch \
   --build-arg BASE_IMAGE=vllm-radiance:dev-a014e35-amd212 \
-  --build-arg RADIANCE_VERSION=0.6.0-dev.patch \
+  --build-arg RADIANCE_VERSION=0.7.4-dev.patch \
   -t vllm-radiance:dev-a014e35-amd212-patch .
 ```
 
@@ -64,11 +65,10 @@ not slack to trim: AITER JIT-compiles its kernels on first use, inside the runni
 image without those headers boots and then dies on the first AITER module build. The build asserts it
 by compiling and importing a pybind11 HIP module.
 
-The component pins are the `ARG`s at the top of the `Dockerfile` (`TORCH_VERSION`, `TRITON_VERSION`,
-`TORCHVISION_VERSION`, `AITER_VERSION`, `VLLM_VERSION`). Each one is both the git tag that gets compiled and
-the version the resulting wheel reports, and the build asserts the two agree, so `pip show` and the startup
-banner can be trusted. If you just want a known-good image without building, pull the published one:
-`docker pull stilldeadcode/vllm-radiance`.
+The component and source pins are the `ARG`s at the top of `Dockerfile`: exact commits for vLLM, AMD
+PyTorch, AMD Triton, AITER, and libr4d plus asserted package versions. Builds fail if the checkout,
+reported package version, or libr4d tag differs. To use this fork without building, pull
+`magiccodingman/vllm-radiance:latest` after the corresponding release pipeline completes.
 
 **Do not bump torch / triton / torchvision on their own.** They are not independent choices: vLLM pins the
 torch version it is tested against, torch pins its triton, and torchvision ships a matching release. The
@@ -136,8 +136,8 @@ qualified; the table proves memory/serving capacity, not losslessness. See
 [docs/COMPOSE_CAPACITY.md](docs/COMPOSE_CAPACITY.md) for exact runs and method.
 
 To serve the fine-grained-MoE **Qwen3.6-35B-A3B-FP8**, point it
-at that model and raise the batch-token budget: `--max-num-batched-tokens` must be **≥ 2240** (align mode
-reconciles the GDN state to attention block size 2240; the 27B default of 2048 asserts otherwise). Its tuned
+at that model and keep the batch-token budget at **≥ 2240** (align mode
+reconciles the GDN state to attention block size 2240; the Compose default is 4096). Its tuned
 MoE config and the `RADIANCE_MOE_ROUTER` gate GEMM are baked in and turn on automatically.
 
 To serve **Gemma-4-31B-it-FP8** (block-fp8, e.g. `RedHatAI/gemma-4-31B-it-FP8-block`), just point the compose
@@ -160,6 +160,30 @@ a private `.env`, or an ignored developer overlay without editing it. The full
 knob list (kernel toggles, draft controller, AITER routing, …) is in
 [DOCKERHUB.md](DOCKERHUB.md).
 
+## Measured performance
+
+BetterBench v0.2.2 (`575cc3925bac922d6ad4a39e62502673799979d9`) used its v1 corpus,
+10 measured passes per category, greedy decoding, cold nonce-prefixed prompts,
+and c1/c2/c4/c8 on two R9700s. All fork lanes used the same native-FP8 target,
+FP8 KV, TP2, 8K envelope, 85% allocation, and 4,096-token scheduler budget:
+
+| Mode | Weighted single-stream decode | c1 | c2 | c4 | c8 |
+|---|---:|---:|---:|---:|---:|
+| R4D non-spec | 35.8 | 35.5 | 67.0 | 118.4 | 187.6 |
+| R4D MTP K8 + INT2 exact-rerank head | 93.7 | 82.8 | 149.0 | 242.7 | 316.3 |
+| R4D DFlash2 K5 | 99.4 | 93.3 | 169.6 | 293.6 | 451.6 |
+| R4D DFlash2 K7 | **112.6** | **102.1** | **189.0** | **305.1** | **496.1** |
+
+The c1-c8 columns are aggregate output tok/s from 24 requests per level. DFlash2
+K7 is the performance winner and retained at least 6.47 GiB physical VRAM
+headroom per card, but it is **not the production default**: strict fixed-prompt
+greedy equivalence against matched non-spec passed only 3/8 prompts. Repeated
+K5, K7, and MTP runs were deterministic and produced the same fixed outputs,
+which characterizes a shared speculative/runner numerical path difference but
+does not turn a failed strict gate into a pass. Exact run IDs and the external
+DeadCode 0.7.4 comparison are in
+[docs/LIBR4D_BETTERBENCH.md](docs/LIBR4D_BETTERBENCH.md).
+
 ## What's inside
 
 Everything below is baked into the image; the tuned paths are env-gated and on by default. See
@@ -171,17 +195,24 @@ Everything below is baked into the image; the tuned paths are env-gated and on b
   an attention LDS fit that shrinks the staged K/V tile into the R9700's 64 KiB shared memory for any head
   size and KV dtype (AITER sizes it for a larger LDS; without this, 2-byte KV at head 256 and fp8 KV at
   head 512 both abort at CUDA-graph capture).
-- **RDNA4-tuned kernels**: preshuffled FP8 blockscale GEMM, unified-attention tiling (fp8 + bf16/`auto` KV,
-  plus a head-size-keyed long-context prefill config for models with large attention heads such as Gemma's
-  head-512 global layers), fused RMSNorm+quant, an fp16 matrix-core (WMMA) gated-delta-net path, a TP=2 P2P
-  one-shot all-reduce (optional fp8 payload), and a native head_dim-72 ViT flash kernel for multimodal
-  vision encoders.
+- **libr4d 0.4.0 kernels**: R4D attention for prefill/decode, all-R4D gated-delta-net prefill/decode/spec
+  state handling, a head-dim-72 vision flash kernel, exact TP2 all-reduce, rotated six-bit compressed
+  all-reduce, and the router GEMM. The startup report proves every expected kernel resolves; measured AITER,
+  FLA, and Triton paths remain available as per-operator fallbacks and controls.
+- **Radiance FP8 target paths**: preshuffled block-FP8 GEMM selection, split-K alignment fixes, fused
+  RMSNorm+quant, and guarded fallback dispatch. These remain because matched controls showed the generic
+  upstream AITER linear route was 9-11% slower.
 - **Fine-grained MoE support** (e.g. Qwen3.6-35B-A3B): RDNA4-tuned fused-MoE Triton configs (always on;
   removes the stock config's `M>=96` cliff for a lower prefill TTFT, lossless), plus a custom bf16 MoE-gate
   GEMM (`RADIANCE_MOE_ROUTER`) for the `n` in `[6,16]` band that rocBLAS serves poorly. Both inert on
   models they do not apply to.
-- **Lossless dynamic MTP drafting**: a per-request confidence gate plus verbatim n-gram tail that varies
-  draft depth without changing what the model verifies.
+- **Dynamic MTP drafting**: a per-request confidence gate plus verbatim n-gram tail, with an opt-in
+  `RADIANCE_FAST_DRAFT=1` INT2-g128 copy of the MTP head followed by exact top-32 reranking. Target
+  verification remains in place, but this fork does not label the full speculative runner byte-equivalent
+  while its strict cross-mode gate is failing.
+- **Experimental DFlash2** from pinned vLLM main: selective-FP8 drafter loading, TP2 draft sharding, and
+  piecewise graph execution. K7 is the measured throughput winner; it stays explicit-only pending strict
+  output qualification.
 - **Prefix caching that works on the GDN hybrid** (enabled in the compose): hybrid models leave automatic
   prefix caching off by default, so it is turned on explicitly with `--enable-prefix-caching
   --mamba-cache-mode=align`. Align mode snapshots and restores the linear-attention (GDN) recurrent state at
@@ -195,9 +226,8 @@ Everything below is baked into the image; the tuned paths are env-gated and on b
 
 ## Layout
 
-Flat build context: the runtime Python modules (`radiance_*.py`), the `patch_*.py` fixes, the `fp8-configs/`
-and `moe-configs/` GEMM configs, the HIP kernel sources (`router_gemm.hip`, `radiance_ar_ext.hip`,
-`radiance_ar_quant_ext.hip`), the chat template, `Dockerfile`, and `docker-compose.yml` all live at the repo
-root so `docker build .` works directly. `prune_rocm.sh` is the ROCm slimming step (it self-checks: the
-arch's own kernels must survive and hipcc must still link a HIP shared object, since AITER JITs at runtime). The `Makefile` is a side tool for rebuilding a single HIP kernel
-against the image's toolchain during development; the image build compiles them itself.
+Flat build context: runtime `radiance_*.py` modules, guarded `patch_*.py` transforms, FP8/MoE configs, chat
+template, Dockerfiles, and portable Compose live at the repository root. The image fetches libr4d from its
+exact public tag and commit and compiles `r4d.so`; no generated binary is checked in. `prune_rocm.sh`
+self-checks the slim ROCm runtime, while the Makefile is a development helper for checking out and rebuilding
+the exact libr4d pin against an existing image toolchain.

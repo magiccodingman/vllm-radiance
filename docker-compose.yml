@@ -30,9 +30,9 @@ services:
       - --max-num-seqs=${MAX_NUM_SEQS:-8}
       - --max-model-len=${MAX_MODEL_LEN:-16384}
       - --gpu-memory-utilization=${GPU_UTIL:-0.85}
-      # chunk size that works well at long context (chunked prefill). MTP also forces
-      # max_num_scheduled_tokens=2048, so this just makes it explicit.
-      - --max-num-batched-tokens=${MAX_NUM_BATCHED_TOKENS:-2048}
+      # R4D's measured chunked-prefill/MTP operating point. For Qwen hidden-size
+      # 5120 this remains inside the exact TP2 all-reduce payload ceiling.
+      - --max-num-batched-tokens=${MAX_NUM_BATCHED_TOKENS:-4096}
       - --kv-cache-dtype=fp8
       # R4D is the fastest qualified head-256/GQA6 backend on gfx1201. Set
       # ATTENTION_BACKEND=ROCM_AITER_UNIFIED_ATTN for the measured fallback.
