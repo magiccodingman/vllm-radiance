@@ -42,8 +42,9 @@ part of the routine matrix. CPU offload is not used to force it to fit.
 
 The default model is
 `/nvme/lexar-2/ai/models/Qwen3.8-27B-heretic-ara-fp8-magiccodingman`. Override
-`MODEL_HOST` and `MODEL_NAME` for another checkpoint; the model configuration
-and resolved container command are checked before every run. Every
+`MODEL_HOST` for another checkpoint; `MODEL_NAME` defaults to that directory's
+basename and can be overridden separately. The model configuration and resolved
+container command are checked before every run. Every
 configuration explicitly forces `--kv-cache-dtype=fp8`.
 
 TP=2 uses a model-neutral 16K server envelope at 85% GPU utilization. This

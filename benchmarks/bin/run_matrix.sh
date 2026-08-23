@@ -13,7 +13,7 @@ IMAGE_SLUG=$(printf '%s' "$IMAGE" | tr '/:@' '---' | tr -cd 'a-zA-Z0-9_.-')
 MODEL_SLUG=$(basename "${MODEL_HOST:-/nvme/lexar-2/ai/models/Qwen3.8-27B-heretic-ara-fp8-magiccodingman}" | tr -cd 'a-zA-Z0-9_.-')
 RUN_ID=$(date -u +%Y%m%dT%H%M%SZ)_${IMAGE_SLUG}_${MODEL_SLUG}_${SUITE}
 RUN_ROOT=${RUNS_DIR}/${RUN_ID}
-NOTES=${BENCH_NOTES:-"Native FP8 Qwen3.8-27B baseline with mandatory FP8 KV cache; bounded ${SUITE} profile."}
+NOTES=${BENCH_NOTES:-"Bounded native-weight baseline with mandatory FP8 KV cache; ${SUITE} profile."}
 
 mkdir -p "$RUN_ROOT"
 printf '%s\n' "$NOTES" >"${RUN_ROOT}/notes.md"
