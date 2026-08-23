@@ -50,7 +50,9 @@ def main() -> None:
         if str(cand.get("temperature")) not in {"0", "0.0"}:
             mismatches.append(f"{name}: candidate is not greedy")
             continue
-        for field in ("seed", "input_lens"):
+        for field in ("seed", "prompts", "prompts_sha256", "input_lens"):
+            if field not in base and field not in cand:
+                continue
             if base.get(field) != cand.get(field):
                 mismatches.append(f"{name}: {field} differs")
         base_text = base.get("generated_texts")

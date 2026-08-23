@@ -86,12 +86,25 @@ can use `BENCH_WORKLOADS=prefill,context`; an all-reduce/decode change can use
 `BENCH_WORKLOADS=decode`. The selected filter is stored in the manifest. Full
 `quick` and `qualification` gates remain milestone requirements.
 
+`BENCH_WORKLOADS=correctness` runs eight fixed, meaningful greedy prompts and
+stores their exact text, prompt/completion token lengths, seeds, and fixture
+checksum. Use it with `bin/verify_outputs.py` when synthetic random-token
+prompts expose near-tie numerical drift or when qualifying speculative decode.
+
 Compare two completed run directories with direction-normalized deltas (positive
 always means better). Speculative comparisons also show candidate acceptance
 rate, acceptance-length, and the rate change in percentage points:
 
 ```bash
 benchmarks/bin/compare.py benchmarks/runs/BASELINE benchmarks/runs/CANDIDATE
+```
+
+When both lanes share one matrix run (for example non-spec versus DFlash2),
+filter and normalize their configuration keys explicitly:
+
+```bash
+benchmarks/bin/compare.py benchmarks/runs/RUN benchmarks/runs/RUN \
+  --baseline-config tp2_spec-off --candidate-config tp2_spec-on
 ```
 
 Pass `--fail-below -5` to make any common decode-throughput regression worse
@@ -122,6 +135,16 @@ command-line-visible experiment
 switches without editing the harness. The latter defaults to the normal MTP
 configuration only when a speculative lane is requested and no explicit JSON
 is supplied.
+
+Set `TP2_ENFORCE_EAGER=1` for a recorded eager TP2 lane. This is intended for
+first qualification of a new speculative runtime, where graph correctness is
+not yet established, and does not alter the portable default.
+`VLLM_USE_V2_MODEL_RUNNER=0|1` is passed through only when explicitly set, so
+V1/V2 correctness controls can be compared without changing vLLM's default
+runner selection.
+Focused diagnostics may set a whitespace-separated
+`BENCH_DECODE_CONCURRENCIES` (for example `"1 4"`); the canonical gate leaves
+it unset and therefore remains c1/c2/c4/c8.
 
 Kernel control cases can likewise override the compose defaults from the host,
 including `RADIANCE_PRESHUFFLE`, `RADIANCE_FAST_REDUCE`,

@@ -24,9 +24,9 @@ status=0
 IFS=, read -r -a selected <<<"$CONFIGS"
 for config in "${selected[@]}"; do
   case "$config" in
-    tp2_spec-off)         tp=2; spec=off; util=${TP2_GPU_UTIL:-0.85}; max_len=${TP2_MAX_MODEL_LEN:-16384}; eager=0 ;;
+    tp2_spec-off)         tp=2; spec=off; util=${TP2_GPU_UTIL:-0.85}; max_len=${TP2_MAX_MODEL_LEN:-16384}; eager=${TP2_ENFORCE_EAGER:-0} ;;
     tp1-eager8k_spec-off) tp=1; spec=off; util=${TP1_GPU_UTIL:-0.95}; max_len=${TP1_MAX_MODEL_LEN:-8192}; eager=1 ;;
-    tp2_spec-on)          tp=2; spec=on;  util=${TP2_GPU_UTIL:-0.85}; max_len=${TP2_MAX_MODEL_LEN:-16384}; eager=0 ;;
+    tp2_spec-on)          tp=2; spec=on;  util=${TP2_GPU_UTIL:-0.85}; max_len=${TP2_MAX_MODEL_LEN:-16384}; eager=${TP2_ENFORCE_EAGER:-0} ;;
     tp1-eager8k_spec-on)  tp=1; spec=on;  util=${TP1_GPU_UTIL:-0.95}; max_len=${TP1_MAX_MODEL_LEN:-8192}; eager=1 ;;
     *) echo "Unknown BENCH_CONFIGS entry: $config" >&2; exit 2 ;;
   esac

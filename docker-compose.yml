@@ -10,7 +10,7 @@
 # this file, e.g.:  MAX_NUM_SEQS=16 MAX_MODEL_LEN=32768 docker compose up -d
 services:
   vllm:
-    image: ${IMAGE:-vllm-radiance:0.5.8}
+    image: ${IMAGE:-vllm-radiance:0.6.0-dev.a014e35}
     container_name: vllm-radiance
     restart: unless-stopped
     command:
@@ -55,7 +55,7 @@ services:
       - --enable-auto-tool-choice
       - --tool-call-parser=qwen3_coder
       - --reasoning-parser=qwen3
-      - --chat-template=/work/qwen3.6-enhanced.jinja
+      - --chat-template=/work/qwen3.8-enhanced.jinja
       - --language-model-only
       - --trust-remote-code
       - --host=0.0.0.0
@@ -128,7 +128,7 @@ services:
       # override any of these via the shell or a .env file (e.g. MODELS=/data/models)
       - ${MODELS:-/nvme/lexar-2/ai/models}:/models:ro
       - ${VLLM_CACHE:-/nvme/ediloca-1/scratch/vllm-radiance-cache}:/cache
-      - ${WORK:-.}:/work:ro                        # supplies /work/qwen3.6-enhanced.jinja (this repo directory)
+      - ${WORK:-.}:/work:ro                        # supplies /work/qwen3.8-enhanced.jinja (this repo directory)
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8000/health"]
       interval: 30s

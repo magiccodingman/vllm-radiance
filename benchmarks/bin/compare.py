@@ -19,13 +19,21 @@ KEYS = (
     "cpu_offload_gb",
     "temperature",
 )
+CROSS_CONFIG_KEYS = tuple(key for key in KEYS if key not in {"config", "spec"})
 
 
-def load(path: Path) -> dict[tuple[object, ...], dict[str, object]]:
+def load(
+    path: Path, selected_config: str | None, *, cross_config: bool
+) -> dict[tuple[object, ...], dict[str, object]]:
     if path.is_dir():
         path = path / "summary.json"
     rows = json.loads(path.read_text(encoding="utf-8"))
-    return {tuple(row.get(key) for key in KEYS): row for row in rows}
+    if selected_config is not None:
+        rows = [row for row in rows if row.get("config") == selected_config]
+        if not rows:
+            raise SystemExit(f"configuration not found in {path}: {selected_config}")
+    keys = CROSS_CONFIG_KEYS if cross_config else KEYS
+    return {tuple(row.get(key) for key in keys): row for row in rows}
 
 
 def number(row: dict[str, object], key: str) -> float | None:
@@ -53,6 +61,8 @@ def main() -> None:
     parser.add_argument("baseline", type=Path)
     parser.add_argument("candidate", type=Path)
     parser.add_argument("--output", type=Path)
+    parser.add_argument("--baseline-config")
+    parser.add_argument("--candidate-config")
     parser.add_argument(
         "--fail-below",
         type=float,
@@ -60,8 +70,11 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    baseline = load(args.baseline)
-    candidate = load(args.candidate)
+    if bool(args.baseline_config) != bool(args.candidate_config):
+        parser.error("--baseline-config and --candidate-config must be supplied together")
+    cross_config = args.baseline_config is not None
+    baseline = load(args.baseline, args.baseline_config, cross_config=cross_config)
+    candidate = load(args.candidate, args.candidate_config, cross_config=cross_config)
     common = sorted(baseline.keys() & candidate.keys(), key=lambda key: tuple(map(str, key)))
     missing_candidate = sorted(baseline.keys() - candidate.keys(), key=lambda key: tuple(map(str, key)))
     candidate_only = sorted(candidate.keys() - baseline.keys(), key=lambda key: tuple(map(str, key)))
@@ -78,6 +91,9 @@ def main() -> None:
     for key in common:
         base = baseline[key]
         cand = candidate[key]
+        config_label = str(cand.get("config", ""))
+        if base.get("config") != cand.get("config"):
+            config_label = f"{base.get('config')} -> {cand.get('config')}"
         tps = number(cand, "median_output_throughput")
         tps_delta = delta(
             number(base, "median_output_throughput"), tps, lower_is_better=False
@@ -99,7 +115,9 @@ def main() -> None:
         )
         accept_len = number(cand, "median_spec_decode_acceptance_length")
         lines.append(
-            f"| {key[0]} | {key[1]} | {key[2]}/{key[3]} | {key[4]} | {key[8]} "
+            f"| {config_label} | {cand.get('workload', '')} "
+            f"| {cand.get('input_tokens', '')}/{cand.get('output_tokens', '')} "
+            f"| {cand.get('concurrency', '')} | {cand.get('temperature', '')} "
             f"| {'' if tps is None else f'{tps:.2f}'} | {shown(tps_delta)} "
             f"| {shown(ttft_delta)} | {shown(tpot_delta)} "
             f"| {'' if accept is None else f'{accept:.2f}'} "
@@ -108,11 +126,13 @@ def main() -> None:
         )
         if (
             args.fail_below is not None
-            and key[1] == "decode"
+            and cand.get("workload") == "decode"
             and tps_delta is not None
             and tps_delta < args.fail_below
         ):
-            failed.append(f"{key[0]} c={key[4]}: {tps_delta:+.2f}%")
+            failed.append(
+                f"{config_label} c={cand.get('concurrency')}: {tps_delta:+.2f}%"
+            )
 
     if missing_candidate:
         lines.extend(("", "## Missing from candidate", ""))

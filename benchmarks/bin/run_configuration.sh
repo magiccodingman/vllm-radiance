@@ -161,9 +161,13 @@ docker compose -f "$COMPOSE_FILE" down --remove-orphans >/dev/null 2>&1 || true
 docker rm "$container" >/dev/null 2>&1 || true
 
 echo "[$(date -u +%FT%TZ)] Starting ${LABEL} (${IMAGE})"
+container_env=(-e "HIP_VISIBLE_DEVICES=${gpu_devices}")
+if [[ -n ${VLLM_USE_V2_MODEL_RUNNER:-} ]]; then
+  container_env+=(-e "VLLM_USE_V2_MODEL_RUNNER=${VLLM_USE_V2_MODEL_RUNNER}")
+fi
 RADIANCE_IMAGE="$IMAGE" docker compose -f "$COMPOSE_FILE" run --detach --no-deps --service-ports \
   --name "$container" \
-  -e "HIP_VISIBLE_DEVICES=${gpu_devices}" \
+  "${container_env[@]}" \
   vllm-radiance "${server_args[@]}" >"${CONFIG_DIR}/container-id.txt"
 
 start_epoch=$(date +%s)

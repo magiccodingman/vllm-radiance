@@ -60,7 +60,7 @@ wants_workload() {
   [[ ,${WORKLOAD_FILTER}, == *,all,* || ,${WORKLOAD_FILTER}, == *,$1,* ]]
 }
 for requested in ${WORKLOAD_FILTER//,/ }; do
-  [[ $requested == all || $requested == decode || $requested == prefill || $requested == context ]] || {
+  [[ $requested == all || $requested == decode || $requested == prefill || $requested == context || $requested == correctness ]] || {
     echo "Unknown BENCH_WORKLOADS entry: $requested" >&2
     exit 2
   }
@@ -159,13 +159,29 @@ fi
 # measurements deliberately do not repeat warmups.
 run_one warmup 128 64 1 1 2 1
 
+if wants_workload correctness; then
+  echo "[$(date -u +%FT%TZ)] ${CONFIG}: fixed-prompt greedy correctness"
+  "${VENV}/bin/python" "${SCRIPT_DIR}/run_correctness.py" \
+    --base-url "$BASE_URL" --model "$MODEL_NAME" \
+    --prompts "${BENCH_ROOT}/fixtures/correctness-prompts.json" \
+    --output "${RAW_DIR}/correctness_fixed.json"
+fi
+
 # Everyday A/B gate: two waves at each concurrency and two repetitions. At the
 # slowest known BF16 baseline this is about four minutes of measured decoding;
 # native FP8 is faster. A third repetition belongs in standard/qualification.
-decode_concurrencies=(1 2 4 8)
+read -r -a decode_concurrencies <<<"${BENCH_DECODE_CONCURRENCIES:-1 2 4 8}"
+for concurrency in "${decode_concurrencies[@]}"; do
+  [[ $concurrency =~ ^[1-9][0-9]*$ ]] || {
+    echo "BENCH_DECODE_CONCURRENCIES must contain positive integers" >&2
+    exit 2
+  }
+done
 # TP1 is a constrained reference for large models, not a VRAM saturation test.
 # Stop at c4 so hybrid-state/KV capacity does not dominate the kernel result.
-((TP == 1)) && decode_concurrencies=(1 2 4)
+if ((TP == 1)) && [[ -z ${BENCH_DECODE_CONCURRENCIES:-} ]]; then
+  decode_concurrencies=(1 2 4)
+fi
 if wants_workload decode; then
   for concurrency in "${decode_concurrencies[@]}"; do
     prompts=$((concurrency * 2))

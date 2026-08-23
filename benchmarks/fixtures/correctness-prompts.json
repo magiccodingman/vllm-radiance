@@ -1,0 +1,10 @@
+[
+  "Explain why the daytime sky appears blue in three concise paragraphs.",
+  "Write a Python function that performs binary search on a sorted list, then explain its time complexity.",
+  "Compare FP8 and BF16 inference, including one benefit and one risk of each format.",
+  "A Docker container exits immediately after startup. Give a systematic five-step debugging checklist.",
+  "Show that the sum of the first n odd positive integers is n squared using induction.",
+  "Write a short scene in which an engineer discovers that a benchmark was measuring the wrong model.",
+  "Transform this into valid JSON and explain the correction: name: radiance, gpus: 2, kv_cache: fp8",
+  "Translate 'Reliable measurements require controlled conditions' into Spanish and Japanese, then define controlled conditions."
+]

@@ -15,8 +15,9 @@ don't have to build the stack yourself.
 > hardened. Use at your own risk.
 
 This repository is the **source** for the image published as `stilldeadcode/vllm-radiance` on Docker Hub.
-See **[DOCKERHUB.md](DOCKERHUB.md)** for the full description, the complete environment-variable / knob
-reference, tested configuration, and stack versions.
+See **[DOCKERHUB.md](DOCKERHUB.md)** for the complete environment-variable / knob
+reference and legacy published-image examples. The current pinned stack and
+measurements live in **[docs/UPGRADE_PROGRESS.md](docs/UPGRADE_PROGRESS.md)**.
 
 ## Build
 

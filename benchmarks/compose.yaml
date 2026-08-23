@@ -16,8 +16,8 @@ services:
 #      - --mamba-cache-mode=align
       - --kv-cache-dtype=fp8
       - --tensor-parallel-size=2
-      - --gpu-memory-utilization=0.90
-      - --max-model-len=32768
+      - --gpu-memory-utilization=0.85
+      - --max-model-len=16384
       - --max-num-seqs=8
       - --max-num-batched-tokens=2048
       - --attention-backend=ROCM_AITER_UNIFIED_ATTN

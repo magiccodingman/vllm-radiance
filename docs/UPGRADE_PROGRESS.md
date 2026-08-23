@@ -170,8 +170,109 @@ already-tested 2D/3D LDS guard remains in place. vLLM PR #52816 is merged and
 present in the pinned tree, so DFlash2 itself is available without an extra
 cherry-pick.
 
-## Next checkpoints
+## Official AMD compiler-pair checkpoint
 
-1. Complete and measure the official AMD PyTorch/Triton pair independently.
-2. Retune attention and low-overhead runtime switches under that compiler pair.
-3. Qualify DFlash2 separately within the reserved drafter headroom.
+The final build moves the compiler stack atomically to AMD PyTorch commit
+`6bbd26020da1c6dc198625dfcdd968b1e4e6b1c5` (2.12.0+rocm7.14), AMD Triton
+commit `f0b55c07da61c71775bef6d1a15ebf846430ac75` (3.7.1), torchvision 0.27.1,
+and AITER 0.1.20. AITER uses the system Triton. The first image audit caught
+that a no-dependencies AITER install omitted its pinned `flydsl==0.3.1`
+runtime requirement; the release Dockerfile now installs that dependency and
+requires `pip check` to pass in the final image.
+
+The corrected image is
+`vllm-radiance:dev-a014e35-amd212-fixed` (local digest
+`sha256:92594dd0596400a4db49de61d1530341282ef20d74932db69ace821df0beaa6b`).
+Its cold TP2 smoke passed with native FP8 weights and FP8 KV. Peak measured
+VRAM use was 80.61%, leaving 6.18 GiB physical headroom on each R9700.
+
+Normalized quick checkpoints:
+
+- Radiance 0.5.8: `20260823T015503Z_..._quick`
+- pinned main + AITER 0.1.20 on the established compiler:
+  `20260823T021006Z_..._quick`
+- final AMD compiler pair: `20260823T022446Z_..._quick`
+
+Against Radiance 0.5.8, the final pair is effectively neutral for TP2 decode:
+-0.20%, -0.05%, -0.25%, and -0.02% at c1/c2/c4/c8. Its 2K prefill output
+throughput is -0.61%, +0.79%, and +0.39% at c1/c4/c8; the 8K context case is
+about -0.93%. TP1 decode is roughly -0.5% to -0.8%. The compiler upgrade is
+therefore selected as a current upstream foundation, not claimed as a broad
+speedup.
+
+`HIP_FORCE_DEV_KERNARG=1` was neutral/noisy (-0.49% to +0.18%) and remains
+off. Forcing `TRITON_ATTN` was a clear regression: decode lost 0.6-1.6%, 2K
+prefill lost 8.4-18.9%, and the 8K context case lost 45.6%. Unified AITER
+attention remains the default. The explicit AITER GDN prefill bridge became a
+small positive signal under the new compiler (+0.5-1.0% output TPS and roughly
+1-2.6% median TTFT), but that focused lane has one prefill sample per shape;
+it remains opt-in until a repeated milestone establishes the margin.
+
+## Radiance-path control experiments
+
+The rebase retains its custom paths because matched controls show they are
+still material on dual R9700s:
+
+- Disabling Radiance weight preshuffle and using upstream RDNA4 AITER linear
+  regressed every decode and prefill case by 8.6-11.4%.
+- Disabling the Radiance TP2 custom all-reduce regressed decode by 7.6-8.3%.
+
+The immutable evidence is stored in `20260823T030410Z_..._quick` and
+`20260823T031241Z_..._quick`, including comparison reports. These two paths,
+the split-K alignment fix, and the broader 2D/3D attention LDS guard remain
+enabled.
+
+## DFlash2 qualification
+
+The stable BF16 target
+`Qwen3.8-27B-heretic-ara-heretic-org` and the 3.58 GiB
+`Qwen3.8-27B-DFlash2-z-lab` draft load and serve successfully with the DFlash2
+V2 runner, TP2 draft sharding, `TRITON_ATTN` for the draft, eager execution,
+and mandatory FP8 KV. A 90% cap had no cache blocks after the combined model
+load (`27.45 GiB` per GPU); the smallest useful constrained lane is 2K at 92%,
+which supplies 2,595 KV tokens and leaves about 2.45 GiB physical VRAM per GPU.
+
+On deterministic random-token decode, DFlash2 improved BF16 output TPS by
++174% at c1 and +60% at c2, but lost 28% at c4 and 60% at c8 because this
+capacity-constrained lane cannot sustain concurrent draft work. It is not a
+recommended deployment profile. Exact greedy output matched the smoke but
+failed the broader gate. A forced-V2 non-spec control reduced, but did not
+eliminate, the difference. Eight fixed meaningful prompts remained coherent,
+but four diverged after 124-411 matching characters. Eager mode rules out the
+open FULL-cudagraph prefill-dispatch bug; the strict byte-equivalence claim is
+not accepted under FP8 KV.
+
+The requested experimental native-FP8 target also loads and runs DFlash2. In
+an 8K/85% eager lane it retained 4.34-4.38 GiB free VRAM per GPU and delivered
+48.50 / 76.08 / 175.74 / 247.88 output TPS at c1/c2/c4/c8, or +186% / +151% /
++179% / +101% against the matched V2 non-spec control. Acceptance length was
+4.15-4.56. However, all eight fixed meaningful greedy outputs differed from
+the matched non-spec server, sometimes near the beginning. Per the experiment
+scope, this path is recorded but not fixed or qualified as a default.
+
+The DFlash evidence is in `20260823T033102Z_..._quick`,
+`20260823T035820Z_..._quick`, and `20260823T040506Z_..._quick`, including the
+machine-readable failed correctness reports. Non-spec serving remains the
+compose default.
+
+## Selected state
+
+- Release identifier: `0.6.0-dev.a014e35`.
+- Default serving/portable benchmark envelope: TP2, native FP8 weights,
+  mandatory FP8 KV, 16K, 85% GPU allocation, maximum 8 sequences, 2,048
+  batched tokens, unified AITER attention, speculative decoding off.
+- The portable gate is intentionally model-neutral and does not search for the
+  VRAM limit. TP1 is an explicit fit-specific reference, so future 35B models
+  can retain the same TP2 c1/c2/c4/c8 contract without inheriting an unsafe
+  single-card lane.
+- DFlash2 is available for continued experimental work but is not enabled by
+  default until its FP8-KV output-equivalence and concurrent behavior are
+  resolved.
+
+Final non-spec qualification `20260823T042255Z_..._qualification` completed in
+about 13 minutes with zero failed requests. Three-sample decode CV was
+0.13% / 0.16% / 0.14% / 0.30% at c1/c2/c4/c8; output TPS was 35.25 / 66.20 /
+125.79 / 222.84. Sustained 512-token output reached 35.39 / 67.22 / 127.58 /
+229.10 TPS. The concurrent 16,128-token context case completed both requests.
+Peak qualification VRAM was 83.44%, leaving at least 5.28 GiB free per R9700;
+peak junction temperature was 79 C and peak board power was 249 W.
