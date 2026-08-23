@@ -155,6 +155,25 @@ switches without editing the harness. The latter defaults to the normal MTP
 configuration only when a speculative lane is requested and no explicit JSON
 is supplied.
 
+For an explicit no-offload capacity qualification, select the `capacity`
+workload and provide `context_tokens:concurrency` pairs. Every pair submits one
+full simultaneous wave and retains normal telemetry/manifests:
+
+```bash
+BENCH_WORKLOADS=capacity \
+BENCH_CAPACITY_CASES='8192:8 16384:7 32768:5 65536:3' \
+MAX_NUM_SEQS=8 \
+benchmarks/bin/run_configuration.sh \
+  --run-root benchmarks/runs/RUN_ID \
+  --label capacity --tp 2 --spec on \
+  --max-model-len 65536 --gpu-memory-utilization 0.85 --suite quick
+```
+
+The server's `MAX_MODEL_LEN` must cover the largest pair. Capacity success means
+all requests completed without CPU/KV offload; inspect the server log for the
+engine's fully resident KV ceiling and any scheduler queueing before promoting a
+submitted burst size to a default.
+
 Set `TP2_ENFORCE_EAGER=1` for a recorded eager TP2 lane. This is intended for
 first qualification of a new speculative runtime, where graph correctness is
 not yet established, and does not alter the portable default.

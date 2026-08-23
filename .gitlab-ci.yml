@@ -33,6 +33,12 @@ publish_docker:
     - test -s Dockerfile
     - test -s README.md
     - test -s VERSION
+    # Developer Compose overlays may contain private paths or local image tags.
+    # They are gitignored and excluded from the Docker build context; fail closed
+    # if somebody ever force-adds one to a release branch.
+    - test ! -e docker-compose.dev.yml
+    - test ! -e docker-compose.override.yml
+    - '! grep -Eq ''/nvme/|/home/[^[:space:]]+'' docker-compose.yml .env.example docker-compose.dev.example.yml'
     - test -S /var/run/docker.sock || { echo "Runner must mount /var/run/docker.sock into build containers"; exit 1; }
     - docker version
     - docker buildx version

@@ -3,6 +3,8 @@ __pycache__/
 *.pyc
 # local deploy state (mounted into the container; not source)
 .env
+docker-compose.dev.yml
+docker-compose.override.yml
 models/
 vllm-cache/
 benchmarks/runs/

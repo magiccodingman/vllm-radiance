@@ -1,26 +1,32 @@
-# Bounded default serve for Qwen3.8-27B FP8 on dual R9700 (gfx1201).
+# Portable Qwen3.8-27B FP8 serve profile for dual R9700 (gfx1201).
 # Launch from this directory:
 #     docker compose up -d          # start (detached); poll `docker compose logs -f`
 #     docker compose down           # stop + remove
 #     docker compose restart        # restart in place
 #
+# Host-specific paths and GPU IDs belong in .env or an ignored
+# docker-compose.dev.yml overlay. See .env.example and
+# docker-compose.dev.example.yml. Never add local paths to this file.
+#
 # The image ENTRYPOINT is radiance_entrypoint.sh (RADIANCE banner + env prechecks, then
 # `exec vllm serve "$@"`); `command:` below supplies the args.
 # Tunable knobs are ${VAR:-default}: override via the shell or a .env file WITHOUT editing
-# this file, e.g.:  MAX_NUM_SEQS=16 MAX_MODEL_LEN=32768 docker compose up -d
+# this file, e.g.: MAX_NUM_SEQS=2 MAX_MODEL_LEN=32768 docker compose up -d
 services:
   vllm:
-    image: ${IMAGE:-vllm-radiance:0.6.0-dev.a014e35}
+    image: ${IMAGE:-magiccodingman/vllm-radiance:latest}
     container_name: vllm-radiance
     restart: unless-stopped
     command:
-      - ${MODEL_PATH:-/models/Qwen3.8-27B-heretic-ara-fp8-magiccodingman}
-      - --served-model-name=${SERVED_MODEL_NAME:-Qwen3.8-27B-heretic-ara-fp8}
-      - --quantization=fp8
+      - ${MODEL_PATH:-/models/model}
+      - --served-model-name=${SERVED_MODEL_NAME:-radiance-model}
+      - --quantization=${WEIGHT_QUANTIZATION:-fp8}
       - --tensor-parallel-size=${TP:-2}
-      # Bounded, reusable defaults: eight sequences and a 16K server envelope.
-      # They intentionally retain VRAM headroom for larger FP8 models and a
-      # roughly 4 GB DFlash2 drafter instead of treating free VRAM as a target.
+      # Admission ceiling, not a promise that every sequence can simultaneously
+      # reach MAX_MODEL_LEN. Select both values from the capacity guide in README.
+      # Measured conservative TP2 Qwen3.8 FP8+DFlash pairs at GPU_UTIL=0.85:
+      #   8K:8, 16K:7, 32K:5, 64K:3, 128K:2, 256K:1
+      # These are model/profile-specific; other checkpoints must be requalified.
       - --max-num-seqs=${MAX_NUM_SEQS:-8}
       - --max-model-len=${MAX_MODEL_LEN:-16384}
       - --gpu-memory-utilization=${GPU_UTIL:-0.85}
@@ -62,7 +68,7 @@ services:
       - --port=8000
     environment:
       # GPU visibility: select your two R9700s by HIP index (exclude any iGPU). Never CUDA_VISIBLE_DEVICES.
-      HIP_VISIBLE_DEVICES: "0,1"
+      HIP_VISIBLE_DEVICES: "${HIP_VISIBLE_DEVICES:-0,1}"
       HIP_FORCE_DEV_KERNARG: ${HIP_FORCE_DEV_KERNARG:-0}
       TORCH_BLAS_PREFER_HIPBLASLT: ${TORCH_BLAS_PREFER_HIPBLASLT:-0}
       # AITER: unified attention ON, every other AITER path OFF (LINEAR=1 crashes on gfx1201).
@@ -113,9 +119,9 @@ services:
     devices:
       - /dev/kfd:/dev/kfd
       - /dev/dri:/dev/dri
-    group_add:                # Current host defaults; override if the group IDs change.
-      - "${RENDER_GID:-991}"   #   getent group render | cut -d: -f3
-      - "${VIDEO_GID:-44}"     #   getent group video  | cut -d: -f3
+    # The image runs as root, so mapped devices do not require host-specific
+    # supplemental GIDs. A non-root local deployment can add group_add in its
+    # ignored developer overlay using the host's render/video numeric GIDs.
     cap_add:
       - SYS_PTRACE            # py-spy
       - SYS_NICE              # numactl mempolicy syscalls (only needed if you enable RADIANCE_NUMA_BIND)
@@ -123,11 +129,12 @@ services:
       - seccomp=unconfined
     ipc: host
     ports:
-      - "8000:8000"
+      - "${PORT:-8000}:8000"
     volumes:
-      # override any of these via the shell or a .env file (e.g. MODELS=/data/models)
-      - ${MODELS:-/nvme/lexar-2/ai/models}:/models:ro
-      - ${VLLM_CACHE:-/nvme/ediloca-1/scratch/vllm-radiance-cache}:/cache
+      # Portable fallbacks stay beneath the checkout. Production and developer
+      # deployments should override these in .env or docker-compose.dev.yml.
+      - ${MODELS:-./models}:/models:ro
+      - ${VLLM_CACHE:-./vllm-cache}:/cache
       - ${WORK:-.}:/work:ro                        # supplies /work/qwen3.8-enhanced.jinja (this repo directory)
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8000/health"]
