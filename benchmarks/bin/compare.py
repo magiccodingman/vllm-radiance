@@ -70,8 +70,8 @@ def main() -> None:
         "",
         "Positive percentages are improvements: higher TPS or lower latency.",
         "",
-        "| Config | Workload | In/out | C | Output TPS | TPS delta | TTFT delta | TPOT delta |",
-        "|---|---|---:|---:|---:|---:|---:|---:|",
+        "| Config | Workload | In/out | C | Output TPS | TPS delta | TTFT delta | TPOT delta | Accept % | Accept delta | Accept len |",
+        "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     failed: list[str] = []
     for key in common:
@@ -91,10 +91,19 @@ def main() -> None:
             number(cand, "median_p50_tpot_ms"),
             lower_is_better=True,
         )
+        accept = number(cand, "median_spec_decode_acceptance_rate")
+        base_accept = number(base, "median_spec_decode_acceptance_rate")
+        accept_delta = (
+            None if accept is None or base_accept is None else accept - base_accept
+        )
+        accept_len = number(cand, "median_spec_decode_acceptance_length")
         lines.append(
             f"| {key[0]} | {key[1]} | {key[2]}/{key[3]} | {key[4]} "
             f"| {'' if tps is None else f'{tps:.2f}'} | {shown(tps_delta)} "
-            f"| {shown(ttft_delta)} | {shown(tpot_delta)} |"
+            f"| {shown(ttft_delta)} | {shown(tpot_delta)} "
+            f"| {'' if accept is None else f'{accept:.2f}'} "
+            f"| {'' if accept_delta is None else f'{accept_delta:+.2f} pp'} "
+            f"| {'' if accept_len is None else f'{accept_len:.2f}'} |"
         )
         if (
             args.fail_below is not None

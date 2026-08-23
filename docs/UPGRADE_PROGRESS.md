@@ -156,6 +156,15 @@ kernel itself is correct. The backend therefore remains explicit-only through
 `--additional-config={"gdn_prefill_backend":"aiter"}` for future profiling;
 `auto` retains the established Triton/FLA path.
 
+The upstream audit also corrected one research assumption before it could
+affect the build: as of 2026-08-23, AITER PR #4732 (the newer 24-commit FlyDSL
+K5/fp32-snapshot series) is still open, not merged, and its published timings
+are on gfx942. It is not silently pulled into this stability branch. Likewise,
+AITER PR #4868's generic RDNA LDS guard is still open; Radiance's broader,
+already-tested 2D/3D LDS guard remains in place. vLLM PR #52816 is merged and
+present in the pinned tree, so DFlash2 itself is available without an extra
+cherry-pick.
+
 ## Next checkpoints
 
 1. Complete and measure the official AMD PyTorch/Triton pair independently.

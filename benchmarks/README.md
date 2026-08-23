@@ -75,7 +75,8 @@ Set `RADIANCE_IMAGE` to compare an exact image reference. For a startup-only
 validation, call `bin/run_configuration.sh` with `--suite smoke`.
 
 Compare two completed run directories with direction-normalized deltas (positive
-always means better):
+always means better). Speculative comparisons also show candidate acceptance
+rate, acceptance-length, and the rate change in percentage points:
 
 ```bash
 benchmarks/bin/compare.py benchmarks/runs/BASELINE benchmarks/runs/CANDIDATE
