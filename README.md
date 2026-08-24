@@ -99,6 +99,14 @@ disabled for the correctness-qualified baseline. Runtime and capacity settings,
 including speculative decoding, can be overridden in `.env` without editing the
 public file.
 
+The default server preserves the checkpoint's full language-and-vision
+capability; deployments that intentionally want text-only execution may add
+vLLM's `--language-model-only` flag in a private override. Compose loads the
+checkpoint's recommended sampling defaults with `GENERATION_CONFIG=auto` and
+defaults Qwen3.8 reasoning to `xhigh`. Clients remain authoritative: explicit
+sampling parameters and request-level `chat_template_kwargs.reasoning_effort`
+override those defaults.
+
 ### Choose and switch serving modes
 
 The modes are mutually exclusive: `RADIANCE_SPECULATIVE_CONFIG` must contain
