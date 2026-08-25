@@ -221,6 +221,36 @@ including `RADIANCE_PRESHUFFLE`, `RADIANCE_USE_R4D`,
 container inspection in each manifest; explicitly supplied values are also
 listed in the manifest environment section.
 
+### Quark MXFP4/W4A8 lane
+
+The model-neutral harness also supports Quark OCP MXFP4 targets. It fails closed
+unless the checkpoint declares `quant_method: quark`, weight quantization is
+`auto`, both native/W4A8 switches are enabled, and `MIN_M=0` prevents the known
+unsafe AITER `o_proj` fallback:
+
+```bash
+MODEL_HOST=/path/to/Qwen3.8-27B-Quark-AWQ-MXFP4 \
+MODEL_NAME=Qwen3.8-27B-Quark-AWQ-MXFP4 \
+WEIGHT_QUANTIZATION=auto \
+RADIANCE_MXFP4=1 \
+RADIANCE_MXFP4_W4A8=1 \
+RADIANCE_MXFP4_W4A8_MIN_M=0 \
+RADIANCE_MXFP4_DECODE_MAX_M=48 \
+RADIANCE_MXFP4_TN4_MIN_M=2048 \
+RADIANCE_QUARK_BF16_MTP=1 \
+PREFIX_CACHING=off MAMBA_CACHE_MODE=none \
+benchmarks/bin/run_configuration.sh \
+  --run-root benchmarks/runs/RUN_ID --label mxfp4-w4a8-tp2 \
+  --tp 2 --spec off --image IMAGE --max-model-len 8192 --suite quick
+```
+
+`RADIANCE_QUARK_BF16_MTP=1` is necessary only for the verified AMD checkpoint's
+embedded BF16 MTP head. Leave it off for non-spec/DFlash and for any Quark
+checkpoint whose MTP tensors are genuinely packed. Manifests retain the Quark
+selection, every production MXFP4 threshold, diagnostic switches when set, the
+model metadata checksum, image digest, and normal host/GPU telemetry. Keep FP8
+KV unless performing an explicitly labeled diagnostic control.
+
 ### BetterBench publication lane
 
 The synthetic harness remains the fast smoke/quick engineering gate. Published
@@ -229,6 +259,11 @@ cross-mode results use BetterBench v0.2.2 at exact commit
 `/nvme/ediloca-1/venv/vllm-bench-env` environment. The wrapper refuses to run
 against another checkout. It records the profile, commit, version, raw JSON,
 standalone HTML, Markdown report, server manifest, and one-second telemetry.
+After the timed BetterBench workload finishes, the same live server also runs
+the fixed eight-prompt correctness fixture with top-five log probabilities and
+writes `raw/correctness_fixed.json`. Keeping that gate after the timed corpus
+prevents it from warming the benchmark while binding performance and output
+evidence to one immutable configuration.
 
 `standard` is the 10-pass/category comparison profile; `qualification` doubles
 that to 20 passes/category. Both use corpus v1, greedy temperature-zero decoding,
@@ -247,6 +282,12 @@ Prefix caching is explicitly off across vLLM versions for the cross-image lane;
 BetterBench also prefixes every prompt with a unique nonce. `run_betterbench.sh`
 enforces the shared 8K envelope so non-spec, MTP, and DFlash results cannot
 quietly drift into unlike capacity profiles.
+
+Do not publish only BetterBench's weighted aggregate. Preserve and report its
+single-stream rows for `chat`, `code`, `file_edit`, `json`, `math`, `prose`,
+`reasoning`, and `summarization`, plus the concurrency and prefill sweeps. Use
+`betterbench compare BASE.json CANDIDATE.json` for offline per-category deltas;
+the command defines delta as candidate B relative to baseline A.
 
 ### Experimental DFlash2 lane
 
@@ -279,6 +320,14 @@ equivalence against matched non-spec passes only 3/8 fixed prompts. K5, K7, and
 MTP were repeatable and produced the same fixed output stream, which localizes
 the difference to the shared speculative/runner numerical path without
 weakening the gate.
+
+For the AMD Quark MXFP4 target, use the base-model-matched selective-FP8
+`tcclaviger/Qwen3.8-27B-DFlash2-FP8` drafter. Stable vLLM 0.27.1 contains only
+the older Qwen DFlash runtime, so this image selectively backports Qwen3.8
+DFlash2 from PR #52816. Its context precompute also materializes the draft's
+scaled FP8 K/V slices before the raw fused `F.linear`; normal draft linears stay
+FP8. Set the MXFP4 variables from the preceding section and replace only the
+`model` value in `SPECULATIVE_CONFIG_JSON`.
 
 ## Results
 

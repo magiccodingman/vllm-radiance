@@ -1,32 +1,34 @@
 # syntax=docker/dockerfile:1.7
-# Fast Python/source-patch overlay for an already-built Radiance stack.
+# Fast Radiance patch/kernel overlay for an already-built compiler stack.
 #
 # Use this after changing guarded patches, hooks, configs, or the entrypoint. It
-# intentionally does not rebuild torch, Triton, AITER, vLLM, or the existing HIP
-# extensions, so compiler-stack checkpoints remain immutable and cheap to test.
+# intentionally does not rebuild torch, Triton, AITER, or vLLM. It does rebuild
+# the small Radiance/libr4d HIP extensions with the base image's pinned hipcc.
 ARG BASE_IMAGE=vllm-radiance:dev
 FROM ${BASE_IMAGE}
 
 USER root
-ARG RADIANCE_VERSION=0.7.5-dev.vllm0.27.1-r4d0.4.0
+ARG RADIANCE_VERSION=0.8.0-dev.vllm0.27.1-r4d0.4.0-mxfp4.dflash2.fusedsplitk
 ARG R4D_VERSION=v0.4.0
-ARG R4D_COMMIT=000d5f91d0e47ee9faf3b5466f0a12995f0cbfd6
+ARG R4D_COMMIT=b9e42ab7202f53a3bc13d415f5d41481f9ca311b
 ENV RADIANCE_VERSION=${RADIANCE_VERSION} \
     SP=/opt/vllm/lib/python3.12/site-packages
 
 COPY radiance_amdsmi.py radiance_amdsmi.pth \
      radiance_kernels.py radiance_vit_attn.py radiance_allreduce.py \
      radiance_draft.py radiance_draft_gpu.py radiance_drafthead.py radiance_router.py \
-     radiance_r4d_attn.py radiance_gdn.py ${SP}/
+     radiance_r4d_attn.py radiance_gdn.py radiance_mxfp4.py ${SP}/
 COPY fp8-configs/ ${SP}/vllm/model_executor/layers/quantization/utils/configs/
 COPY moe-configs/ ${SP}/vllm/model_executor/layers/fused_moe/configs/
+COPY mxfp4-configs/ ${SP}/aiter/ops/triton/configs/gemm/
 COPY patch_*.py install_radiance_hooks.py _patchlib.py /opt/patches/
 
 RUN set -eu; cd /opt/patches; \
     for p in patch_gfx1201 patch_radiance_dispatch patch_router_gemm patch_unified_attention_lds \
              patch_gdn_wmma patch_gdn_aiter_prefill patch_preshuffle install_radiance_hooks \
              patch_unpad patch_mtp_mm_mask patch_mtp_loopbreak patch_qwen3_toolparse patch_from_json_filter \
-             patch_dynamo_metrics patch_conv1d_blockn patch_r4d; do \
+             patch_dynamo_metrics patch_conv1d_blockn patch_r4d patch_dflash2_v0271_backport \
+             patch_quark_mxfp4 patch_quark_bf16_mtp patch_ar_maxbytes; do \
       echo "== applying $p =="; python "$p.py"; \
     done; \
     python -c "import ast,glob; [ast.parse(open(f).read()) for f in glob.glob('${SP}/radiance_*.py')]; print('patch overlay parse OK')"; \
@@ -43,6 +45,12 @@ RUN mkdir -p /tmp/libr4d \
  && WANT=$(echo "${R4D_VERSION}" | sed 's/^v//') \
  && python -c "import sys, torch, r4d; assert r4d.__version__ == sys.argv[1]; print('r4d', r4d.__version__, 'kernels', len(r4d.kernels()))" "$WANT" \
  && rm -rf /tmp/libr4d
+
+COPY radiance_mxfp4_fp8.hip /opt/patches/
+RUN INC=$(python -m pybind11 --includes); \
+    hipcc -O3 -std=c++17 -fPIC -shared --offload-arch=gfx1201 -Wno-unused-result \
+      $INC /opt/patches/radiance_mxfp4_fp8.hip -o ${SP}/radiance_mxfp4_fp8.so \
+ && python -c "import torch, radiance_mxfp4_fp8 as m; assert hasattr(m, 'launch'); assert hasattr(m, 'set_decode_scratch'); print('radiance MXFP4 W4A8 extension OK')"
 
 COPY VERSION /opt/radiance_version
 COPY radiance_preamble.py /opt/radiance_preamble.py

@@ -86,6 +86,30 @@ if [[ $WEIGHT_QUANTIZATION == fp8 ]]; then
     exit 1
   }
 fi
+if [[ ${RADIANCE_MXFP4:-0} == 1 || ${RADIANCE_MXFP4_W4A8:-0} == 1 ]]; then
+  [[ $WEIGHT_QUANTIZATION == auto ]] || {
+    echo "MXFP4 requires WEIGHT_QUANTIZATION=auto so vLLM reads checkpoint Quark metadata" >&2
+    exit 2
+  }
+  jq -e '.quantization_config.quant_method == "quark"' "${MODEL_HOST}/config.json" >/dev/null || {
+    echo "MXFP4 profile requires a Quark checkpoint: $MODEL_HOST" >&2
+    exit 1
+  }
+  [[ ${RADIANCE_MXFP4:-0} == 1 && ${RADIANCE_MXFP4_W4A8:-0} == 1 ]] || {
+    echo "Qualified gfx1201 MXFP4 requires both RADIANCE_MXFP4=1 and RADIANCE_MXFP4_W4A8=1" >&2
+    exit 2
+  }
+  [[ ${RADIANCE_MXFP4_W4A8_MIN_M:-0} == 0 ]] || {
+    echo "Refusing unsafe MXFP4 benchmark: RADIANCE_MXFP4_W4A8_MIN_M must be 0" >&2
+    exit 2
+  }
+  if [[ ${SPECULATIVE_CONFIG_JSON:-} == *'"method":"mtp"'* ]]; then
+    [[ ${RADIANCE_QUARK_BF16_MTP:-0} == 1 ]] || {
+      echo "Quark MXFP4 MTP requires RADIANCE_QUARK_BF16_MTP=1 for the qualified AMD checkpoint" >&2
+      exit 2
+    }
+  fi
+fi
 if [[ $KV_CACHE_DTYPE != fp8 && $ALLOW_DIAGNOSTIC_NON_FP8_KV != 1 ]]; then
   echo "Non-FP8 KV is diagnostic-only; set ALLOW_DIAGNOSTIC_NON_FP8_KV=1 explicitly" >&2
   exit 2
@@ -236,6 +260,15 @@ HIP_VISIBLE_DEVICES=$gpu_devices RADIANCE_IMAGE="$IMAGE" "${SCRIPT_DIR}/capture_
 if [[ $SUITE == betterbench ]]; then
   MODEL_NAME="$MODEL_NAME" "${SCRIPT_DIR}/run_betterbench.sh" \
     --run-dir "$CONFIG_DIR" --config "$LABEL" --max-model-len "$MAX_MODEL_LEN"
+  # Keep the publication-grade performance suite and the strict output gate in
+  # the same immutable run directory. Run this after BetterBench so fixed
+  # prompts cannot warm or otherwise perturb the measured corpus.
+  "${SCRIPT_DIR}/run_correctness.py" \
+    --base-url http://127.0.0.1:11435 \
+    --model "$MODEL_NAME" \
+    --prompts "${BENCH_ROOT}/fixtures/correctness-prompts.json" \
+    --output "${CONFIG_DIR}/raw/correctness_fixed.json" \
+    --max-tokens 128 --repetitions 1 --logprobs 5
 else
   MODEL_HOST="$MODEL_HOST" MODEL_NAME="$MODEL_NAME" BENCH_WORKLOADS="$WORKLOAD_FILTER" "${SCRIPT_DIR}/run_suite.sh" \
     --run-dir "$CONFIG_DIR" --config "$LABEL" --tp "$TP" --spec "$SPEC" \

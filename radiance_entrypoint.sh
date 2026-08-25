@@ -31,6 +31,24 @@ done
 set -- ${_args[@]+"${_args[@]}"}
 [ -z "$_numa_spec" ] && _numa_spec="${RADIANCE_NUMA_BIND:-}"
 
+# Compose-friendly weight-format selection. `auto` deliberately means no CLI
+# flag so vLLM reads quantization_config from the checkpoint (required by Quark
+# OCP MXFP4). Explicit command-line quantization always wins.
+if [ -n "${RADIANCE_WEIGHT_QUANTIZATION:-}" ] \
+    && [ "${RADIANCE_WEIGHT_QUANTIZATION,,}" != "auto" ]; then
+  _has_weight_quantization=0
+  for _arg in "$@"; do
+    case "$_arg" in
+      --quantization|-q|--quantization=*) _has_weight_quantization=1; break ;;
+    esac
+  done
+  if [ "$_has_weight_quantization" -eq 1 ]; then
+    echo "[radiance] WARN RADIANCE_WEIGHT_QUANTIZATION ignored because --quantization was passed explicitly" >&2
+  else
+    set -- "$@" "--quantization=${RADIANCE_WEIGHT_QUANTIZATION}"
+  fi
+fi
+
 # Compose-friendly speculative decoding. A raw JSON config in the environment is
 # appended as one argv item, so users can opt into MTP/DFlash without editing the
 # portable Compose command list. An explicit CLI flag always wins.

@@ -12,7 +12,8 @@ FP8 GEMM and speculative-decoding paths.
 > ROCm compiler stack; see [docs/UPGRADE_PROGRESS.md](docs/UPGRADE_PROGRESS.md) and
 > [docs/LIBR4D_BETTERBENCH.md](docs/LIBR4D_BETTERBENCH.md). The Docker image is published at
 > [magiccodingman/vllm-radiance](https://hub.docker.com/r/magiccodingman/vllm-radiance).
-> The current regression model is **Qwen3.8-27B FP8**. Earlier Radiance work was measured on
+> The current regression models are **Qwen3.8-27B FP8** and AMD's Quark **Qwen3.8-27B MXFP4**.
+> Earlier Radiance work was measured on
 > **Qwen3.6-27B-FP8**, **Qwen3.6-35B-A3B-FP8** (fine-grained MoE, 256 experts / top-8), and
 > **Gemma-4-31B-it-FP8** (block-fp8, sliding + global attention, vision), all with fp8 (or bf16/`auto`) KV
 > cache on two R9700 GPUs (tensor parallel). Other models, non-FP8 weights, single or
@@ -21,8 +22,8 @@ FP8 GEMM and speculative-decoding paths.
 
 This is the `magiccodingman/vllm-radiance` fork. It tracks and credits DeadCode's upstream
 [vllm-radiance](https://codeberg.org/StillDeadcode/vllm-radiance) and libr4d releases, but deliberately
-diverges by carrying DFlash2 plus the AMD PyTorch 2.12 and Triton 3.7.1 compiler pair.
-The current line uses stable vLLM v0.27.1 (which includes DFlash2) rather than a moving post-release tree,
+diverges by carrying a selective DFlash2 backport plus the AMD PyTorch 2.12 and Triton 3.7.1 compiler pair.
+The current line uses stable vLLM v0.27.1 plus the exact reviewed DFlash2 PR #52816 head rather than a moving post-release tree,
 after the latter was shown to intermittently violate required JSON-schema fields during tool calls.
 The GitLab pipeline publishes this fork as `magiccodingman/vllm-radiance`; the immutable upstream
 `stilldeadcode/vllm-radiance` images are external comparison baselines, not products of this repository.
@@ -40,26 +41,28 @@ That single command builds everything from source, in four stages. **builder** c
 torchvision, AITER, and vLLM for `PYTORCH_ROCM_ARCH=gfx1201` against the official `rocm/dev-ubuntu-24.04`
 base (digest-pinned) and leaves the wheels in `/wheels` (it also builds `rocm-bandwidth-test` for the startup
 sweep). **rocmprune** (`prune_rocm.sh`) cuts the 19 GB ROCm tree down to this one GPU architecture.
-**assemble** installs the wheels, applies the guarded RDNA4 patches, and builds exact libr4d v0.4.0 source
+**assemble** installs the wheels, applies the guarded RDNA4 patches, and builds the exact post-v0.4.0 libr4d
+commit containing the MXFP4 GDN exponent guards
 with the image's own `hipcc`. **final** is the release image: a clean `ubuntu:24.04` that receives only the pruned ROCm tree, the
 venv, and the entrypoint, so neither the build toolchain nor the wheels ever reach the published image. No
 prebuilt component wheels, no rotating wheel indexes, and no checked-in binaries go into the image. It is a
 long build (a full PyTorch compile); expect it to run for hours on a many-core box.
 
-For ordinary guarded Python-patch, hook, config, or entrypoint iteration, layer
+For ordinary guarded patch, Radiance kernel, hook, config, or entrypoint iteration, layer
 `Dockerfile.patch` over an already-built immutable stack instead of recompiling
 the compiler stack:
 
 ```bash
 docker build -f Dockerfile.patch \
-  --build-arg BASE_IMAGE=vllm-radiance:0.7.5-dev.vllm0.27.1-r4d0.4.0 \
-  --build-arg RADIANCE_VERSION=0.7.5-dev.patch \
-  -t vllm-radiance:0.7.5-dev.patch .
+  --build-arg BASE_IMAGE=vllm-radiance:0.8.0-dev.vllm0.27.1-r4d0.4.0-mxfp4.dflash2.fusedsplitk \
+  --build-arg RADIANCE_VERSION=0.8.0-dev.patch \
+  -t vllm-radiance:0.8.0-dev.patch .
 ```
 
-The overlay reruns every source-drift guard and import check but deliberately
-does not replace the compiled torch/Triton/AITER/vLLM wheels or HIP extensions.
-Use the full `Dockerfile` whenever one of those compiled components changes.
+The overlay reruns every source-drift guard and import check and rebuilds the
+small Radiance/libr4d HIP extensions with the base image's pinned compiler. It
+does not replace the torch/Triton/AITER/vLLM wheels. Use the full `Dockerfile`
+when the compiler stack or one of those dependency wheels changes.
 
 That structure is what keeps the download reasonable: the stock ROCm base is 7.4 GiB compressed on its own,
 most of it device code for GPUs this image cannot run on. Pruning it to gfx1201 and shipping an allowlist
@@ -104,6 +107,42 @@ admission ceiling, and 85% GPU allocation. Speculative decoding remains
 disabled for the correctness-qualified baseline. Runtime and capacity settings,
 including speculative decoding, can be overridden in `.env` without editing the
 public file.
+
+### Optional Quark MXFP4 / native W4A8 target
+
+For [`amd/Qwen3.8-27B-Quark-AWQ-MXFP4`](https://huggingface.co/amd/Qwen3.8-27B-Quark-AWQ-MXFP4),
+point `MODEL_PATH` at the checkpoint and use this `.env` profile:
+
+```dotenv
+WEIGHT_QUANTIZATION=auto
+RADIANCE_MXFP4=1
+RADIANCE_MXFP4_W4A8=1
+RADIANCE_MXFP4_W4A8_MIN_M=0
+RADIANCE_MXFP4_DECODE_MAX_M=48
+RADIANCE_MXFP4_TN4_MIN_M=2048
+# MTP only: this checkpoint stores its embedded MTP tensors in BF16.
+RADIANCE_QUARK_BF16_MTP=1
+```
+
+`auto` is required: it lets vLLM consume the checkpoint's `quant_method: quark`
+metadata instead of forcing the normal FP8 loader. The two feature switches are
+opt-in and inert for ordinary FP8 checkpoints. On gfx1201, W4A8 keeps the packed
+MXFP4 weights but dynamically quantizes activations to FP8 E4M3 so the hand-written
+kernel reaches RDNA4's native FP8 WMMA path. This is more precise than the declared
+W4A4 activation format, but it is a numerical mode change rather than bit-identical
+emulation.
+
+Keep `RADIANCE_MXFP4_W4A8_MIN_M=0`: the generic AITER W4A4 fallback is numerically
+wrong for the Qwen GDN `N=5120,K=3072` projection. The decode-shaped kernel handles
+`M<=48`; the prefill kernel handles larger batches and selects its wider N tile from
+`M>=2048`. Mandatory FP8 KV and the normal R4D attention/GDN/all-reduce paths remain
+active. The AMD checkpoint also contains a one-layer BF16 MTP head. Its Quark
+metadata does not exclude those unpacked tensors from the global FP4 recipe, so
+the normal MTP profile additionally requires `RADIANCE_QUARK_BF16_MTP=1`.
+DFlash2 still requires a compatible separate drafter and its own qualification.
+
+The implementation, provenance, safety constraints, and exact benchmark run IDs
+are recorded in [docs/MXFP4_W4A8_R9700.md](docs/MXFP4_W4A8_R9700.md).
 
 The default server preserves the checkpoint's full language-and-vision
 capability; deployments that intentionally want text-only execution may add
@@ -186,12 +225,20 @@ RADIANCE_COMPILATION_CONFIG='{"cudagraph_mode":"PIECEWISE"}'
 RADIANCE_SPECULATIVE_CONFIG='{"method":"dflash","model":"/models/Qwen3.8-27B-heretic-ara-DFlash2-fp8-magiccodingman","num_speculative_tokens":7,"draft_tensor_parallel_size":2,"attention_backend":"TRITON_ATTN","max_model_len":8192}'
 ```
 
+For the AMD Quark MXFP4 target, use the target-matched
+`tcclaviger/Qwen3.8-27B-DFlash2-FP8` drafter instead of the ARA drafter and set
+its mounted path in the same JSON. This checkpoint uses block-FP8 QKV weights;
+the image's DFlash2 backport applies their scales when constructing the fused
+context-K/V projection while leaving normal draft execution quantized.
+
 This selects the V2-compatible runner, the measured `PIECEWISE` graph mode,
 TP2 draft sharding, and `TRITON_ATTN` for the drafter while retaining R4D for
 the target. Prefix caching is disabled here to match the published BetterBench
-contract. K7 was the measured c1/c2/c4/c8 winner; K5 remains a useful lower-depth
-control. DFlash2 is experimental and failed the strict cross-mode gate, so this
-profile is intentionally an explicit alternative rather than the default.
+contract. On the original ARA FP8 target, K7 was the measured c1/c2/c4/c8
+winner. On the AMD Quark MXFP4 target below, K7 wins weighted single stream and
+c1-c4, while K5 is decisively faster at c8. DFlash2 is experimental and failed
+the strict cross-mode gate, so either profile is intentionally an explicit
+alternative rather than the default.
 
 For source development, copy `docker-compose.dev.example.yml` to
 `docker-compose.dev.yml` and layer it explicitly:
@@ -279,6 +326,42 @@ does not turn a failed strict gate into a pass. Exact run IDs and the external
 DeadCode 0.7.4 comparison are in
 [docs/LIBR4D_BETTERBENCH.md](docs/LIBR4D_BETTERBENCH.md).
 
+### Quark MXFP4/W4A8 on dual R9700
+
+The same BetterBench standard contract was rerun with
+`amd/Qwen3.8-27B-Quark-AWQ-MXFP4`, the native gfx1201 W4A8 kernel, mandatory
+FP8 KV, and the target-matched `tcclaviger/Qwen3.8-27B-DFlash2-FP8` drafter.
+The rows below are category medians, not a single aggregate repeated eight
+times:
+
+| Category | Non-spec | MTP K4 fast | DFlash K5 | DFlash K7 |
+|---|---:|---:|---:|---:|
+| Chat | 43.9 | 84.3 | 97.9 | 97.3 |
+| Code | 43.7 | 98.4 | 130.0 | **144.0** |
+| File edit | 43.7 | 119.0 | 137.4 | **168.7** |
+| JSON | 43.9 | 130.8 | 158.4 | **180.3** |
+| Math | 43.5 | 116.2 | 157.8 | **176.9** |
+| Prose | 43.6 | 80.7 | **107.8** | 101.0 |
+| Reasoning | 43.5 | 85.3 | **110.1** | 107.6 |
+| Summarization | 43.6 | 117.6 | 152.0 | **160.4** |
+| **Weighted** | **43.7** | **101.9** | **129.8** | **139.8** |
+
+| Mode | c1 | c2 | c4 | c8 | Draft acceptance | Minimum headroom/GPU |
+|---|---:|---:|---:|---:|---:|---:|
+| Non-spec | 43.5 | 83.3 | 144.6 | 243.0 | — | 4.91 GiB |
+| MTP K4 fast | 97.5 | 173.6 | 277.9 | 365.3 | 59.25% | 5.54 GiB |
+| DFlash K5 | 114.8 | 219.3 | 341.0 | **506.7** | 54.28% | 6.55 GiB |
+| DFlash K7 | **125.9** | **225.6** | **357.3** | 360.1 | 43.59% | 6.48 GiB |
+
+K7 is the measured latency/c1-c4 profile; K5 is the measured c8 throughput
+profile. K5 significantly beat MTP in every category. K7 significantly beat K5
+for code, file edit, JSON, math, and summarization, while chat/prose/reasoning
+were noise-equivalent. All three speculative modes completed the fixed fixture
+but matched non-spec exactly on only 2/8 prompts, so these are experimental
+performance profiles—not lossless/default qualification. Kernel provenance,
+confidence intervals, prefill, telemetry, checksums, negative results, and exact
+run IDs are in [docs/MXFP4_W4A8_R9700.md](docs/MXFP4_W4A8_R9700.md).
+
 ## What's inside
 
 Everything below is baked into the image; the tuned paths are env-gated and on by default. See
@@ -297,6 +380,12 @@ Everything below is baked into the image; the tuned paths are env-gated and on b
 - **Radiance FP8 target paths**: preshuffled block-FP8 GEMM selection, split-K alignment fixes, fused
   RMSNorm+quant, and guarded fallback dispatch. These remain because matched controls showed the generic
   upstream AITER linear route was 9-11% slower.
+- **Quark MXFP4/W4A8 target path** (opt-in): native loading of packed OCP group-32 MXFP4 weights,
+  gfx1201-specific AITER tiles, and hand-written FP8-WMMA GEMMs with separate prefill and small-M
+  decode tilings. The decode kernel fuses its split-K reduction into the last arriving block, and
+  the scale-fold table uses hardware-validated E4M3 subnormals so rare exponent deltas round instead
+  of flushing weight groups to zero. It preserves the FP8/R4D paths above for their original
+  checkpoints and operators.
 - **Fine-grained MoE support** (e.g. Qwen3.6-35B-A3B): RDNA4-tuned fused-MoE Triton configs (always on;
   removes the stock config's `M>=96` cliff for a lower prefill TTFT, lossless), plus a custom bf16 MoE-gate
   GEMM (`RADIANCE_MOE_ROUTER`) for the `n` in `[6,16]` band that rocBLAS serves poorly. Both inert on
@@ -305,9 +394,9 @@ Everything below is baked into the image; the tuned paths are env-gated and on b
   `RADIANCE_FAST_DRAFT=1` INT2-g128 copy of the MTP head followed by exact top-32 reranking. Target
   verification remains in place, but this fork does not label the full speculative runner byte-equivalent
   while its strict cross-mode gate is failing.
-- **Experimental DFlash2** from stable vLLM v0.27.1: selective-FP8 drafter loading, TP2 draft sharding, and
-  piecewise graph execution. K7 is the measured throughput winner; it stays explicit-only pending strict
-  output qualification.
+- **Experimental DFlash2** selectively backported onto stable vLLM v0.27.1: Qwen3.8 local-convolution and
+  candidate-selector support, scaled context-K/V materialization for block-FP8 draft QKV weights, TP2
+  draft sharding, and piecewise graph execution. It stays explicit-only pending strict output qualification.
 - **Prefix caching that works on the GDN hybrid** (enabled in the compose): hybrid models leave automatic
   prefix caching off by default, so it is turned on explicitly with `--enable-prefix-caching
   --mamba-cache-mode=align`. Align mode snapshots and restores the linear-attention (GDN) recurrent state at
