@@ -65,8 +65,9 @@ defaults. Do not substitute an unpinned `main` checkout or generic PyTorch
 R4D attention is selected with `--attention-backend=R4D`. AITER attention and
 the older operator implementations remain fallbacks/controls. The portable
 Compose defaults to native FP8 weights, FP8 KV, TP2, 16K, 85% allocation,
-eight admitted sequences, and 4,096 batched tokens. Speculative decoding is
-off because its strict cross-mode output gate has not qualified. For Qwen's
+eight admitted sequences, 4,096 batched tokens, and automatic prefix caching
+with `--mamba-cache-mode=align`. Speculative decoding is off because its strict
+cross-mode output gate has not qualified. For Qwen's
 in-checkpoint MTP head, opt in without editing Compose by adding these two lines
 to `.env`:
 
@@ -85,8 +86,8 @@ below (replace the drafter path if its directory name differs):
 
 ```dotenv
 MAX_MODEL_LEN=8192
-PREFIX_CACHING_FLAG=--no-enable-prefix-caching
-MAMBA_CACHE_MODE=none
+PREFIX_CACHING_FLAG=--enable-prefix-caching
+MAMBA_CACHE_MODE=align
 VLLM_USE_V2_MODEL_RUNNER=1
 RADIANCE_COMPILATION_CONFIG='{"cudagraph_mode":"PIECEWISE"}'
 RADIANCE_SPECULATIVE_CONFIG='{"method":"dflash","model":"/models/Qwen3.8-27B-heretic-ara-DFlash2-fp8-magiccodingman","num_speculative_tokens":7,"draft_tensor_parallel_size":2,"attention_backend":"TRITON_ATTN","max_model_len":8192}'
@@ -94,7 +95,10 @@ RADIANCE_SPECULATIVE_CONFIG='{"method":"dflash","model":"/models/Qwen3.8-27B-her
 
 That is the measured selective-FP8 K7 lane: R4D target attention, Triton draft
 attention, draft TP2, and piecewise graphs. It remains opt-in because strict
-cross-mode equivalence has not qualified.
+cross-mode equivalence has not qualified. Published BetterBench results used
+`--no-enable-prefix-caching --mamba-cache-mode=none` only to enforce a cold,
+nonce-disjoint benchmark contract; those are not the recommended production
+defaults.
 
 For the AMD Quark target, set `WEIGHT_QUANTIZATION=auto`, enable both MXFP4
 switches above, and use the target-matched
@@ -123,6 +127,15 @@ DFlash K5, and 139.8 with K7. K7 won c1/c2/c4 at 125.9/225.6/357.3 TPS; K5
 won c8 at 506.7 TPS versus K7's 360.1. All category rows, acceptance, prefill,
 headroom, checksums, exact run IDs, and the failed strict-equivalence status are
 in `docs/MXFP4_W4A8_R9700.md` in the source repository.
+
+The recommended long-context MXFP4 profile is 128K/C4 at 90% GPU allocation,
+FP8 KV, DFlash K5, `PIECEWISE` graphs, prefix caching, and GDN `align` state. It
+reported 576,001 KV tokens / 4.39x full-request capacity and completed four
+disjoint full-context requests with zero OOM or preemption and 5.17 GiB minimum
+headroom per GPU. A 32K repeated prefix reduced TTFT from 9.04 seconds cold to
+0.70-0.71 seconds warm (12.8x) with byte-identical sequential outputs. The
+prefix-disabled maximum-capacity sweep completed 32K C11, 64K C7, 128K C4, and
+256K C2; use the more conservative 32K C8 / 64K C6 settings in production.
 
 **Fine-grained MoE (Qwen3.6-35B-A3B-FP8).** Supported and tuned. Two MoE paths are baked in and activate automatically for it: RDNA4-tuned fused-MoE Triton configs (removes the stock config's `M>=96` cliff, lower prefill TTFT, lossless) and a custom bf16 MoE-gate GEMM (`RADIANCE_MOE_ROUTER`, on by default) for the skinny `n` in `[6,16]` batch band that rocBLAS serves poorly (~2.5x faster cold, bit-identical output; wvSplitK already covers `n<=5`). A serving requirement: with `--mamba-cache-mode=align` this model's attention block size is 2240, and align asserts `block_size <= max_num_batched_tokens`, so keep **`--max-num-batched-tokens >= 2240`**; the Compose default is 4096.
 
@@ -348,7 +361,7 @@ With an empty cache the first start spends a few extra minutes compiling Triton 
 | `--tensor-parallel-size` | `2` | one rank per R9700 |
 | `--quantization` | `fp8` | tuned for FP8 weights |
 | `--kv-cache-dtype` | `fp8`, `bf16`, or `auto` | fp8 = 1 byte/elem (most KV capacity); bf16 / `auto` keep full precision |
-| `--attention-backend` | `ROCM_AITER_UNIFIED_ATTN` | required for the tuned attention path |
+| `--attention-backend` | `R4D` | current tuned target attention path; AITER remains a fallback/control |
 | `--max-model-len` | model dependent | context length per request |
 | `--max-num-seqs` | workload dependent | max concurrent sequences |
 | `--gpu-memory-utilization` | `0.85` starting point | Leaves measured runtime/drafter headroom; raise only after a model-specific capacity qualification |
@@ -376,7 +389,7 @@ Prefix caching (shared system prompts, RAG, agentic context):
 --enable-prefix-caching --mamba-cache-mode align
 ```
 
-Automatic prefix caching reuses a shared prompt prefix across requests so only the new suffix is prefilled, a large time-to-first-token drop when many requests share a system prompt or document. On this **GDN hybrid you must pass both flags**: hybrid models default their prefix-caching support flag off ("experimental"), so vLLM **silently disables** prefix caching unless `--enable-prefix-caching` is given, and `--mamba-cache-mode align` is what makes the linear-attention (GDN) layers cacheable by snapshotting and restoring their conv + recurrent state at block boundaries. That restore is **verified bit-identical to a full recompute** (including under MTP), so outputs are unchanged; the win is purely latency (measured ~3.6x faster TTFT on shared prefixes). Trade-offs: align reconciles the mamba and attention page sizes, which raises the attention block size to 1664 tokens and adds one state block per linear-attention layer (slightly lower max concurrency at full context), and prefix hits land on 1664-token boundaries. Do **not** use `--mamba-cache-mode all` (unsupported by this model, raises at startup) and do **not** set `VLLM_SSM_CONV_STATE_LAYOUT=DS` (asserts under MTP + align).
+Automatic prefix caching reuses a shared prompt prefix across requests so only the new suffix is prefilled, a large time-to-first-token drop when many requests share a system prompt or document. On this **GDN hybrid you must pass both flags**: hybrid models default their prefix-caching support flag off ("experimental"), so vLLM **silently disables** prefix caching unless `--enable-prefix-caching` is given, and `--mamba-cache-mode align` is what makes the linear-attention (GDN) layers cacheable by snapshotting and restoring their conv + recurrent state at block boundaries. That restore is **verified bit-identical to a full recompute** (including under MTP), so outputs are unchanged; the win is purely latency (measured ~3.6x in the original qualification and 12.8x for a 32K shared prefix in the MXFP4+DFlash production profile). Trade-offs: align reconciles the mamba and attention page sizes, which raises the attention block size to 1664 tokens and adds one state block per linear-attention layer (slightly lower max concurrency at full context), and prefix hits land on 1664-token boundaries. Do **not** use `--mamba-cache-mode all` (unsupported by this model, raises at startup) and do **not** set `VLLM_SSM_CONV_STATE_LAYOUT=DS` (asserts under MTP + align).
 
 Tool-calling and reasoning:
 

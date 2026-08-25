@@ -25,6 +25,9 @@ services:
       # reach MAX_MODEL_LEN. Select both values from the capacity guide in README.
       # Measured conservative TP2 Qwen3.8 FP8+DFlash pairs at GPU_UTIL=0.85:
       #   8K:8, 16K:7, 32K:5, 64K:3, 128K:2, 256K:1
+      # Measured MXFP4+DFlash high-capacity pairs at GPU_UTIL=0.90, APC off:
+      #   32K:8, 64K:6, 128K:4, 256K:2
+      # Measured production MXFP4+DFlash pair with APC+align on: 128K:4.
       # These are model/profile-specific; other checkpoints must be requalified.
       - --max-num-seqs=${MAX_NUM_SEQS:-8}
       - --max-model-len=${MAX_MODEL_LEN:-16384}
@@ -42,7 +45,8 @@ services:
       # --enable-prefix-caching is passed explicitly. --mamba-cache-mode=align makes the linear-attention
       # (GDN) layers prefix-cacheable too, snapshotting + restoring their conv + recurrent state at block
       # boundaries; this is verified bit-identical to full recompute (including under MTP). Effect:
-      # large TTFT drop on shared prefixes (~3.6x measured). Note: align reconciles the mamba/attention
+      # large TTFT drop on shared prefixes (~3.6x earlier and 12.8x at 32K in the measured
+      # MXFP4+DFlash production profile). Note: align reconciles the mamba/attention
       # page sizes, which raises the attention block size to 1664 tokens and uses one extra state block
       # per linear-attn layer (slightly lower max concurrency at full context). Remove both flags to
       # disable. Do NOT use --mamba-cache-mode=all (unsupported by this model) and do NOT set
