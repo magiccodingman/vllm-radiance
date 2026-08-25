@@ -52,7 +52,12 @@ from vllm.v1.attention.backends.triton_attn import (
     TritonAttentionMetadata,
     TritonAttentionMetadataBuilder,
 )
-from vllm.v1.kv_cache_interface import KVCacheLayout
+try:
+    # Post-v0.27 vLLM names cache layouts with this enum. The stable v0.27.1
+    # selector still asks each backend for its legacy string layout instead.
+    from vllm.v1.kv_cache_interface import KVCacheLayout
+except ImportError:  # vLLM v0.27.1
+    KVCacheLayout = None
 
 def _say(msg: str) -> None:
     # This module is outside the `vllm` logger namespace, where vLLM installs its handler, so a
@@ -266,13 +271,20 @@ class R4DAttentionBackend(TritonAttentionBackend):
         return False
 
     @classmethod
-    def supported_kv_cache_layouts(cls) -> tuple[KVCacheLayout, ...]:
+    def supported_kv_cache_layouts(cls) -> tuple:
         # Pinned vLLM main resolves one physical cache layout across every
         # backend before allocation. LBHNC is its head-major, block-compact
         # spelling of legacy HND: the logical tensor remains
         # (blocks, heads, slots, 2*head_size), while slots are contiguous
         # within each head exactly as the R4D kernels require.
+        if KVCacheLayout is None:
+            return ()
         return (KVCacheLayout.LBHNC,)
+
+    @classmethod
+    def get_required_kv_cache_layout(cls) -> str:
+        # v0.27.1 spelling of the same head-major, slot-contiguous layout.
+        return "HND"
 
     @classmethod
     def supports_combination(cls, *args, **kwargs) -> str | None:

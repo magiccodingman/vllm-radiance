@@ -1,7 +1,7 @@
 # vllm-radiance
 
-vLLM inference server for the AMD Radeon AI PRO R9700 (gfx1201 / RDNA4), combining a pinned post-0.27
-vLLM-main ROCm stack with libr4d's hand-written RDNA4 kernels and Radiance's FP8/speculative paths.
+vLLM inference server for the AMD Radeon AI PRO R9700 (gfx1201 / RDNA4), combining pinned stable
+vLLM v0.27.1 with libr4d's hand-written RDNA4 kernels and Radiance's FP8/speculative paths.
 
 > **Status: experimental.** This fork publishes as `magiccodingman/vllm-radiance`.
 > `stilldeadcode/vllm-radiance:0.7.4` is DeadCode's separate upstream release
@@ -15,15 +15,17 @@ sequences; it deliberately leaves VRAM headroom instead of finding the largest
 batch that fits. Earlier 0.5.8 performance numbers below remain useful history,
 but are not claims about the new compiler stack.
 
-## Current fork stack (`0.7.4-dev.a014e35-r4d0.4.0`)
+## Current fork stack (`0.7.5-dev.vllm0.27.1-r4d0.4.0`)
 
 | Component | Exact version/pin |
 |---|---|
-| vLLM | `0.28.0.dev0+a014e35` / `a014e35f38c80fb0652387740193ad2147fed6a3` |
+| vLLM | `0.27.1` / `6e448d0ea9bf3d88d898b65449ca6dc2aec170ac` |
 | PyTorch | AMD ROCm 2.12 commit `6bbd26020da1c6dc198625dfcdd968b1e4e6b1c5` |
 | Triton | AMD 3.7.1 commit `f0b55c07da61c71775bef6d1a15ebf846430ac75` |
 | torchvision | 0.27.1 |
 | AITER | 0.1.20 (`fc2e5d57fb5b8ad8e7e23f7103071dde798ea618`) |
+| Transformers | 5.14.1 |
+| XGrammar | 0.2.3 |
 | libr4d | 0.4.0 (`000d5f91d0e47ee9faf3b5466f0a12995f0cbfd6`) |
 | ROCm userspace | 7.14, bundled |
 
@@ -357,4 +359,7 @@ Tool-calling and reasoning:
 --enable-auto-tool-choice --tool-call-parser <parser> --reasoning-parser <parser>
 ```
 
-Pass a template with `--chat-template file.jinja` if the model needs one. The image ships the `from_json` filter those templates often rely on.
+The portable Compose intentionally uses each checkpoint's native chat template.
+Pass `--chat-template file.jinja` in a private override only when a checkpoint
+needs a deployment-specific template. The image ships the `from_json` filter
+those templates often rely on.

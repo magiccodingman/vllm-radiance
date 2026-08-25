@@ -1,0 +1,82 @@
+{
+  "model": "__MODEL__",
+  "messages": [
+    {
+      "role": "user",
+      "content": "The current screen has button [ref=e12] named Login. Click it exactly once and complete the step."
+    }
+  ],
+  "tools": [
+    {
+      "type": "function",
+      "function": {
+        "name": "click",
+        "description": "Click an element",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "reasoning": { "type": "string" },
+            "confidence": { "type": "number" },
+            "stepComplete": { "type": "boolean" },
+            "stepFailed": { "type": "boolean" },
+            "ref": { "type": "string" }
+          },
+          "required": ["reasoning", "confidence", "stepComplete", "ref"],
+          "additionalProperties": false
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "keypress",
+        "description": "Press one or more keyboard keys",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "reasoning": { "type": "string" },
+            "confidence": { "type": "number" },
+            "stepComplete": { "type": "boolean" },
+            "stepFailed": { "type": "boolean" },
+            "keys": {
+              "type": "array",
+              "items": { "type": "string" },
+              "minItems": 1
+            }
+          },
+          "required": ["reasoning", "confidence", "stepComplete", "keys"],
+          "additionalProperties": false
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "assert",
+        "description": "Assert a visible condition",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "reasoning": { "type": "string" },
+            "confidence": { "type": "number" },
+            "stepComplete": { "type": "boolean" },
+            "stepFailed": { "type": "boolean" },
+            "condition": { "type": "string" },
+            "visual": { "type": "boolean" }
+          },
+          "required": ["reasoning", "confidence", "stepComplete", "condition"],
+          "additionalProperties": false
+        }
+      }
+    }
+  ],
+  "tool_choice": "required",
+  "reasoning_effort": "medium",
+  "temperature": 1.0,
+  "top_p": 0.95,
+  "top_k": 20,
+  "min_p": 0.0,
+  "presence_penalty": 0.0,
+  "repetition_penalty": 1.0,
+  "max_completion_tokens": 1024
+}

@@ -9,7 +9,7 @@
 # build toolchain nor the wheels, which is most of the reason it is far smaller than the base.
 #
 # stack: AMD torch 2.12, AMD Triton 3.7.1, torchvision 0.27.1, AITER 0.1.20,
-# pinned vLLM main,
+# pinned vLLM v0.27.1,
 # all compiled for PYTORCH_ROCM_ARCH=gfx1201 against the base image's ROCm 7.14.
 ARG ROCM_BASE=rocm/dev-ubuntu-24.04:7.14.0-full@sha256:439edaa8f0c4be4a3728e528f87b8a2ea1f051f34cf10b27caa4bd94f562eda7
 ARG GFX_ARCH=gfx1201
@@ -33,10 +33,17 @@ ARG TRITON_VERSION=3.7.1
 ARG TORCHVISION_VERSION=0.27.1
 ARG AITER_COMMIT=fc2e5d57fb5b8ad8e7e23f7103071dde798ea618
 ARG AITER_VERSION=0.1.20
-# Never float main: this is the exact 2026-08-22 tree containing the RDNA4
-# routing work and DFlash2. VLLM_VERSION is only the deterministic wheel stamp.
-ARG VLLM_COMMIT=a014e35f38c80fb0652387740193ad2147fed6a3
-ARG VLLM_VERSION=0.28.0.dev0+a014e35
+# vLLM permits a range, but 5.15 moved Gemma-4 head_dim to a per-layer
+# attribute that v0.27.1 does not consume correctly. Keep the last compatible
+# release pinned so rebuilds cannot silently change model-loading behavior.
+ARG TRANSFORMERS_VERSION=5.14.1
+# Structured-output qualification is specific to this grammar runtime. vLLM's
+# broad compatible range must not silently change the regression surface.
+ARG XGRAMMAR_VERSION=0.2.3
+# Stable vLLM release containing DFlash2. Pin the immutable tag target rather
+# than resolving the tag during each build. VLLM_VERSION is the wheel stamp.
+ARG VLLM_COMMIT=6e448d0ea9bf3d88d898b65449ca6dc2aec170ac
+ARG VLLM_VERSION=0.27.1
 # rocm-bandwidth-test for the startup topology/bandwidth sweep. Pinned to the NEWEST tag that still
 # has a plain CMakeLists: the rocm-7.x tags moved to a cmake framework that demands clang>=19 on PATH
 # plus vendored boost/fmt/curl submodules, none of which this tool needs.
@@ -187,6 +194,8 @@ RUN bash /tmp/prune_rocm.sh ${GFX_ARCH} && rm -f /tmp/prune_rocm.sh
 # compile the HIP kernels. Only the resulting /opt/vllm venv is carried into the release image.
 FROM ${ROCM_BASE} AS assemble
 ARG GFX_ARCH
+ARG TRANSFORMERS_VERSION
+ARG XGRAMMAR_VERSION
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
       python3.12-venv git \
@@ -210,6 +219,7 @@ RUN pip install --no-cache-dir -U pip wheel setuptools \
  && pip install --no-cache-dir --no-deps \
       /wheels/torch-*.whl /wheels/triton-*.whl /wheels/torchvision-*.whl /wheels/*aiter-*.whl \
  && pip install --no-cache-dir /wheels/vllm-*.whl \
+      "transformers==${TRANSFORMERS_VERSION}" "xgrammar==${XGRAMMAR_VERSION}" \
  && pip install --no-cache-dir flydsl==0.3.1 \
  && pip install --no-cache-dir /opt/rocm/share/amd_smi pillow pybind11 \
  && rm -rf /wheels /root/.cache
@@ -364,7 +374,7 @@ RUN printf '%s\n' \
  && rm -f /tmp/_jit_probe.hip /tmp/_jit_probe.so \
  && echo "runtime JIT toolchain OK (hipcc + libstdc++ headers + Python.h + pybind11)"
 
-ARG RADIANCE_VERSION=0.7.4-dev.a014e35-r4d0.4.0
+ARG RADIANCE_VERSION=0.7.5-dev.vllm0.27.1-r4d0.4.0
 ENV RADIANCE_VERSION=${RADIANCE_VERSION}
 COPY VERSION /opt/radiance_version
 COPY radiance_preamble.py /opt/radiance_preamble.py
