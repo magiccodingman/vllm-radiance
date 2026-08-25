@@ -20,7 +20,6 @@ services:
     command:
       - ${MODEL_PATH:-/models/model}
       - --served-model-name=${SERVED_MODEL_NAME:-radiance-model}
-      - --quantization=${WEIGHT_QUANTIZATION:-fp8}
       - --tensor-parallel-size=${TP:-2}
       # Admission ceiling, not a promise that every sequence can simultaneously
       # reach MAX_MODEL_LEN. Select both values from the capacity guide in README.
@@ -95,6 +94,23 @@ services:
       # WHT6 payload for large TP2 reductions. Quantized, so set 0 for the
       # exact bf16 R4D all-reduce control.
       RADIANCE_USE_R4D_AR_QUANT: "${RADIANCE_USE_R4D_AR_QUANT:-1}"
+      # Weight format is appended by the entrypoint. `auto` omits the CLI flag
+      # and lets Quark/MXFP4 checkpoints select their config.json method.
+      RADIANCE_WEIGHT_QUANTIZATION: "${WEIGHT_QUANTIZATION:-fp8}"
+      # Native MXFP4/W4A8 is opt-in and inert for non-Quark checkpoints. Once
+      # enabled, cover every M and use the decode-shaped kernel through M=48.
+      RADIANCE_MXFP4: "${RADIANCE_MXFP4:-0}"
+      RADIANCE_MXFP4_W4A8: "${RADIANCE_MXFP4_W4A8:-0}"
+      RADIANCE_MXFP4_W4A8_MIN_M: "${RADIANCE_MXFP4_W4A8_MIN_M:-0}"
+      RADIANCE_MXFP4_DECODE_MAX_M: "${RADIANCE_MXFP4_DECODE_MAX_M:-48}"
+      RADIANCE_MXFP4_TN4_MIN_M: "${RADIANCE_MXFP4_TN4_MIN_M:-2048}"
+      # AMD's current Qwen3.8 Quark checkpoint stores its embedded MTP head in
+      # BF16 despite the global FP4 recipe. Enable only for that verified layout.
+      RADIANCE_QUARK_BF16_MTP: "${RADIANCE_QUARK_BF16_MTP:-0}"
+      # Must cover max_num_batched_tokens x hidden_size x 2 bytes or large
+      # prefill messages silently fall back to RCCL. 48 MiB covers 4096x5120.
+      RADIANCE_AR_MAX_KB: "${RADIANCE_AR_MAX_KB:-49152}"
+      RADIANCE_AR_QUANT_MIN_KB: "${RADIANCE_AR_QUANT_MIN_KB:-128}"
       # radiance rms+group-fp8-quant fusion coverage (also baked default 1).
       RADIANCE_FUSE_RMS_QUANT: "1"
       # optional NUMA pinning of the vLLM fleet to the GPU-local node(s). Off by default (no-op on
