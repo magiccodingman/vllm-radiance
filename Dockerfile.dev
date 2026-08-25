@@ -4,8 +4,10 @@
 # Radiance modules and patches. Dockerfile remains the clean full-source release
 # build; this overlay is for short compile/fix/benchmark cycles.
 ARG BASE_IMAGE=stilldeadcode/vllm-radiance:0.5.8@sha256:2e788f7475907cc86d82acddb5f1e50360b1ffd39e1ffbd2d00ac705b728ccc1
-ARG VLLM_COMMIT=a014e35f38c80fb0652387740193ad2147fed6a3
-ARG VLLM_VERSION=0.28.0.dev0+a014e35
+ARG VLLM_COMMIT=6e448d0ea9bf3d88d898b65449ca6dc2aec170ac
+ARG VLLM_VERSION=0.27.1
+ARG TRANSFORMERS_VERSION=5.14.1
+ARG XGRAMMAR_VERSION=0.2.3
 
 FROM ${BASE_IMAGE} AS vllm-builder
 ARG VLLM_COMMIT
@@ -29,11 +31,14 @@ RUN --mount=type=cache,id=radiance-dev-ccache-gfx1201,target=/root/.cache/ccache
 
 FROM ${BASE_IMAGE} AS final
 ARG VLLM_VERSION
-ARG RADIANCE_VERSION=0.6.0-dev.a014e35
+ARG TRANSFORMERS_VERSION
+ARG XGRAMMAR_VERSION
+ARG RADIANCE_VERSION=0.7.5-dev.vllm0.27.1
 ENV RADIANCE_VERSION=${RADIANCE_VERSION}
 
 COPY --from=vllm-builder /wheels/vllm-*.whl /tmp/wheels/
 RUN pip install --no-cache-dir /tmp/wheels/vllm-*.whl \
+      "transformers==${TRANSFORMERS_VERSION}" "xgrammar==${XGRAMMAR_VERSION}" \
     && rm -rf /tmp/wheels /root/.cache
 
 ENV SP=/opt/vllm/lib/python3.12/site-packages

@@ -48,6 +48,29 @@ basename and can be overridden separately. The model configuration and resolved
 container command are checked before every run. Every
 configuration explicitly forces `--kv-cache-dtype=fp8`.
 
+### Tool-schema regression gate
+
+`run_tool_schema_gate.sh` reproduces the sampled multi-tool request that
+exposed intermittent omission of required function arguments on the former
+post-v0.27 development pin. It keeps the fixture, sampling parameters, raw
+responses, fixture checksum, and summary in a new immutable run directory.
+The gate passes only when every response selects `click` and includes all
+required values, including the exact `ref` from the prompt:
+
+```bash
+BASE_URL=http://127.0.0.1:8000/v1 \
+MODEL_NAME=Qwen3.8-27B-heretic-ara-fp8 \
+ATTEMPTS=30 \
+benchmarks/bin/run_tool_schema_gate.sh
+```
+
+This is deliberately a sampled `temperature=1`, three-tool,
+`tool_choice=required` test. Do not replace it with a deterministic one-tool
+smoke test: that would remove the conditions under which the regression was
+observed. The fixture schema itself permits optional `stepFailed`, while
+`reasoning`, `confidence`, `stepComplete`, and the action-specific argument are
+required.
+
 TP=2 uses a model-neutral 16K server envelope at 85% GPU utilization. This
 reserves about 4.8 GiB outside vLLM's allocation on each 32 GiB card, leaves
 room for a DFlash2 drafter and runtime variation, and does not try to turn the
