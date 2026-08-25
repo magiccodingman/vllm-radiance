@@ -40,19 +40,21 @@ ARG TRANSFORMERS_VERSION=5.14.1
 # Structured-output qualification is specific to this grammar runtime. vLLM's
 # broad compatible range must not silently change the regression surface.
 ARG XGRAMMAR_VERSION=0.2.3
-# Stable vLLM release containing DFlash2. Pin the immutable tag target rather
-# than resolving the tag during each build. VLLM_VERSION is the wheel stamp.
+# Stable vLLM release used as the base for the exact selective DFlash2 backport.
+# Pin the immutable tag target rather than resolving it during each build.
+# VLLM_VERSION is the wheel stamp.
 ARG VLLM_COMMIT=6e448d0ea9bf3d88d898b65449ca6dc2aec170ac
 ARG VLLM_VERSION=0.27.1
 # rocm-bandwidth-test for the startup topology/bandwidth sweep. Pinned to the NEWEST tag that still
 # has a plain CMakeLists: the rocm-7.x tags moved to a cmake framework that demands clang>=19 on PATH
 # plus vendored boost/fmt/curl submodules, none of which this tool needs.
 ARG RBT_VERSION=rocm-6.4.4
-# Hand-written gfx1201 kernels. Pin both the public release and immutable commit:
-# the tag is the reported library version; the commit is the source identity.
+# Hand-written gfx1201 kernels. The post-v0.4.0 commit contains the GDN
+# exponent-overflow guards required by MXFP4/W4A8 activations. The extension
+# still reports 0.4.0 because upstream has not tagged those fixes yet.
 ARG R4D_REPO=https://codeberg.org/StillDeadcode/libr4d.git
 ARG R4D_VERSION=v0.4.0
-ARG R4D_COMMIT=000d5f91d0e47ee9faf3b5466f0a12995f0cbfd6
+ARG R4D_COMMIT=b9e42ab7202f53a3bc13d415f5d41481f9ca311b
 
 # =====================================================================================
 # STAGE 1 builder: compile the stack from source into /wheels
@@ -239,9 +241,12 @@ ENV ROCM_PATH=/opt/rocm HIP_PATH=/opt/rocm HIP_PLATFORM=amd \
 COPY radiance_amdsmi.py radiance_amdsmi.pth \
      radiance_kernels.py radiance_vit_attn.py radiance_allreduce.py \
      radiance_draft.py radiance_draft_gpu.py radiance_drafthead.py radiance_router.py \
-     radiance_r4d_attn.py radiance_gdn.py ${SP}/
+     radiance_r4d_attn.py radiance_gdn.py radiance_mxfp4.py ${SP}/
 COPY fp8-configs/ ${SP}/vllm/model_executor/layers/quantization/utils/configs/
 COPY moe-configs/ ${SP}/vllm/model_executor/layers/fused_moe/configs/
+# AITER has no gfx1201 MXFP4 table. Its gfx1250 table selects an unsupported
+# non-K dimension of 32, so install the measured WMMA-16 configurations.
+COPY mxfp4-configs/ ${SP}/aiter/ops/triton/configs/gemm/
 
 # --- gfx1201 fixes and tuned-kernel patches ---
 # Each patch edits a vLLM (or aiter/triton) source file in place and checks for source drift before
@@ -252,7 +257,8 @@ RUN set -eu; cd /opt/patches; \
     for p in patch_gfx1201 patch_radiance_dispatch patch_router_gemm patch_unified_attention_lds \
              patch_gdn_wmma patch_gdn_aiter_prefill patch_preshuffle install_radiance_hooks \
              patch_unpad patch_mtp_mm_mask patch_mtp_loopbreak patch_qwen3_toolparse patch_from_json_filter \
-             patch_dynamo_metrics patch_conv1d_blockn patch_r4d; do \
+             patch_dynamo_metrics patch_conv1d_blockn patch_r4d patch_dflash2_v0271_backport \
+             patch_quark_mxfp4 patch_quark_bf16_mtp patch_ar_maxbytes; do \
       echo "== applying $p =="; python "$p.py"; \
     done; \
     python -c "import ast,glob; [ast.parse(open(f).read()) for f in glob.glob('${SP}/radiance_*.py')]; print('radiance modules parse OK')"
@@ -265,16 +271,24 @@ RUN git clone --filter=blob:none --no-checkout ${R4D_REPO} /src/libr4d \
  && cd /src/libr4d \
  && git checkout --detach ${R4D_COMMIT} \
  && test "$(git rev-parse HEAD)" = "${R4D_COMMIT}" \
- && test "$(git describe --tags --exact-match)" = "${R4D_VERSION}" \
  && GFX_ARCH=${GFX_ARCH} OUT=${SP}/r4d.so ./build.sh \
  && WANT=$(echo "${R4D_VERSION}" | sed 's/^v//') \
  && python -c "import sys, torch, r4d; assert r4d.__version__ == sys.argv[1]; print('r4d', r4d.__version__, 'kernels', len(r4d.kernels()))" "$WANT" \
  && rm -rf /src/libr4d
 
+# Native gfx1201 W4A8: packed MXFP4 weights, dynamic per-token FP8
+# activations, and the RDNA4 fp8 WMMA instruction. It remains runtime opt-in
+# and is inert for every non-Quark checkpoint.
+COPY radiance_mxfp4_fp8.hip /opt/patches/
+RUN INC=$(python -m pybind11 --includes); \
+    hipcc -O3 -std=c++17 -fPIC -shared --offload-arch=${GFX_ARCH} -Wno-unused-result \
+      $INC /opt/patches/radiance_mxfp4_fp8.hip -o ${SP}/radiance_mxfp4_fp8.so \
+ && python -c "import torch, radiance_mxfp4_fp8 as m; assert hasattr(m, 'launch'); assert hasattr(m, 'set_decode_scratch'); print('radiance MXFP4 W4A8 extension OK')"
+
 # --- strip debug symbols from the installed extensions (worth ~1 GB) ---
 # These are release builds, but they still carry .debug_* sections that nothing reads at runtime.
 # libr4d is excluded: it is tiny and carries device fatbins.
-RUN find /opt/vllm -type f -name '*.so*' ! -name 'r4d.so' \
+RUN find /opt/vllm -type f -name '*.so*' ! -name 'r4d.so' ! -name 'radiance_mxfp4_fp8.so' \
       -exec strip --strip-unneeded {} + 2>/dev/null || true; \
     find /opt/vllm -name '__pycache__' -type d -prune -exec rm -rf {} + || true; \
     echo "extensions stripped"
@@ -326,6 +340,8 @@ ENV VIRTUAL_ENV=/opt/vllm \
 # gfx1201 library. The AITER attention/GDN knobs remain available as measured fallbacks. ---
 ENV RADIANCE_USE_R4D=1 RADIANCE_USE_R4D_GDN=1 RADIANCE_R4D_REPORT=1 \
     RADIANCE_USE_R4D_AR=1 RADIANCE_USE_R4D_AR_QUANT=1 \
+    RADIANCE_MXFP4=0 RADIANCE_MXFP4_W4A8=0 RADIANCE_MXFP4_W4A8_MIN_M=0 RADIANCE_QUARK_BF16_MTP=0 \
+    RADIANCE_MXFP4_DECODE_MAX_M=48 RADIANCE_MXFP4_TN4_MIN_M=2048 \
     RADIANCE_PRESHUFFLE=1 RADIANCE_ATTN_TUNE=1 RADIANCE_FUSE_RMS_QUANT=1 \
     RADIANCE_DYNAMIC_DRAFT=1 RADIANCE_DRAFT_SCHEDULE=1:8,2:7,4:6,8:5,16:4 RADIANCE_DRAFT_TAU=0.28 \
     RADIANCE_FAST_DRAFT=0 RADIANCE_RUN_BWTEST=1
@@ -343,7 +359,8 @@ ARG TRITON_VERSION
 ARG TORCHVISION_VERSION
 RUN WANT_VLLM=${VLLM_VERSION} WANT_AITER=${AITER_VERSION} WANT_TORCH=${TORCH_VERSION} \
     WANT_TRITON=${TRITON_VERSION} WANT_VISION=${TORCHVISION_VERSION} \
-    python -c 'import os, torch, vllm._C, amdsmi, importlib.metadata as m; import r4d; \
+    python -c 'import os, torch, vllm._C, amdsmi, importlib.metadata as m; import r4d, radiance_mxfp4_fp8; \
+assert hasattr(radiance_mxfp4_fp8, "launch") and hasattr(radiance_mxfp4_fp8, "set_decode_scratch"); \
 v, a, t, r, tv = m.version("vllm"), m.version("amd-aiter"), m.version("torch"), m.version("triton"), m.version("torchvision"); \
 assert v.startswith(os.environ["WANT_VLLM"]), "vllm wheel reports " + v + ", built tag is " + os.environ["WANT_VLLM"]; \
 assert a.startswith(os.environ["WANT_AITER"]), "aiter wheel reports " + a + ", built tag is " + os.environ["WANT_AITER"]; \
@@ -374,7 +391,7 @@ RUN printf '%s\n' \
  && rm -f /tmp/_jit_probe.hip /tmp/_jit_probe.so \
  && echo "runtime JIT toolchain OK (hipcc + libstdc++ headers + Python.h + pybind11)"
 
-ARG RADIANCE_VERSION=0.7.5-dev.vllm0.27.1-r4d0.4.0
+ARG RADIANCE_VERSION=0.8.0-dev.vllm0.27.1-r4d0.4.0-mxfp4.dflash2.fusedsplitk
 ENV RADIANCE_VERSION=${RADIANCE_VERSION}
 COPY VERSION /opt/radiance_version
 COPY radiance_preamble.py /opt/radiance_preamble.py

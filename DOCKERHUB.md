@@ -9,13 +9,14 @@ vLLM v0.27.1 with libr4d's hand-written RDNA4 kernels and Radiance's FP8/specula
 > are in `docs/UPGRADE_PROGRESS.md` and `docs/LIBR4D_BETTERBENCH.md`.
 
 The current fork is validated primarily with
-`Qwen3.8-27B-heretic-ara-fp8-magiccodingman`, mandatory FP8 KV, and two R9700s
+`Qwen3.8-27B-heretic-ara-fp8-magiccodingman` and
+`amd/Qwen3.8-27B-Quark-AWQ-MXFP4`, mandatory FP8 KV, and two R9700s
 (TP2). Its reusable default is 16K, 85% GPU allocation, and at most eight
 sequences; it deliberately leaves VRAM headroom instead of finding the largest
 batch that fits. Earlier 0.5.8 performance numbers below remain useful history,
 but are not claims about the new compiler stack.
 
-## Current fork stack (`0.7.5-dev.vllm0.27.1-r4d0.4.0`)
+## Current fork stack (`0.8.0-dev.vllm0.27.1-r4d0.4.0-mxfp4.dflash2.fusedsplitk`)
 
 | Component | Exact version/pin |
 |---|---|
@@ -26,7 +27,7 @@ but are not claims about the new compiler stack.
 | AITER | 0.1.20 (`fc2e5d57fb5b8ad8e7e23f7103071dde798ea618`) |
 | Transformers | 5.14.1 |
 | XGrammar | 0.2.3 |
-| libr4d | 0.4.0 (`000d5f91d0e47ee9faf3b5466f0a12995f0cbfd6`) |
+| libr4d | reports 0.4.0; fixed source `b9e42ab7202f53a3bc13d415f5d41481f9ca311b` |
 | ROCm userspace | 7.14, bundled |
 
 Use the repository `docker-compose.yml` for the current local image and model
@@ -41,6 +42,8 @@ defaults. Do not substitute an unpinned `main` checkout or generic PyTorch
 | `RADIANCE_USE_R4D_GDN` | `1` | R4D GDN prefill, decode, and speculative-state paths |
 | `RADIANCE_USE_R4D_AR` | `1` | exact TP2 P2P all-reduce, with safe RCCL fallback |
 | `RADIANCE_USE_R4D_AR_QUANT` | `1` | rotated six-bit compressed collective for qualifying large messages; numerically lossy |
+| `RADIANCE_AR_MAX_KB` | `49152` | largest P2P all-reduce payload; 48 MiB covers 4,096 x hidden-size-5,120 BF16 |
+| `RADIANCE_AR_QUANT_MIN_KB` | `128` | minimum payload for rotated six-bit compression |
 | `RADIANCE_R4D_REPORT` | `1` | report libr4d version and resolved kernel coverage at startup |
 | `RADIANCE_PRESHUFFLE` | `1` | Radiance preshuffled block-FP8 target GEMM dispatcher |
 | `RADIANCE_FUSE_RMS_QUANT` | `1` | fused RMSNorm plus FP8 quantization |
@@ -49,6 +52,12 @@ defaults. Do not substitute an unpinned `main` checkout or generic PyTorch
 | `RADIANCE_DRAFT_SCHEDULE` | `1:8,2:7,4:6,8:5,16:4` | MTP maximum depth by active batch size |
 | `RADIANCE_DRAFT_TAU` | `0.28` | confidence-product stop threshold |
 | `RADIANCE_FAST_DRAFT` | `0` | opt-in INT2-g128 MTP head with exact top-32 reranking |
+| `RADIANCE_MXFP4` | `0` | allow native Quark/OCP MXFP4 routing on gfx1201 |
+| `RADIANCE_MXFP4_W4A8` | `0` | packed MXFP4 weights with dynamic FP8 activations on RDNA4 WMMA |
+| `RADIANCE_MXFP4_W4A8_MIN_M` | `0` | first M routed to W4A8; keep 0 for the qualified AMD checkpoint |
+| `RADIANCE_MXFP4_DECODE_MAX_M` | `48` | upper bound for the fused small-M split-K decode kernel |
+| `RADIANCE_MXFP4_TN4_MIN_M` | `2048` | switch the prefill kernel to its wider N tile |
+| `RADIANCE_QUARK_BF16_MTP` | `0` | load AMD's embedded BF16 MTP head outside the global Quark recipe |
 | `RADIANCE_SPECULATIVE_CONFIG` | unset | raw vLLM speculative-config JSON appended by the entrypoint; explicit CLI config wins |
 | `RADIANCE_COMPILATION_CONFIG` | unset | raw vLLM compilation-config JSON appended by the entrypoint; explicit CLI config wins |
 | `RADIANCE_RUN_BWTEST` | `1` | background topology/P2P bandwidth report at startup |
@@ -87,17 +96,33 @@ That is the measured selective-FP8 K7 lane: R4D target attention, Triton draft
 attention, draft TP2, and piecewise graphs. It remains opt-in because strict
 cross-mode equivalence has not qualified.
 
+For the AMD Quark target, set `WEIGHT_QUANTIZATION=auto`, enable both MXFP4
+switches above, and use the target-matched
+`tcclaviger/Qwen3.8-27B-DFlash2-FP8` drafter path. Stable vLLM 0.27.1 contains
+the older DFlash runtime; this image selectively backports Qwen3.8 DFlash2 from
+the exact reviewed PR #52816 head and applies block scales to its fused FP8
+context-K/V projection.
+
 ## Tested so far
 
-Three setups have been run and measured:
+Four target setups have been run and measured:
 
 | | |
 |---|---|
-| Models | **Qwen3.6-27B-FP8** (dense), **Qwen3.6-35B-A3B-FP8** (fine-grained MoE: 256 experts, top-8), **Gemma-4-31B-it-FP8** (dense, sliding + global attention, vision) |
+| Models | **Qwen3.8-27B-Quark-AWQ-MXFP4** (dense Quark MXFP4/W4A8), **Qwen3.6-27B-FP8** (dense), **Qwen3.6-35B-A3B-FP8** (fine-grained MoE: 256 experts, top-8), **Gemma-4-31B-it-FP8** (dense, sliding + global attention, vision) |
 | KV cache | FP8 (bf16 / `auto` also supported) |
 | GPUs | 2x R9700, tensor parallel (TP=2) |
 
-Untested (may or may not work): any other model, non-FP8 weights, single GPU, more than two GPUs, non-R9700 hardware. Treat the defaults below as a starting point for these three setups, not a general recommendation.
+Untested (may or may not work): any other model/quantization recipe, more than
+two GPUs, or non-R9700 hardware. Treat the defaults below as a starting point
+for these measured setups, not a general recommendation.
+
+**Qwen3.8 Quark MXFP4/W4A8.** The final 10-pass/category BetterBench result was
+43.7 weighted non-spec TPS, 101.9 with fast MTP, 129.8 with target-matched
+DFlash K5, and 139.8 with K7. K7 won c1/c2/c4 at 125.9/225.6/357.3 TPS; K5
+won c8 at 506.7 TPS versus K7's 360.1. All category rows, acceptance, prefill,
+headroom, checksums, exact run IDs, and the failed strict-equivalence status are
+in `docs/MXFP4_W4A8_R9700.md` in the source repository.
 
 **Fine-grained MoE (Qwen3.6-35B-A3B-FP8).** Supported and tuned. Two MoE paths are baked in and activate automatically for it: RDNA4-tuned fused-MoE Triton configs (removes the stock config's `M>=96` cliff, lower prefill TTFT, lossless) and a custom bf16 MoE-gate GEMM (`RADIANCE_MOE_ROUTER`, on by default) for the skinny `n` in `[6,16]` batch band that rocBLAS serves poorly (~2.5x faster cold, bit-identical output; wvSplitK already covers `n<=5`). A serving requirement: with `--mamba-cache-mode=align` this model's attention block size is 2240, and align asserts `block_size <= max_num_batched_tokens`, so keep **`--max-num-batched-tokens >= 2240`**; the Compose default is 4096.
 
