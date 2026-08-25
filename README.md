@@ -1,13 +1,17 @@
 # vllm-radiance
 
+[![Docker Hub](https://img.shields.io/docker/v/magiccodingman/vllm-radiance?sort=semver&label=Docker%20Hub&logo=docker)](https://hub.docker.com/r/magiccodingman/vllm-radiance)
+[![Docker Pulls](https://img.shields.io/docker/pulls/magiccodingman/vllm-radiance?logo=docker)](https://hub.docker.com/r/magiccodingman/vllm-radiance)
+
 A vLLM inference server image for the **AMD Radeon AI PRO R9700 (gfx1201 / RDNA4)**. It combines a pinned
-post-0.27 vLLM-main ROCm stack with [libr4d](https://codeberg.org/StillDeadcode/libr4d)'s hand-written
+vLLM v0.27.1 ROCm stack with [libr4d](https://codeberg.org/StillDeadcode/libr4d)'s hand-written
 RDNA4 attention, gated-delta-net, vision, all-reduce, and router kernels, while retaining Radiance's tuned
 FP8 GEMM and speculative-decoding paths.
 
-> **Status: experimental.** The fork pins an exact post-0.27 vLLM-main commit and the corresponding AMD
+> **Status: experimental.** The fork pins the exact vLLM v0.27.1 tag commit and a qualified AMD
 > ROCm compiler stack; see [docs/UPGRADE_PROGRESS.md](docs/UPGRADE_PROGRESS.md) and
-> [docs/LIBR4D_BETTERBENCH.md](docs/LIBR4D_BETTERBENCH.md).
+> [docs/LIBR4D_BETTERBENCH.md](docs/LIBR4D_BETTERBENCH.md). The Docker image is published at
+> [magiccodingman/vllm-radiance](https://hub.docker.com/r/magiccodingman/vllm-radiance).
 > The current regression model is **Qwen3.8-27B FP8**. Earlier Radiance work was measured on
 > **Qwen3.6-27B-FP8**, **Qwen3.6-35B-A3B-FP8** (fine-grained MoE, 256 experts / top-8), and
 > **Gemma-4-31B-it-FP8** (block-fp8, sliding + global attention, vision), all with fp8 (or bf16/`auto`) KV
@@ -17,7 +21,9 @@ FP8 GEMM and speculative-decoding paths.
 
 This is the `magiccodingman/vllm-radiance` fork. It tracks and credits DeadCode's upstream
 [vllm-radiance](https://codeberg.org/StillDeadcode/vllm-radiance) and libr4d releases, but deliberately
-diverges by carrying pinned vLLM-main/DFlash2 plus the AMD PyTorch 2.12 and Triton 3.7.1 compiler pair.
+diverges by carrying DFlash2 plus the AMD PyTorch 2.12 and Triton 3.7.1 compiler pair.
+The current line uses stable vLLM v0.27.1 (which includes DFlash2) rather than a moving post-release tree,
+after the latter was shown to intermittently violate required JSON-schema fields during tool calls.
 The GitLab pipeline publishes this fork as `magiccodingman/vllm-radiance`; the immutable upstream
 `stilldeadcode/vllm-radiance` images are external comparison baselines, not products of this repository.
 
@@ -46,9 +52,9 @@ the compiler stack:
 
 ```bash
 docker build -f Dockerfile.patch \
-  --build-arg BASE_IMAGE=vllm-radiance:dev-a014e35-amd212 \
-  --build-arg RADIANCE_VERSION=0.7.4-dev.patch \
-  -t vllm-radiance:dev-a014e35-amd212-patch .
+  --build-arg BASE_IMAGE=vllm-radiance:0.7.5-dev.vllm0.27.1-r4d0.4.0 \
+  --build-arg RADIANCE_VERSION=0.7.5-dev.patch \
+  -t vllm-radiance:0.7.5-dev.patch .
 ```
 
 The overlay reruns every source-drift guard and import check but deliberately
@@ -106,6 +112,12 @@ checkpoint's recommended sampling defaults with `GENERATION_CONFIG=auto` and
 defaults Qwen3.8 reasoning to `xhigh`. Clients remain authoritative: explicit
 sampling parameters and request-level `chat_template_kwargs.reasoning_effort`
 override those defaults.
+
+Compose also uses the checkpoint-native chat template. This is the safest
+generic default for a multi-model image and is the configuration used by the
+tool-schema regression gate. A deployment-specific template such as
+`qwen3.8-enhanced.jinja` remains available, but must be added explicitly with
+`--chat-template` in a private Compose override.
 
 ### Choose and switch serving modes
 
@@ -293,7 +305,7 @@ Everything below is baked into the image; the tuned paths are env-gated and on b
   `RADIANCE_FAST_DRAFT=1` INT2-g128 copy of the MTP head followed by exact top-32 reranking. Target
   verification remains in place, but this fork does not label the full speculative runner byte-equivalent
   while its strict cross-mode gate is failing.
-- **Experimental DFlash2** from pinned vLLM main: selective-FP8 drafter loading, TP2 draft sharding, and
+- **Experimental DFlash2** from stable vLLM v0.27.1: selective-FP8 drafter loading, TP2 draft sharding, and
   piecewise graph execution. K7 is the measured throughput winner; it stays explicit-only pending strict
   output qualification.
 - **Prefix caching that works on the GDN hybrid** (enabled in the compose): hybrid models leave automatic

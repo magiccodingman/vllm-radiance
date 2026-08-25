@@ -304,7 +304,49 @@ def transform_metadata(source: str) -> str:
                     )
                 )
 '''
-    source = _replace(source, build_anchor, build_replacement, "schedule construction")
+    if source.count(build_anchor) == 1:
+        source = source.replace(build_anchor, build_replacement, 1)
+    else:
+        # v0.27.1 constructs FLA/CuteDSL metadata inline. Insert after both
+        # branches converge, while the CPU cu-seqlens are still available.
+        stable_anchor = '''                chunk_offsets = async_tensor_h2d(
+                    prepare_chunk_offsets(prefill_query_start_loc_cpu, FLA_CHUNK_SIZE),
+                    device=gpu_device,
+                )
+
+        if num_prefills > 0:
+'''
+        stable_replacement = stable_anchor.replace(
+            "\n        if num_prefills > 0:\n",
+            '''
+            if self.gdn_prefill_backend == "aiter":
+                from aiter.ops.triton.gated_delta_net import (
+                    build_gated_delta_rule_prefill_metadata,
+                )
+
+                assert prefill_query_start_loc is not None
+                assert prefill_query_start_loc_cpu is not None
+                prefill_seq_lens_cpu = (
+                    prefill_query_start_loc_cpu[1:]
+                    - prefill_query_start_loc_cpu[:-1]
+                ).tolist()
+                aiter_prefill_metadata = (
+                    build_gated_delta_rule_prefill_metadata(
+                        prefill_seq_lens_cpu,
+                        cu_seqlens=prefill_query_start_loc,
+                        chunk_size=FLA_CHUNK_SIZE,
+                    )
+                )
+
+        if num_prefills > 0:
+''',
+        )
+        source = _replace(
+            source,
+            stable_anchor,
+            stable_replacement,
+            "v0.27.1 schedule construction",
+        )
 
     source = _replace(
         source,

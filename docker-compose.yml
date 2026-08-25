@@ -56,11 +56,12 @@ services:
       # The recommended MTP config sets disable_padded_drafter_batch, which is incompatible
       # with async scheduling; keep async off so vLLM does not auto-enable then disable it.
       - --no-async-scheduling
-      # agentic serving: XML tool calls + qwen3 reasoning + the fixed chat template
+      # Agentic serving uses the checkpoint-native chat template by default.
+      # Add --chat-template in a private override only for a checkpoint that
+      # explicitly needs a deployment-specific template.
       - --enable-auto-tool-choice
       - --tool-call-parser=qwen3_coder
       - --reasoning-parser=qwen3
-      - --chat-template=/work/qwen3.8-enhanced.jinja
       # Load the checkpoint's recommended sampling defaults. Explicit request
       # parameters still take precedence; this is not a generation override.
       - --generation-config=${GENERATION_CONFIG:-auto}

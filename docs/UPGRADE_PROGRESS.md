@@ -1,5 +1,12 @@
 # RDNA4 upgrade progress
 
+> Continuation: the post-v0.27 development pin was replaced with stable vLLM
+> v0.27.1 after a structured-output regression was reproduced and isolated.
+> See [V0271_TOOL_SCHEMA_STABILITY.md](V0271_TOOL_SCHEMA_STABILITY.md) for the
+> 30-request tool-schema gate, retained compiler/R4D stack, compatibility work,
+> and BetterBench qualification. Sections below remain the immutable history of
+> the earlier upgrade and DFlash2 investigation.
+
 This document is the durable checkpoint log for merge request !5. All performance
 numbers use native FP8 weights and mandatory FP8 KV cache with the reusable
 `benchmarks/` workload contract. Positive deltas mean improvement.
