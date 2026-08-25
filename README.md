@@ -103,10 +103,11 @@ The public Compose contains no machine-local paths or group IDs. Its portable
 fallbacks are `./models`, `./vllm-cache`, `/models/model`, and the published
 `magiccodingman/vllm-radiance:latest` image. The tuned starting envelope uses
 native FP8 weights, mandatory FP8 KV, TP2, a 16K maximum length, an eight-request
-admission ceiling, and 85% GPU allocation. Speculative decoding remains
-disabled for the correctness-qualified baseline. Runtime and capacity settings,
-including speculative decoding, can be overridden in `.env` without editing the
-public file.
+admission ceiling, 85% GPU allocation, and automatic prefix caching with hybrid
+GDN state alignment. Speculative decoding remains disabled for the
+correctness-qualified baseline. Runtime and capacity settings, including
+speculative decoding, can be overridden in `.env` without editing the public
+file.
 
 ### Optional Quark MXFP4 / native W4A8 target
 
@@ -144,6 +145,34 @@ DFlash2 still requires a compatible separate drafter and its own qualification.
 The implementation, provenance, safety constraints, and exact benchmark run IDs
 are recorded in [docs/MXFP4_W4A8_R9700.md](docs/MXFP4_W4A8_R9700.md).
 
+For a measured long-context MXFP4 deployment on two 32 GiB R9700s, this profile
+completed four simultaneous 128K requests while retaining automatic prefix
+caching:
+
+```dotenv
+MODEL_PATH=/models/Qwen3.8-27B-Quark-AWQ-MXFP4-amd
+GPU_UTIL=0.90
+MAX_MODEL_LEN=131072
+MAX_NUM_SEQS=4
+WEIGHT_QUANTIZATION=auto
+RADIANCE_MXFP4=1
+RADIANCE_MXFP4_W4A8=1
+RADIANCE_MXFP4_W4A8_MIN_M=0
+RADIANCE_MXFP4_DECODE_MAX_M=48
+RADIANCE_MXFP4_TN4_MIN_M=2048
+PREFIX_CACHING_FLAG=--enable-prefix-caching
+MAMBA_CACHE_MODE=align
+VLLM_USE_V2_MODEL_RUNNER=1
+RADIANCE_COMPILATION_CONFIG='{"cudagraph_mode":"PIECEWISE"}'
+RADIANCE_SPECULATIVE_CONFIG='{"method":"dflash","model":"/models/Qwen3.8-27B-DFlash2-FP8-tcclaviger","num_speculative_tokens":5,"draft_tensor_parallel_size":2,"attention_backend":"TRITON_ATTN","max_model_len":131072}'
+```
+
+The engine exposed 576,001 GPU KV tokens (4.39 fully populated 128K
+requests). The full-context C4 pressure run completed without OOM or
+preemption and retained 5.17 GiB minimum physical headroom per GPU. Treat the
+paths above as examples inside the `/models` mount; host paths belong only in a
+private `.env` or developer overlay.
+
 The default server preserves the checkpoint's full language-and-vision
 capability; deployments that intentionally want text-only execution may add
 vLLM's `--language-model-only` flag in a private override. Compose loads the
@@ -167,7 +196,7 @@ either one speculative method or be unset. They are not cumulative.
 |---|---|---|---|
 | Qualified non-spec | unset | no | none |
 | Fast MTP | `"method":"mtp"` | no; head is in the target | `RADIANCE_FAST_DRAFT=1` |
-| Experimental DFlash2 | `"method":"dflash"` | yes | V2 runner, `PIECEWISE`, 8K, draft TP2, and the prefix-cache controls below |
+| Experimental DFlash2 | `"method":"dflash"` | yes | V2 runner, `PIECEWISE`, matched target/drafter context, draft TP2 |
 
 To switch from MTP to DFlash2, replace—not append—the speculative JSON, remove
 `RADIANCE_FAST_DRAFT=1`, and add the DFlash2-only variables in the DFlash2 block
@@ -214,12 +243,12 @@ The measured high-throughput DFlash2 K7 profile is also selectable entirely
 from `.env`. Place the selective-FP8 drafter beneath the mounted `MODELS`
 directory (Hugging Face repository
 `magiccodingman/Qwen3.8-27B-heretic-ara-DFlash2-fp8`), adjust its in-container
-path if necessary, and use:
+path if necessary, and use the deployment-oriented cache settings below:
 
 ```dotenv
 MAX_MODEL_LEN=8192
-PREFIX_CACHING_FLAG=--no-enable-prefix-caching
-MAMBA_CACHE_MODE=none
+PREFIX_CACHING_FLAG=--enable-prefix-caching
+MAMBA_CACHE_MODE=align
 VLLM_USE_V2_MODEL_RUNNER=1
 RADIANCE_COMPILATION_CONFIG='{"cudagraph_mode":"PIECEWISE"}'
 RADIANCE_SPECULATIVE_CONFIG='{"method":"dflash","model":"/models/Qwen3.8-27B-heretic-ara-DFlash2-fp8-magiccodingman","num_speculative_tokens":7,"draft_tensor_parallel_size":2,"attention_backend":"TRITON_ATTN","max_model_len":8192}'
@@ -233,12 +262,17 @@ context-K/V projection while leaving normal draft execution quantized.
 
 This selects the V2-compatible runner, the measured `PIECEWISE` graph mode,
 TP2 draft sharding, and `TRITON_ATTN` for the drafter while retaining R4D for
-the target. Prefix caching is disabled here to match the published BetterBench
-contract. On the original ARA FP8 target, K7 was the measured c1/c2/c4/c8
-winner. On the AMD Quark MXFP4 target below, K7 wins weighted single stream and
-c1-c4, while K5 is decisively faster at c8. DFlash2 is experimental and failed
-the strict cross-mode gate, so either profile is intentionally an explicit
-alternative rather than the default.
+the target. Prefix caching remains enabled for production because repeated
+system/RAG/agent histories benefit enormously. The published BetterBench lanes
+explicitly disabled it only to enforce cold, nonce-disjoint prompts; set
+`PREFIX_CACHING_FLAG=--no-enable-prefix-caching` and `MAMBA_CACHE_MODE=none`
+only when reproducing that benchmark contract or deliberately trading repeated-
+prefix latency for the largest possible context envelope. On the original ARA
+FP8 target, K7 was the measured c1/c2/c4/c8 winner. On the AMD Quark MXFP4
+target below, K7 wins weighted single stream and c1-c4, while K5 is decisively
+faster at c8. DFlash2 is experimental and failed the strict cross-mode gate, so
+either profile is intentionally an explicit alternative rather than the
+default.
 
 For source development, copy `docker-compose.dev.example.yml` to
 `docker-compose.dev.yml` and layer it explicitly:
@@ -254,10 +288,20 @@ ever force-added, preventing local paths and image tags from reaching a release.
 ### Context and concurrency capacity
 
 `MAX_NUM_SEQS` is an admission ceiling, not a guarantee that every admitted
-request can remain fully resident at `MAX_MODEL_LEN`. The following conservative
-pairs were measured on two 32 GiB R9700s with the native-FP8 Qwen3.8-27B target,
-FP8 KV, the 2.34 GiB selective-FP8 DFlash2 K5 drafter, TP2 `PIECEWISE` graphs,
-85% GPU allocation, and no CPU/KV offload:
+request can remain fully resident at `MAX_MODEL_LEN`. Prefix caching uses the
+same evictable GPU block pool as active KV; on Qwen's hybrid GDN, `align` mode
+also retains restorable convolution/recurrent state and reconciles page sizes.
+It can therefore reduce the absolute maximum context slightly while removing
+most repeated-prefill work. `PIECEWISE` graphs also consume a bounded memory
+reservation. The tables below keep those tradeoffs explicit instead of mixing
+unlike profiles.
+
+#### Native-FP8 target: cold-capacity profile
+
+These conservative pairs were measured on two 32 GiB R9700s with the 28.75 GiB
+native-FP8 Qwen3.8-27B target, FP8 KV, the 2.34 GiB selective-FP8 DFlash2 K5
+drafter, TP2 `PIECEWISE` graphs, 85% GPU allocation, no CPU/KV offload, and
+prefix caching disabled for the capacity laboratory:
 
 | Maximum context per request | Suggested `MAX_NUM_SEQS` | Validated simultaneous submissions |
 |---:|---:|---:|
@@ -276,6 +320,41 @@ different graph modes, or a different drafter need their own capacity check.
 DFlash2 itself remains experimental because strict greedy equivalence has not
 qualified; the table proves memory/serving capacity, not losslessness. See
 [docs/COMPOSE_CAPACITY.md](docs/COMPOSE_CAPACITY.md) for exact runs and method.
+
+#### Quark MXFP4/W4A8 target: measured capacity
+
+AMD's MXFP4 target safetensors are 18.44 GiB versus 28.75 GiB for the native-FP8
+regression target—a 10.31 GiB / 35.9% smaller target payload. With the 1.97 GiB
+target-matched DFlash2 drafter, FP8 KV, TP2 `PIECEWISE` graphs, 90% GPU
+allocation, and no offload, the prefix-disabled high-capacity sweep completed:
+
+| Maximum context per request | Conservative production C | Highest completed burst |
+|---:|---:|---:|
+| 32K | 8 | 11 |
+| 64K | 6 | 7 |
+| 128K | 4 | 4 |
+| 256K | 2 | 2 |
+
+The conservative column deliberately stays below the observed boundary at
+32K/64K. Every request completed without OOM; minimum physical headroom was
+5.06 GiB per GPU. The 256K/C2 profile is valid, but setting
+`MAX_NUM_SEQS=4` beside a 256K ceiling does **not** create room for four full
+256K requests—it merely allows four shorter requests to be admitted and may
+queue or preempt as they grow.
+
+For repeated agent/RAG/chat workloads, the recommended profile is prefix caching
+enabled, `MAMBA_CACHE_MODE=align`, `MAX_MODEL_LEN=131072`, and
+`MAX_NUM_SEQS=4`. That exact MXFP4+DFlash K5 configuration reported 576,001 KV
+tokens / 4.39x 128K capacity and completed a disjoint four-request 128K pressure
+run with zero failures, OOMs, or preemptions and 5.17 GiB minimum physical
+headroom. A 32K shared-prefix probe reduced TTFT from 9.04 seconds cold to
+0.70-0.71 seconds warm (12.8x), reused 93.7% of the prompt, and produced
+byte-identical sequential cold/warm outputs. Subsequent live agent turns reused
+96.2% of newly queried prefix tokens.
+
+The public Compose already defaults to `--enable-prefix-caching` plus
+`--mamba-cache-mode=align`. Disable those only for a cold-cache benchmark or a
+deliberate maximum-context experiment, then requalify the chosen envelope.
 
 To serve the fine-grained-MoE **Qwen3.6-35B-A3B-FP8**, point it
 at that model and keep the batch-token budget at **≥ 2240** (align mode
@@ -303,6 +382,22 @@ knob list (kernel toggles, draft controller, AITER routing, …) is in
 [DOCKERHUB.md](DOCKERHUB.md).
 
 ## Measured performance
+
+The headline FP8-versus-MXFP4 operating points are summarized here. These are
+two separately published target checkpoints with their matching drafters, not a
+bit-identical quantization A/B, so the table describes deployable capability
+rather than attributing every delta to weight format alone:
+
+| Target | Target payload | Weighted non-spec | Weighted DFlash K5 | DFlash K5 c1 / c4 / c8 | Long-context capacity checkpoint |
+|---|---:|---:|---:|---:|---|
+| Native FP8 Qwen3.8-27B | 28.75 GiB | 35.8 TPS | 99.4 TPS | 93.3 / 293.6 / 451.6 TPS | 128K C2, APC off, 85% GPU |
+| AMD Quark MXFP4/W4A8 Qwen3.8-27B | 18.44 GiB | 43.7 TPS | 129.8 TPS | 114.8 / 341.0 / 506.7 TPS | 128K C4, APC+align on, 90% GPU |
+
+The MXFP4 production checkpoint also measured 355.8 output TPS at C4 on a
+disjoint 512-input/512-output serving control while retaining the 128K/C4
+envelope. Full-context output TPS is intentionally much lower because it
+includes four enormous cold prefills; use the BetterBench decode numbers above
+for generation throughput and the capacity section for residency.
 
 BetterBench v0.2.2 (`575cc3925bac922d6ad4a39e62502673799979d9`) used its v1 corpus,
 10 measured passes per category, greedy decoding, cold nonce-prefixed prompts,
@@ -401,7 +496,8 @@ Everything below is baked into the image; the tuned paths are env-gated and on b
   prefix caching off by default, so it is turned on explicitly with `--enable-prefix-caching
   --mamba-cache-mode=align`. Align mode snapshots and restores the linear-attention (GDN) recurrent state at
   block boundaries (verified bit-identical to full recompute, including under MTP), giving a large TTFT drop
-  on shared prefixes (system prompts, RAG, agentic context).
+  on shared prefixes (system prompts, RAG, agentic context): 3.6x in the original qualification and 12.8x
+  for a 32K shared prefix in the MXFP4+DFlash production profile.
 - **Startup topology + bandwidth sweep** (`RADIANCE_RUN_BWTEST`, on by default): device list, P2P access
   matrix, NUMA distances, and peak uni/bidirectional copy bandwidth per agent pair, from a
   `rocm-bandwidth-test` compiled into the image. Backgrounded and about a second, so it never delays the
