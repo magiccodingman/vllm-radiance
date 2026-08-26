@@ -9,7 +9,7 @@
 # build toolchain nor the wheels, which is most of the reason it is far smaller than the base.
 #
 # stack: AMD torch 2.12, AMD Triton 3.7.1, torchvision 0.27.1, AITER 0.1.20,
-# pinned vLLM v0.27.1,
+# pinned vLLM v0.28.0,
 # all compiled for PYTORCH_ROCM_ARCH=gfx1201 against the base image's ROCm 7.14.
 ARG ROCM_BASE=rocm/dev-ubuntu-24.04:7.14.0-full@sha256:439edaa8f0c4be4a3728e528f87b8a2ea1f051f34cf10b27caa4bd94f562eda7
 ARG GFX_ARCH=gfx1201
@@ -33,18 +33,19 @@ ARG TRITON_VERSION=3.7.1
 ARG TORCHVISION_VERSION=0.27.1
 ARG AITER_COMMIT=fc2e5d57fb5b8ad8e7e23f7103071dde798ea618
 ARG AITER_VERSION=0.1.20
-# vLLM permits a range, but 5.15 moved Gemma-4 head_dim to a per-layer
-# attribute that v0.27.1 does not consume correctly. Keep the last compatible
-# release pinned so rebuilds cannot silently change model-loading behavior.
-ARG TRANSFORMERS_VERSION=5.14.1
+# vLLM v0.28.0's ROCm qualification lock uses Transformers 5.15.0. Pin the
+# exact tested release so rebuilds cannot silently change model-loading or
+# chat-template behavior.
+ARG TRANSFORMERS_VERSION=5.15.0
 # Structured-output qualification is specific to this grammar runtime. vLLM's
 # broad compatible range must not silently change the regression surface.
 ARG XGRAMMAR_VERSION=0.2.3
-# Stable vLLM release used as the base for the exact selective DFlash2 backport.
-# Pin the immutable tag target rather than resolving it during each build.
-# VLLM_VERSION is the wheel stamp.
-ARG VLLM_COMMIT=6e448d0ea9bf3d88d898b65449ca6dc2aec170ac
-ARG VLLM_VERSION=0.27.1
+# Stable vLLM release. v0.28.0 contains native DFlash2 at the exact reviewed
+# #52816 source hashes previously carried by this fork, so no DFlash source
+# backport is applied. Pin the immutable tag target rather than resolving it
+# during each build; VLLM_VERSION is the wheel stamp.
+ARG VLLM_COMMIT=2cf0a6915ce544dc493a0990f2ea38d81601128a
+ARG VLLM_VERSION=0.28.0
 # rocm-bandwidth-test for the startup topology/bandwidth sweep. Pinned to the NEWEST tag that still
 # has a plain CMakeLists: the rocm-7.x tags moved to a cmake framework that demands clang>=19 on PATH
 # plus vendored boost/fmt/curl submodules, none of which this tool needs.
@@ -256,10 +257,11 @@ RUN set -eu; cd /opt/patches; \
     for p in patch_gfx1201 patch_radiance_dispatch patch_skinny_gemm patch_unified_attention_lds \
              patch_gdn_wmma patch_gdn_aiter_prefill patch_preshuffle install_radiance_hooks \
              patch_unpad patch_mtp_mm_mask patch_mtp_loopbreak patch_qwen3_toolparse patch_from_json_filter \
-             patch_dynamo_metrics patch_conv1d_blockn patch_r4d patch_dflash_base patch_dflash2_v0271_backport \
-             patch_dflash_fused_kv_fp8 patch_dflash_w4 patch_gdn_metadata patch_topk_triton_rows \
+             patch_dynamo_metrics patch_conv1d_blockn patch_r4d patch_dflash_base \
+             patch_dflash_fused_kv_fp8 patch_dflash_logits_cache_stride patch_dflash_w4 \
+             patch_gdn_metadata patch_topk_triton_rows patch_rocm_cudagraph_current_stream \
              patch_quark_mxfp4 patch_quark_bf16_mtp patch_ar_maxbytes patch_xgrammar_spec_termination \
-             patch_xgrammar_spec_reasoning; do \
+             patch_xgrammar_spec_reasoning patch_parser_shared_engine; do \
       echo "== applying $p =="; python "$p.py"; \
     done; \
     python -c "import ast,glob; [ast.parse(open(f).read()) for f in glob.glob('${SP}/radiance_*.py')]; print('radiance modules parse OK')"
@@ -393,7 +395,7 @@ RUN printf '%s\n' \
  && rm -f /tmp/_jit_probe.hip /tmp/_jit_probe.so \
  && echo "runtime JIT toolchain OK (hipcc + libstdc++ headers + Python.h + pybind11)"
 
-ARG RADIANCE_VERSION=0.9.3-dev.vllm0.27.1-r4d0.5.0-mxfp4.dflash2.xgrammar
+ARG RADIANCE_VERSION=0.9.3-dev.vllm0.28.0-r4d0.5.0-mxfp4.dflash2.xgrammar
 ENV RADIANCE_VERSION=${RADIANCE_VERSION}
 COPY VERSION /opt/radiance_version
 COPY radiance_preamble.py /opt/radiance_preamble.py

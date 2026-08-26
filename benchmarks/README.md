@@ -335,9 +335,9 @@ the difference to the shared speculative/runner numerical path without
 weakening the gate.
 
 For the AMD Quark MXFP4 target, use the base-model-matched selective-FP8
-`tcclaviger/Qwen3.8-27B-DFlash2-FP8` drafter. Stable vLLM 0.27.1 contains only
-the older Qwen DFlash runtime, so this image selectively backports Qwen3.8
-DFlash2 from PR #52816. Its context precompute also materializes the draft's
+`tcclaviger/Qwen3.8-27B-DFlash2-FP8` drafter. Stable vLLM 0.28.0 natively
+contains Qwen3.8 DFlash2 from PR #52816, so the former v0.27.1 source backport
+is retired. Its context precompute also materializes the draft's
 scaled FP8 K/V slices before the raw fused `F.linear`; normal draft linears stay
 FP8. Set the MXFP4 variables from the preceding section and replace only the
 `model` value in `SPECULATIVE_CONFIG_JSON`.
@@ -360,6 +360,30 @@ Their aggregate c1/c2/c4/c8 results were 43.2/83.1/145.7/241.3,
 97.8/173.1/284.5/372.1 for MTP. The full category table, telemetry,
 isolated M48/M64 control, correctness result, and negative runs are documented
 in `docs/RADIANCE_093_R4D050_MXFP4.md`.
+
+### Stable vLLM v0.28 regression lane
+
+The v0.28 milestone keeps the same 8K/C8 BetterBench contract and adds two
+GPU-free checks before live qualification:
+
+```bash
+python benchmarks/bin/check_parser_shared_engine.py --tokenizer /path/to/model
+python benchmarks/bin/check_xgrammar_spec_termination.py
+```
+
+The first asserts that the `qwen3` reasoning plus `qwen3_coder` tool-parser
+pair remains a `DelegatingParser` and installs the structural tag used for
+strict/required tool schemas. The second retains the speculative XGrammar
+termination/reasoning-boundary check. A milestone run must still execute the
+sampled multi-tool gate on the live DFlash server; source checks do not replace
+generation evidence. Exact v0.28 run IDs and comparison results are in
+`docs/V028_UPGRADE.md`.
+
+When speculative JSON names a local `/models/...` drafter, the manifest now
+records that checkpoint separately from the target, including its Hugging Face
+revision, config SHA-256, weight size, and Hub content OID. This avoids an
+otherwise easy-to-miss drafter change in future matched comparisons without
+rereading multi-gigabyte weight files for every run.
 
 ## Results
 

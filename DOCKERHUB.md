@@ -1,7 +1,7 @@
 # vllm-radiance
 
 vLLM inference server for the AMD Radeon AI PRO R9700 (gfx1201 / RDNA4), combining pinned stable
-vLLM v0.27.1 with libr4d's hand-written RDNA4 kernels and Radiance's FP8/speculative paths.
+vLLM v0.28.0 with libr4d's hand-written RDNA4 kernels and Radiance's FP8/speculative paths.
 
 > **Status: experimental.** This fork publishes as `magiccodingman/vllm-radiance`.
 > `stilldeadcode/vllm-radiance:0.9.3` is DeadCode's separate upstream release
@@ -16,16 +16,16 @@ sequences; it deliberately leaves VRAM headroom instead of finding the largest
 batch that fits. Earlier 0.5.8 performance numbers below remain useful history,
 but are not claims about the new compiler stack.
 
-## Current fork stack (`0.9.3-dev.vllm0.27.1-r4d0.5.0-mxfp4.dflash2`)
+## Current fork stack (`0.9.3-dev.vllm0.28.0-r4d0.5.0-mxfp4.dflash2.xgrammar`)
 
 | Component | Exact version/pin |
 |---|---|
-| vLLM | `0.27.1` / `6e448d0ea9bf3d88d898b65449ca6dc2aec170ac` |
+| vLLM | `0.28.0` / `2cf0a6915ce544dc493a0990f2ea38d81601128a` plus focused post-release fixes |
 | PyTorch | AMD ROCm 2.12 commit `6bbd26020da1c6dc198625dfcdd968b1e4e6b1c5` |
 | Triton | AMD 3.7.1 commit `f0b55c07da61c71775bef6d1a15ebf846430ac75` |
 | torchvision | 0.27.1 |
 | AITER | 0.1.20 (`fc2e5d57fb5b8ad8e7e23f7103071dde798ea618`) |
-| Transformers | 5.14.1 |
+| Transformers | 5.15.0 |
 | XGrammar | 0.2.3 |
 | libr4d | 0.5.0 / `e8de4bc1f3dbd608dcb8d3ffceb6b48acdf83bb7` |
 | ROCm userspace | 7.14, bundled |
@@ -108,10 +108,10 @@ defaults.
 
 For the AMD Quark target, set `WEIGHT_QUANTIZATION=auto`, enable both MXFP4
 switches above, and use the target-matched
-`tcclaviger/Qwen3.8-27B-DFlash2-FP8` drafter path. Stable vLLM 0.27.1 contains
-the older DFlash runtime; this image selectively backports Qwen3.8 DFlash2 from
-the exact reviewed PR #52816 head and applies block scales to its fused FP8
-context-K/V projection.
+`tcclaviger/Qwen3.8-27B-DFlash2-FP8` drafter path. Stable vLLM 0.28.0 contains
+native Qwen3.8 DFlash2; this image retains the reviewed fused-context FP8,
+W4-draft, INT2-head, and libr4d paths plus focused post-release correctness
+fixes.
 
 ## Tested so far
 

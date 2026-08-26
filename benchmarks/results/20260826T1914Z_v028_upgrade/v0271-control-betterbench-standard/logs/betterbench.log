@@ -1,0 +1,48 @@
+BetterBench 0.2.2 · corpus v1.0 · 29 prompts in 8 categories
+2 warmup + 10 measured passes per category
+model max context: 8192 tokens
+[single] chat: warmup 2 + 10 runs
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/asyncio/runners.py", line 127, in run
+    return self._loop.run_until_complete(task)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "/usr/lib/python3.14/asyncio/base_events.py", line 719, in run_until_complete
+    return future.result()
+           ~~~~~~~~~~~~~^^
+  File "/nvme/ediloca-1/source/GitHub/GGZ14/BetterBench/betterbench/runner.py", line 47, in single_stream
+    r = await _one(endpoint, model, p, cfg, rng)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nvme/ediloca-1/source/GitHub/GGZ14/BetterBench/betterbench/runner.py", line 25, in _one
+    return await stream_chat(
+           ^^^^^^^^^^^^^^^^^^
+    ...<3 lines>...
+        category=p.category, prompt_id=p.id, timeout=cfg.timeout_s)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nvme/ediloca-1/source/GitHub/GGZ14/BetterBench/betterbench/client.py", line 170, in stream_chat
+    return await asyncio.to_thread(stream_chat_sync, base_url, model, messages, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.14/asyncio/threads.py", line 25, in to_thread
+    return await loop.run_in_executor(None, func_call)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+asyncio.exceptions.CancelledError
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/nvme/ediloca-1/venv/vllm-bench-env/bin/betterbench", line 6, in <module>
+    sys.exit(main())
+             ~~~~^^
+  File "/nvme/ediloca-1/source/GitHub/GGZ14/BetterBench/betterbench/cli.py", line 244, in main
+    args.func(args)
+    ~~~~~~~~~^^^^^^
+  File "/nvme/ediloca-1/source/GitHub/GGZ14/BetterBench/betterbench/cli.py", line 114, in cmd_run
+    results["single_stream"] = asyncio.run(
+                               ~~~~~~~~~~~^
+        single_stream(args.endpoint, args.model, corpus, cfg))
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.14/asyncio/runners.py", line 204, in run
+    return runner.run(main)
+           ~~~~~~~~~~^^^^^^
+  File "/usr/lib/python3.14/asyncio/runners.py", line 132, in run
+    raise KeyboardInterrupt()
+KeyboardInterrupt

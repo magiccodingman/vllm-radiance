@@ -8,7 +8,7 @@ ARG BASE_IMAGE=vllm-radiance:dev
 FROM ${BASE_IMAGE}
 
 USER root
-ARG RADIANCE_VERSION=0.9.3-dev.vllm0.27.1-r4d0.5.0-mxfp4.dflash2.xgrammar
+ARG RADIANCE_VERSION=0.9.3-dev.vllm0.28.0-r4d0.5.0-mxfp4.dflash2.xgrammar
 ARG R4D_VERSION=v0.5.0
 ARG R4D_COMMIT=e8de4bc1f3dbd608dcb8d3ffceb6b48acdf83bb7
 ENV RADIANCE_VERSION=${RADIANCE_VERSION} \
@@ -27,10 +27,11 @@ RUN set -eu; cd /opt/patches; \
     for p in patch_gfx1201 patch_radiance_dispatch patch_skinny_gemm patch_unified_attention_lds \
              patch_gdn_wmma patch_gdn_aiter_prefill patch_preshuffle install_radiance_hooks \
              patch_unpad patch_mtp_mm_mask patch_mtp_loopbreak patch_qwen3_toolparse patch_from_json_filter \
-             patch_dynamo_metrics patch_conv1d_blockn patch_r4d patch_dflash_base patch_dflash2_v0271_backport \
-             patch_dflash_fused_kv_fp8 patch_dflash_w4 patch_gdn_metadata patch_topk_triton_rows \
+             patch_dynamo_metrics patch_conv1d_blockn patch_r4d patch_dflash_base \
+             patch_dflash_fused_kv_fp8 patch_dflash_logits_cache_stride patch_dflash_w4 \
+             patch_gdn_metadata patch_topk_triton_rows patch_rocm_cudagraph_current_stream \
              patch_quark_mxfp4 patch_quark_bf16_mtp patch_ar_maxbytes patch_xgrammar_spec_termination \
-             patch_xgrammar_spec_reasoning; do \
+             patch_xgrammar_spec_reasoning patch_parser_shared_engine; do \
       echo "== applying $p =="; python "$p.py"; \
     done; \
     python -c "import ast,glob; [ast.parse(open(f).read()) for f in glob.glob('${SP}/radiance_*.py')]; print('patch overlay parse OK')"; \

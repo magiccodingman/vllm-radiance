@@ -4,7 +4,7 @@
 [![Docker Pulls](https://img.shields.io/docker/pulls/magiccodingman/vllm-radiance?logo=docker)](https://hub.docker.com/r/magiccodingman/vllm-radiance)
 
 A vLLM inference-server image for the **AMD Radeon AI PRO R9700 (gfx1201 / RDNA4)**. It combines a pinned
-vLLM v0.27.1 ROCm stack with [libr4d](https://codeberg.org/StillDeadcode/libr4d)'s hand-written RDNA4
+vLLM v0.28.0 ROCm stack with [libr4d](https://codeberg.org/StillDeadcode/libr4d)'s hand-written RDNA4
 attention, gated-delta-net, vision, all-reduce, MXFP4, and DFlash kernels while retaining Radiance's tuned
 FP8 GEMM and speculative-decoding paths.
 
@@ -15,8 +15,8 @@ FP8 GEMM and speculative-decoding paths.
 
 This fork tracks and credits DeadCode's
 [vllm-radiance](https://codeberg.org/StillDeadcode/vllm-radiance) and libr4d work, with additional compiler
-pins, a selective DFlash2 backport, native gfx1201 MXFP4/W4A8 support, reproducible benchmarks, and
-deployment qualification. Published images are at
+pins, native v0.28 DFlash2 plus focused post-release correctness backports, native gfx1201 MXFP4/W4A8
+support, reproducible benchmarks, and deployment qualification. Published images are at
 [`magiccodingman/vllm-radiance`](https://hub.docker.com/r/magiccodingman/vllm-radiance).
 
 ## Quick start
@@ -184,9 +184,11 @@ regression target, a 10.31 GiB (35.9%) reduction.
 | 256K | 2 | 2 |
 
 The recommended long-context deployment is **128K/C4**, 90% allocation, prefix caching enabled,
-`MAMBA_CACHE_MODE=align`, and DFlash K5. It exposed 576,001 GPU KV tokens (4.39 full 128K requests), completed
+`MAMBA_CACHE_MODE=align`, and DFlash K7. The capacity qualification itself used K5 (the draft depth does not
+change the reserved model/KV capacity): it exposed 576,001 GPU KV tokens (4.39 full 128K requests), completed
 four simultaneous full-context requests without OOM or preemption, and retained 5.17 GiB minimum physical
-headroom per GPU. A repeated 32K prefix reduced TTFT from 9.04 seconds cold to 0.70–0.71 seconds warm.
+headroom per GPU. A repeated 32K prefix reduced TTFT from 9.04 seconds cold to 0.70–0.71 seconds warm. Prefer
+K5 only for a workload that remains dominated by steady c8 traffic.
 
 Full methodology and run IDs are in the
 [Compose capacity report](https://gitlab.sayou.io/lance-wright/vllm-radiance/-/blob/main/docs/COMPOSE_CAPACITY.md).
@@ -207,6 +209,14 @@ K7 is the general DFlash recommendation and wins weighted decode plus c1–c4. K
 steady C8-heavy deployment. The K7 candidate passed 30/30 required multi-tool schema requests, but strict
 speculative/non-spec greedy equivalence passed only 1/8 fixed prompts; DFlash therefore remains experimental
 and opt-in.
+
+The stable-v0.28 continuation reran this exact K7 lane against a fresh
+merged-main v0.27.1 control. v0.28 measured **152.5 weighted TPS** and
+135.0 / 222.3 / 348.8 / 474.0 TPS at c1/c2/c4/c8: +4.8% weighted and +13.2%
+at c8, with a disclosed -5.2% c2 regression and essentially flat c4/prefill.
+It passed 100/100 sampled required multi-tool calls after the focused upstream
+parser fix. Exact provenance, acceptance, telemetry, negative results, and run
+IDs are in the [v0.28 qualification report](https://gitlab.sayou.io/lance-wright/vllm-radiance/-/blob/main/docs/V028_UPGRADE.md).
 
 Per-category TPS, acceptance, TTFT/TPOT, prefill, telemetry, confidence intervals, negative results, and
 immutable run IDs are in the
@@ -238,7 +248,7 @@ The published image is built entirely from pinned source commits:
 
 | Component | Version/pin |
 |---|---|
-| vLLM | 0.27.1 plus reviewed DFlash2 and XGrammar speculative-output backports |
+| vLLM | 0.28.0, `2cf0a6915ce544dc493a0990f2ea38d81601128a`, plus reviewed DFlash/XGrammar/parser/ROCm-graph fixes |
 | AMD PyTorch | 2.12 branch, `6bbd26020da1c6dc198625dfcdd968b1e4e6b1c5` |
 | AMD Triton | 3.7.1, `f0b55c07da61c71775bef6d1a15ebf846430ac75` |
 | AITER | 0.1.20, `fc2e5d57fb5b8ad8e7e23f7103071dde798ea618` |
@@ -264,6 +274,7 @@ and an earlier mismatched combination caused sustained TP hangs.
 ## Documentation
 
 - [Upgrade and reproducibility history](https://gitlab.sayou.io/lance-wright/vllm-radiance/-/blob/main/docs/UPGRADE_PROGRESS.md)
+- [Stable vLLM v0.28 upgrade and qualification](https://gitlab.sayou.io/lance-wright/vllm-radiance/-/blob/main/docs/V028_UPGRADE.md)
 - [Radiance 0.9.3 / libr4d 0.5.0 qualification](https://gitlab.sayou.io/lance-wright/vllm-radiance/-/blob/main/docs/RADIANCE_093_R4D050_MXFP4.md)
 - [MXFP4/W4A8 implementation and validation](https://gitlab.sayou.io/lance-wright/vllm-radiance/-/blob/main/docs/MXFP4_W4A8_R9700.md)
 - [Compose capacity and prefix-cache qualification](https://gitlab.sayou.io/lance-wright/vllm-radiance/-/blob/main/docs/COMPOSE_CAPACITY.md)

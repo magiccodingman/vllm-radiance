@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
 """Backport vLLM PR #52805: stop XGrammar batches at termination.
 
-vLLM v0.27.1 advances structured-output grammars with a batch of accepted
+The pinned vLLM v0.28.0 release advances structured-output grammars with a batch of accepted
 speculative tokens.  When a terminating token occurs before the end of that
 batch, the remaining tokens are incorrectly passed to an already-terminated
 XGrammar matcher.  Besides the noisy "Failed to advance FSM" diagnostics, the
 overshoot can desynchronise constrained decoding and truncate tool-call JSON.
 
-This is the source-equivalent v0.27.1 backport of upstream merge
+This is the source-equivalent v0.28.0 backport of upstream merge
 12f64b39d29282437e35be9aa5db432fb2a1a6e6
-(https://github.com/vllm-project/vllm/pull/52805).  It is intentionally kept as
-an overlay instead of moving the stable vLLM pin.
+(https://github.com/vllm-project/vllm/pull/52805). It is intentionally kept as
+a guarded overlay because that merge is newer than the v0.28.0 tag.
 
 Idempotent; exact-anchor guarded; ast.parse checked before writing.
 """
