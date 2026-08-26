@@ -256,13 +256,23 @@ __global__ __launch_bounds__(NTHREADS) void radiance_mxfp4_fp8_gemm_folded(
       for (int e = 0; e < 8; ++e) acc[i][j][e] = 0.f;
 
   for (int k0 = 0; k0 < K; k0 += BK) {
+    // Wave-uniform 64-bit bases, hoisted out of the per-thread address arithmetic. Written as
+    // `base + int_offset`, the compiler keeps the base in SGPRs and emits the SADDR form of
+    // global_load, so a lane pays one 32-bit add instead of the v_add_co_u32 / v_add_co_ci_u32
+    // pair a full 64-bit address costs. The matmul block was spending ~71 of its 565 instructions
+    // on that arithmetic while using only 29 of the ~102 available SGPRs.
+    // r*K fits an int by a wide margin: r < BMF = 256 and K <= 17408, so r*K < 4.5e6.
+    const unsigned char *__restrict__ Ab = A + (size_t)m0 * K + k0;
+    const unsigned char *__restrict__ Wb = W + ((size_t)n0 * K + k0) / 2;
+    const unsigned char *__restrict__ Wsb = Ws + (size_t)(k0 / 32) * N + n0;
+    const unsigned char *__restrict__ Wrefb = Wref + n0;
     // ---- A tile: BM*BK bytes, 16 B per thread per iteration ----
 #pragma unroll
     for (int off = 0; off < BMF * BK; off += NTHREADS * 16) {
       const int idx = off + tid * 16;
       const int r = idx / BK, c = idx % BK, gm = m0 + r;
       uint4_t v = uint4_t{0, 0, 0, 0};
-      if (gm < M) v = *(const uint4_t *)(A + (size_t)gm * K + k0 + c);
+      if (gm < M) v = *(const uint4_t *)(Ab + (r * K + c));
       *(uint4_t *)(&sA[r * ASTR + c]) = v;
     }
     // ---- W tile: BN*BK/2 packed bytes, 8 B per thread per iteration -> 16 e4m3 bytes ----
@@ -324,9 +334,10 @@ __global__ __launch_bounds__(NTHREADS) void radiance_mxfp4_fp8_gemm_folded(
       unsigned long long packed = 0ull;
       int dsh = 0;
       if (gn < N) {
-        packed = *(const unsigned long long *)(W + ((size_t)gn * K + k0) / 2 + c);
-        const int blk = (k0 + c * 2) / 32;
-        dsh = (int)Wref[gn] - (int)Ws[(size_t)blk * N + gn];   // scales are [K/32, N]
+        // Same hoist as A. r*(K/2) < 1.2e6 and the scale offset < 3*N, both comfortably int.
+        packed = *(const unsigned long long *)(Wb + (r * (K / 2) + c));
+        const int blk = (c * 2) / 32;                          // k0's share is in Wsb
+        dsh = (int)Wrefb[r] - (int)Wsb[blk * N + r];           // scales are [K/32, N]
         dsh = dsh < 0 ? 0 : (dsh > 15 ? 15 : dsh);
       }
       // v_perm_b32 resolves 4 table lookups per instruction from the 8-byte magnitude table;
@@ -365,6 +376,13 @@ __global__ __launch_bounds__(NTHREADS) void radiance_mxfp4_fp8_gemm_folded(
         const unsigned char *p = &sW[(wn * TN * 16 + j * 16 + col) * WSTR + kk];
         wf[j][0] = *(const int *)p; wf[j][1] = *(const int *)(p + 4);
       }
+      // Hard scheduling barrier per k-step. Without it the compiler hoists EVERY step's fragment
+      // loads above the first WMMA -- the ISA shows 346 instructions and 140 v_dual_mov_b32 ahead
+      // of a 64-WMMA run that itself contains zero moves. Those moves are the register shuffling
+      // that holds four k-steps of fragments live at once. Fencing each step keeps one step's
+      // fragments live instead of four. Same idea as the attention kernel's SGB bit, which notes
+      // that without the barrier its prefetch is inert.
+      __builtin_amdgcn_sched_barrier(0);
 #pragma unroll
       for (int i = 0; i < TM; ++i)
 #pragma unroll
