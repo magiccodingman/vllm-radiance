@@ -90,7 +90,7 @@ services:
       VLLM_ROCM_USE_AITER_FP4BMM: "0"
       VLLM_ROCM_USE_AITER_RMSNORM: "0"
       # libr4d master switch: R4D attention, GDN, ViT, TP2 all-reduce, and
-      # skinny router GEMM. Unsupported geometries fall back per operator.
+      # the v0.5 BF16/DFlash GEMMs. Unsupported geometries fall back per operator.
       RADIANCE_USE_R4D: "${RADIANCE_USE_R4D:-1}"
       RADIANCE_USE_R4D_GDN: "${RADIANCE_USE_R4D_GDN:-1}"
       RADIANCE_R4D_REPORT: "${RADIANCE_R4D_REPORT:-1}"
@@ -98,15 +98,22 @@ services:
       # WHT6 payload for large TP2 reductions. Quantized, so set 0 for the
       # exact bf16 R4D all-reduce control.
       RADIANCE_USE_R4D_AR_QUANT: "${RADIANCE_USE_R4D_AR_QUANT:-1}"
+      # Numerically exact defaults: measured BF16 shapes, byte-identical GDN
+      # metadata construction, and Triton top-k/top-p for small row counts.
+      # `all` enables additional BF16 GEMM shapes whose ULP-level differences
+      # can alter speculative acceptance, so it is never the generic default.
+      RADIANCE_SKINNY_GEMM: "${RADIANCE_SKINNY_GEMM:-1}"
+      RADIANCE_GDN_META: "${RADIANCE_GDN_META:-1}"
+      RADIANCE_TOPK_TRITON_MIN_ROWS: "${RADIANCE_TOPK_TRITON_MIN_ROWS:-1}"
       # Weight format is appended by the entrypoint. `auto` omits the CLI flag
       # and lets Quark/MXFP4 checkpoints select their config.json method.
       RADIANCE_WEIGHT_QUANTIZATION: "${WEIGHT_QUANTIZATION:-fp8}"
       # Native MXFP4/W4A8 is opt-in and inert for non-Quark checkpoints. Once
-      # enabled, cover every M and use the decode-shaped kernel through M=48.
+      # enabled, cover every M and use the decode-shaped kernel through M=64.
       RADIANCE_MXFP4: "${RADIANCE_MXFP4:-0}"
       RADIANCE_MXFP4_W4A8: "${RADIANCE_MXFP4_W4A8:-0}"
       RADIANCE_MXFP4_W4A8_MIN_M: "${RADIANCE_MXFP4_W4A8_MIN_M:-0}"
-      RADIANCE_MXFP4_DECODE_MAX_M: "${RADIANCE_MXFP4_DECODE_MAX_M:-48}"
+      RADIANCE_MXFP4_DECODE_MAX_M: "${RADIANCE_MXFP4_DECODE_MAX_M:-64}"
       RADIANCE_MXFP4_TN4_MIN_M: "${RADIANCE_MXFP4_TN4_MIN_M:-2048}"
       # AMD's current Qwen3.8 Quark checkpoint stores its embedded MTP head in
       # BF16 despite the global FP4 recipe. Enable only for that verified layout.
@@ -121,15 +128,16 @@ services:
       # single-node hosts). Set "auto" to detect, or explicit nodes (e.g. "0" / "0,1"). Requires the
       # SYS_NICE cap above. Equivalent to passing --numa-bind in command:.
       RADIANCE_NUMA_BIND: "${RADIANCE_NUMA_BIND:-}"
-      # RADIANCE dynamic drafting (baked ON in the image; explicit here for visibility/overridability).
+      # RADIANCE dynamic drafting (baked ON in the image; MTP only and inert for DFlash).
       # Per-request MTP draft-depth control: a per-slot confidence gate picks the draft depth and takes
       # free-win n-grams; the schedule caps serial MTP forwards by batch size. Set DYNAMIC_DRAFT="0" to
       # disable (byte-identical stock MTP). The two knobs below are the only tunables.
       RADIANCE_DYNAMIC_DRAFT: "1"
       RADIANCE_DRAFT_SCHEDULE: "1:8,2:7,4:6,8:5,16:4"
       RADIANCE_DRAFT_TAU: "${RADIANCE_DRAFT_TAU:-0.28}"
-      # Exact-rerank int2 MTP head. Opt-in until model-level qualification;
-      # it has no effect when speculative MTP is disabled.
+      # Tuned drafter stack. Under MTP this is the exact-rerank INT2 head;
+      # under DFlash it also enables the runtime W4 drafter. Keep opt-in until
+      # the target/drafter pair passes its acceptance and correctness gates.
       RADIANCE_FAST_DRAFT: "${RADIANCE_FAST_DRAFT:-0}"
       # Optional raw vLLM speculative-config JSON. The entrypoint appends it as
       # one CLI argument unless an explicit --speculative-config is already present.

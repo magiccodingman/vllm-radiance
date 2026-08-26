@@ -136,6 +136,9 @@ def main() -> None:
                 "RADIANCE_R4D_REPORT",
                 "RADIANCE_USE_R4D_AR",
                 "RADIANCE_USE_R4D_AR_QUANT",
+                "RADIANCE_SKINNY_GEMM",
+                "RADIANCE_GDN_META",
+                "RADIANCE_TOPK_TRITON_MIN_ROWS",
                 "RADIANCE_FAST_DRAFT",
                 "RADIANCE_MXFP4",
                 "RADIANCE_MXFP4_W4A8",
@@ -172,6 +175,8 @@ def main() -> None:
                 "BENCH_CORRECTNESS_REPETITIONS",
                 "BENCH_CORRECTNESS_LOGPROBS",
                 "BENCH_CORRECTNESS_PROMPTS",
+                "BENCH_TOOL_SCHEMA_ATTEMPTS",
+                "TOOL_CALL_PARSER",
                 "BETTERBENCH_PROFILE",
                 "BETTERBENCH_ROOT",
             )

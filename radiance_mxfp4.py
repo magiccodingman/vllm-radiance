@@ -27,7 +27,7 @@ import torch
 ENABLED = os.environ.get("RADIANCE_MXFP4_W4A8", "0") == "1"
 MIN_M = int(os.environ.get("RADIANCE_MXFP4_W4A8_MIN_M", "0"))
 # Decode band for the small-M kernel. 0 = dark. Also gates the scratch preallocation.
-DECODE_MAX_M = int(os.environ.get("RADIANCE_MXFP4_DECODE_MAX_M", "48"))
+DECODE_MAX_M = int(os.environ.get("RADIANCE_MXFP4_DECODE_MAX_M", "64"))
 _decode_scratch_ready = [False]
 _decode_scratch = [None, None]   # [partials, block counter] — kept alive for the process
 
@@ -492,7 +492,7 @@ def _make_kernel_class():
                     # capture, and any C++ exception escaping our pybind module gets relabelled by
                     # quark's TileLang exception translator into a bogus "libamdhip64.so not found".
                     _decode_scratch[0] = torch.empty(
-                        4 * 48 * 32768, dtype=torch.float32, device=layer.weight.device)
+                        4 * 64 * 32768, dtype=torch.float32, device=layer.weight.device)
                     # One counter per output block for the fused split-K reduction. The
                     # last arriving block resets its counter, so this is zeroed once.
                     _decode_scratch[1] = torch.zeros(

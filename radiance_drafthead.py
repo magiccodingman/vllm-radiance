@@ -71,9 +71,30 @@ FAST = os.environ.get("RADIANCE_FAST_DRAFT", "0") == "1"
 GROUP = 128        # weight-quantisation group along K; also the kernel's BLOCK_K
 BLOCK_N = 64       # do_bench optimum, and the width of one block-max entry
 BITS = 2
-RERANK = 32        # candidates scored exactly per row
+RERANK = 32        # candidates scored exactly per row; swept, and KCAND is the recall lever
 KCAND = 8          # candidates emitted per block; R caps the final count, K feeds it
-_CFG = {"num_warps": 4, "num_stages": 1}    # stages>1 regresses; warps=8 is catastrophic (8x)
+# Launch geometry, per M band. The head changes regime across the batch sizes one serve produces:
+# at M=16 it is memory-bound (427 GB/s, 68% of the DRAM roofline on its 152 MiB of int2) and at
+# M=64 it is compute-bound (67 TF/s against a 207 TF/s bf16 WMMA ceiling, only 130 GB/s). The warp
+# count that suits one end is wrong at the other, and the penalty is not symmetric: warps=2 is the
+# optimum at M=16 (1.10x) and 0.38x at M=64, while warps=8 is the optimum at M=64 (1.07x) and 0.78x
+# at M=32. num_stages>1 regresses everywhere. BLOCK_N=64 wins or ties at every M measured.
+# Isolated, 124160 x 5120 (one rank's vocab shard), CUDA-graph window, us:
+#     M=16   warps 2 / 4 / 8 = 372.4 / 408.8 / 425.6
+#     M=32   warps 2 / 4 / 8 = 660.4 / 540.0 / 690.3
+#     M=64   warps 2 / 4 / 8 = 3428.4 / 1309.4 / 1218.7
+# M is padded to a power of two >= 16 before it gets here, so the bands are 16, 32, 64.
+_CFG_BY_M = ((16, {"num_warps": 2, "num_stages": 1}),
+             (48, {"num_warps": 4, "num_stages": 1}),
+             (64, {"num_warps": 8, "num_stages": 1}))
+_CFG = {"num_warps": 4, "num_stages": 1}    # fallback for an M past the table
+
+
+def _cfg_for(m):
+    for lim, cfg in _CFG_BY_M:
+        if m <= lim:
+            return cfg
+    return _CFG
 
 
 if triton is not None:
@@ -178,7 +199,7 @@ def _apply_head_int2(self, lm_head, hidden_states, embedding_bias):
     _draft_head_int2[(nblk,)](
         x, xs, self._radiance_wq, self._radiance_scale, self._radiance_zs, y, bm, bi,
         k, n, self._radiance_wq.stride(0), self._radiance_scale.stride(0), xs.stride(0),
-        nblk, KCAND, G=GROUP, BLOCK_M=M, BLOCK_N=BLOCK_N, **_CFG)
+        nblk, KCAND, G=GROUP, BLOCK_M=M, BLOCK_N=BLOCK_N, **_cfg_for(M))
 
     w = getattr(lm_head, "weight", None)
     if w is not None and w.dtype in (torch.bfloat16, torch.float16) and w.shape == (n, k):
@@ -186,6 +207,14 @@ def _apply_head_int2(self, lm_head, hidden_states, embedding_bias):
         ex = torch.empty(M, RERANK, dtype=torch.float32, device=x.device)
         _rerank_exact[(M, RERANK)](x, w, idx, ex, k, w.stride(0), R=RERANK, BLOCK_K=512,
                                    num_warps=4)
+        if getattr(self, "_radiance_topk_only", False):
+            # A top-k caller ranks the whole row against itself, so the ~124k entries the rerank
+            # did NOT touch are still coarse 2-bit values competing with exact ones -- and a
+            # spuriously high coarse entry becomes a candidate. An argmax caller never noticed
+            # (the true winner is a reranked block maximum); a top-16 caller sees garbage in
+            # every slot the coarse pass over-scored. Make the reranked set the only eligible
+            # one, so recall is bounded by RERANK rather than by 2-bit noise.
+            y.fill_(float("-inf"))
         y.scatter_(1, idx.long(), ex.to(torch.bfloat16))
     elif not self._radiance_warned:
         # Without the exact weight the coarse pass stands on its own; that is a ~5% top-1 change
@@ -205,14 +234,52 @@ def _apply_head_int2(self, lm_head, hidden_states, embedding_bias):
     return y.reshape(*hidden_states.shape[:-1], -1)
 
 
-def _quantize_draft_head(mtp):
+def _apply_head_lazy(self, lm_head, hidden_states, embedding_bias):
+    """First real call quantises, then hands over to the quantised path for good.
+
+    Needed because the weight a drafter scores against may not exist yet when load_weights
+    returns; here it is the argument, so it is guaranteed populated.
+    """
+    if float(lm_head.weight.data.abs().max()) == 0.0:
+        # Still empty on a real call: something is wrong, but a coarse head would be silently
+        # catastrophic, so fall back to the stock GEMM rather than guess.
+        return type(self)._apply_head(self, lm_head, hidden_states, embedding_bias)
+    status = _quantize_head_now(self, lm_head)
+    sys.stderr.write(f"[radiance] INT{BITS}_DRAFT_HEAD (lazy): {status}\n")
+    sys.stderr.flush()
+    return self._apply_head(lm_head, hidden_states, embedding_bias)
+
+
+def _quantize_draft_head(mtp, lp_attr="logits_processor"):
+    """Quantise the head a drafter scores with, and rebind that LogitsProcessor's _apply_head.
+
+    lp_attr names which LogitsProcessor to hook. MTP has exactly one; DFlash2 keeps a separate
+    `candidate_logits_processor` for candidate generation, and hooking THAT is what confines the
+    approximation to the draft path -- the target samples through its own instance and is
+    untouched. Both share the same lm_head weight, which is why the bf16 copy has to stay: it is
+    the target's, and it is also what the rerank scores against.
+    """
     lm_head = getattr(mtp, "lm_head", None)
-    lp = getattr(mtp, "logits_processor", None)
+    lp = getattr(mtp, lp_attr, None)
     if lm_head is None or lp is None or not hasattr(lm_head, "weight"):
-        return "no lm_head/logits_processor"
+        return f"no lm_head/{lp_attr}"
     w = lm_head.weight
     if w.dim() != 2 or w.dtype not in (torch.bfloat16, torch.float16, torch.float32):
         return f"unsupported draft-head weight {tuple(w.shape)} {w.dtype}"
+    lp._radiance_topk_only = lp_attr == "candidate_logits_processor"
+    # A drafter whose checkpoint carries no lm_head (DFlash2) gets the target's tensor shared in
+    # AFTER load_weights returns, so at this point the parameter is still allocated-but-empty.
+    # Quantising that yields an all-zero head, and the failure is silent and total: the serve comes
+    # up, text stays coherent because the TARGET is fine, and only acceptance collapses to ~1.0 --
+    # which reads as a plausible accuracy verdict on the quantisation. Defer instead.
+    if float(w.data.abs().max()) == 0.0:
+        lp._apply_head = types.MethodType(_apply_head_lazy, lp)
+        return "lm_head empty at load_weights (shared in later); quantising on first use"
+    return _quantize_head_now(lp, lm_head)
+
+
+def _quantize_head_now(lp, lm_head):
+    w = lm_head.weight
     n, k = w.shape
     if k % (2 * GROUP):
         return f"hidden size {k} not a multiple of {2 * GROUP}"
@@ -277,29 +344,35 @@ def install():
         sys.stderr.write("[radiance] quantised draft head off: no triton\n")
         return
 
+    # (module, class, which LogitsProcessor that drafter scores candidates with)
     targets = []
-    for mod_name, cls_name in (
-        ("vllm.model_executor.models.qwen3_5_mtp", "Qwen3_5MTP"),
-        ("vllm.model_executor.models.qwen3_next_mtp", "Qwen3NextMTP"),
+    for mod_name, cls_name, lp_attr in (
+        ("vllm.model_executor.models.qwen3_5_mtp", "Qwen3_5MTP", "logits_processor"),
+        ("vllm.model_executor.models.qwen3_next_mtp", "Qwen3NextMTP", "logits_processor"),
+        # DFlash2 reaches the head through get_top_k_tokens, which calls _apply_head like
+        # everything else. Its lm_head is not in the drafter checkpoint -- it is shared in from
+        # the target after load_weights -- so this one always takes the lazy path.
+        ("vllm.model_executor.models.qwen3_dflash2", "DFlash2Qwen3ForCausalLM",
+         "candidate_logits_processor"),
     ):
         try:
             mod = __import__(mod_name, fromlist=[cls_name])
-            targets.append(getattr(mod, cls_name))
+            targets.append((getattr(mod, cls_name), lp_attr))
         except Exception:
             continue
     if not targets:
-        sys.stderr.write("[radiance] quantised draft head off: no MTP class found\n")
+        sys.stderr.write("[radiance] quantised draft head off: no drafter class found\n")
         return
 
-    for cls in targets:
+    for cls, lp_attr in targets:
         if getattr(cls, "_radiance_quant_head_wrapped", False):
             continue
         orig = cls.load_weights
 
-        def wrapped(self, weights, _orig=orig):
+        def wrapped(self, weights, _orig=orig, _lp=lp_attr):
             loaded = _orig(self, weights)
             try:
-                status = _quantize_draft_head(self)
+                status = _quantize_draft_head(self, _lp)
             except Exception as e:
                 status = f"FAILED, bf16 head kept: {e!r}"
             sys.stderr.write(f"[radiance] INT{BITS}_DRAFT_HEAD: {status}\n")

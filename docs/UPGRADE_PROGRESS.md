@@ -327,3 +327,27 @@ failed (3/8 exact prompts), so the performance winner is not promoted to the
 generic default. Full pins, run IDs, acceptance counters, correctness
 isolation, and negative results are in
 [LIBR4D_BETTERBENCH.md](LIBR4D_BETTERBENCH.md).
+
+## Radiance 0.9.3 / libr4d 0.5.0 / fast DFlash continuation
+
+DeadCode Radiance 0.9.3 (`e1c99aab`) and libr4d v0.5.0 (`e8de4bc1`) were
+ported onto the stable vLLM 0.27.1 fork along with the latest M<=64 MXFP4
+kernel work. The port adds libr4d DFlash kernels, runtime W4 draft linears, a
+shared MTP/DFlash INT2 exact-rerank head, exact GPU GDN metadata, selected
+skinny GEMMs, small-row Triton sampling, and migration-safe patch overlays.
+The entrypoint isolates fast-draft compile caches after a stale ordinary graph
+was proven capable of failing packed-weight graph capture.
+
+On the AMD Quark MXFP4 target with the target-matched tcclaviger selective-FP8
+drafter, BetterBench standard measured 43.6 weighted non-spec TPS, 102.3 fast
+MTP K4, 136.2 fast DFlash K5, and **145.4 fast DFlash K7**. K7 delivered
+132.4/234.6/343.3/416.9 aggregate TPS at c1/c2/c4/c8; K5 delivered
+123.0/216.4/343.0/435.7; MTP delivered 97.8/173.1/284.5/372.1. The M<=64
+change improved a direct C8 control by
+10.4%. K7 passed 30/30 required multi-tool schema calls and sustained/context
+gates with about 5.3 GiB minimum VRAM headroom per GPU.
+
+Strict greedy equivalence is still failed (K7 1/8 exact; K5 2/8), so DFlash
+remains opt-in and is not labeled lossless. Exact pins, per-category results,
+telemetry, run IDs, negative results, and deployment guidance are in
+[RADIANCE_093_R4D050_MXFP4.md](RADIANCE_093_R4D050_MXFP4.md).

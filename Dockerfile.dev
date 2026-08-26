@@ -8,8 +8,8 @@ ARG VLLM_COMMIT=6e448d0ea9bf3d88d898b65449ca6dc2aec170ac
 ARG VLLM_VERSION=0.27.1
 ARG TRANSFORMERS_VERSION=5.14.1
 ARG XGRAMMAR_VERSION=0.2.3
-ARG R4D_VERSION=v0.4.0
-ARG R4D_COMMIT=b9e42ab7202f53a3bc13d415f5d41481f9ca311b
+ARG R4D_VERSION=v0.5.0
+ARG R4D_COMMIT=e8de4bc1f3dbd608dcb8d3ffceb6b48acdf83bb7
 
 FROM ${BASE_IMAGE} AS vllm-builder
 ARG VLLM_COMMIT
@@ -37,7 +37,7 @@ ARG TRANSFORMERS_VERSION
 ARG XGRAMMAR_VERSION
 ARG R4D_VERSION
 ARG R4D_COMMIT
-ARG RADIANCE_VERSION=0.8.0-dev.vllm0.27.1-r4d0.4.0-mxfp4.dflash2.fusedsplitk
+ARG RADIANCE_VERSION=0.9.3-dev.vllm0.27.1-r4d0.5.0-mxfp4.dflash2
 ENV RADIANCE_VERSION=${RADIANCE_VERSION}
 
 COPY --from=vllm-builder /wheels/vllm-*.whl /tmp/wheels/
@@ -48,17 +48,18 @@ RUN pip install --no-cache-dir /tmp/wheels/vllm-*.whl \
 ENV SP=/opt/vllm/lib/python3.12/site-packages
 COPY radiance_amdsmi.py radiance_amdsmi.pth \
      radiance_kernels.py radiance_vit_attn.py radiance_allreduce.py \
-     radiance_draft.py radiance_draft_gpu.py radiance_drafthead.py radiance_router.py \
+     radiance_draft.py radiance_draft_gpu.py radiance_drafthead.py radiance_gemm.py radiance_w4.py \
      radiance_r4d_attn.py radiance_gdn.py radiance_mxfp4.py ${SP}/
 COPY fp8-configs/ ${SP}/vllm/model_executor/layers/quantization/utils/configs/
 COPY moe-configs/ ${SP}/vllm/model_executor/layers/fused_moe/configs/
 COPY mxfp4-configs/ ${SP}/aiter/ops/triton/configs/gemm/
 COPY patch_*.py install_radiance_hooks.py _patchlib.py /opt/patches/
 RUN set -eu; cd /opt/patches; \
-    for p in patch_gfx1201 patch_radiance_dispatch patch_router_gemm patch_unified_attention_lds \
+    for p in patch_gfx1201 patch_radiance_dispatch patch_skinny_gemm patch_unified_attention_lds \
              patch_gdn_wmma patch_gdn_aiter_prefill patch_preshuffle install_radiance_hooks \
              patch_unpad patch_mtp_mm_mask patch_mtp_loopbreak patch_qwen3_toolparse patch_from_json_filter \
-             patch_dynamo_metrics patch_conv1d_blockn patch_r4d patch_dflash2_v0271_backport \
+             patch_dynamo_metrics patch_conv1d_blockn patch_r4d patch_dflash_base patch_dflash2_v0271_backport \
+             patch_dflash_fused_kv_fp8 patch_dflash_w4 patch_gdn_metadata patch_topk_triton_rows \
              patch_quark_mxfp4 patch_quark_bf16_mtp patch_ar_maxbytes; do \
       echo "== applying $p =="; python "$p.py"; \
     done; \
