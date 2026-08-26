@@ -1,0 +1,8 @@
+{
+  "run_id": "v028-release-candidate-production-profile-30",
+  "completed_utc": "2026-08-26T20:23:33Z",
+  "attempts": 30,
+  "passes": 30,
+  "failures": 0,
+  "pass": true
+}

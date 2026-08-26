@@ -1,20 +1,28 @@
 # syntax=docker/dockerfile:1.7
-# Fast iteration image. It reuses the released 0.5.8 ROCm/PyTorch/Triton/AITER
-# stack, replaces only vLLM at an exact commit, then reapplies the audited
-# Radiance modules and patches. Dockerfile remains the clean full-source release
-# build; this overlay is for short compile/fix/benchmark cycles.
-ARG BASE_IMAGE=stilldeadcode/vllm-radiance:0.5.8@sha256:2e788f7475907cc86d82acddb5f1e50360b1ffd39e1ffbd2d00ac705b728ccc1
-ARG VLLM_COMMIT=6e448d0ea9bf3d88d898b65449ca6dc2aec170ac
-ARG VLLM_VERSION=0.27.1
-ARG TRANSFORMERS_VERSION=5.14.1
+# Fast iteration image. It reuses the last qualified fork image's ROCm 7.14,
+# AMD PyTorch 2.12, Triton 3.7.1, AITER 0.1.20, and libr4d runtime, replaces
+# only vLLM at an exact commit, then reapplies the audited Radiance modules and
+# patches. Dockerfile remains the clean full-source release build; this overlay
+# is for short compile/fix/benchmark cycles and is itself digest-pinned.
+ARG BASE_IMAGE=magiccodingman/vllm-radiance@sha256:c8e0bd43c040846eb765f4d2cd03802634150154fd6118e7012d51bdf62fe501
+ARG ROCM_BUILD_BASE=rocm/dev-ubuntu-24.04:7.14.0-full@sha256:439edaa8f0c4be4a3728e528f87b8a2ea1f051f34cf10b27caa4bd94f562eda7
+ARG VLLM_COMMIT=2cf0a6915ce544dc493a0990f2ea38d81601128a
+ARG VLLM_VERSION=0.28.0
+ARG TRANSFORMERS_VERSION=5.15.0
 ARG XGRAMMAR_VERSION=0.2.3
 ARG R4D_VERSION=v0.5.0
 ARG R4D_COMMIT=e8de4bc1f3dbd608dcb8d3ffceb6b48acdf83bb7
+
+FROM ${ROCM_BUILD_BASE} AS rocm-build-files
 
 FROM ${BASE_IMAGE} AS vllm-builder
 ARG VLLM_COMMIT
 ARG VLLM_VERSION
 USER root
+# Release images deliberately omit link-time-only archives. vLLM's ROCm
+# extension still links rocSHMEM while building, so restore only that archive
+# from the matching full, digest-pinned ROCm base in this throwaway stage.
+COPY --from=rocm-build-files /opt/rocm/core-7.14/lib/librocshmem.a /opt/rocm/core-7.14/lib/librocshmem.a
 RUN apt-get update && apt-get install -y --no-install-recommends \
       git build-essential ccache cmake ninja-build pkg-config cargo rustc \
     && rm -rf /var/lib/apt/lists/*
@@ -37,7 +45,7 @@ ARG TRANSFORMERS_VERSION
 ARG XGRAMMAR_VERSION
 ARG R4D_VERSION
 ARG R4D_COMMIT
-ARG RADIANCE_VERSION=0.9.3-dev.vllm0.27.1-r4d0.5.0-mxfp4.dflash2
+ARG RADIANCE_VERSION=0.9.3-dev.vllm0.28.0-r4d0.5.0-mxfp4.dflash2.xgrammar
 ENV RADIANCE_VERSION=${RADIANCE_VERSION}
 
 COPY --from=vllm-builder /wheels/vllm-*.whl /tmp/wheels/
@@ -58,9 +66,11 @@ RUN set -eu; cd /opt/patches; \
     for p in patch_gfx1201 patch_radiance_dispatch patch_skinny_gemm patch_unified_attention_lds \
              patch_gdn_wmma patch_gdn_aiter_prefill patch_preshuffle install_radiance_hooks \
              patch_unpad patch_mtp_mm_mask patch_mtp_loopbreak patch_qwen3_toolparse patch_from_json_filter \
-             patch_dynamo_metrics patch_conv1d_blockn patch_r4d patch_dflash_base patch_dflash2_v0271_backport \
-             patch_dflash_fused_kv_fp8 patch_dflash_w4 patch_gdn_metadata patch_topk_triton_rows \
-             patch_quark_mxfp4 patch_quark_bf16_mtp patch_ar_maxbytes; do \
+             patch_dynamo_metrics patch_conv1d_blockn patch_r4d patch_dflash_base \
+             patch_dflash_fused_kv_fp8 patch_dflash_logits_cache_stride patch_dflash_w4 \
+             patch_gdn_metadata patch_topk_triton_rows patch_rocm_cudagraph_current_stream \
+             patch_quark_mxfp4 patch_quark_bf16_mtp patch_ar_maxbytes patch_xgrammar_spec_termination \
+             patch_xgrammar_spec_reasoning patch_parser_shared_engine; do \
       echo "== applying $p =="; python "$p.py"; \
     done; \
     python -c "import ast,glob; [ast.parse(open(f).read()) for f in glob.glob('${SP}/radiance_*.py')]"
@@ -82,7 +92,9 @@ RUN INC=$(python -m pybind11 --includes); \
 
 COPY radiance_preamble.py /opt/radiance_preamble.py
 COPY radiance_entrypoint.sh /opt/radiance_entrypoint.sh
+COPY VERSION /opt/radiance_version
 RUN chmod +x /opt/radiance_entrypoint.sh \
     && WANT_VLLM=${VLLM_VERSION} python -c 'import os, importlib.metadata as m, vllm._C; \
-v=m.version("vllm"); assert v.startswith(os.environ["WANT_VLLM"]), (v, os.environ["WANT_VLLM"]); print("vLLM overlay OK", v)'
+v=m.version("vllm"); assert v.startswith(os.environ["WANT_VLLM"]), (v, os.environ["WANT_VLLM"]); print("vLLM overlay OK", v)' \
+    && pip check
 ENTRYPOINT ["/opt/radiance_entrypoint.sh"]

@@ -3,13 +3,14 @@
 
 Draft tokens generated before the grammar bitmask activates are not guaranteed
 to satisfy that grammar.  When a reasoning-end marker lands inside a
-speculative window, v0.27.1 feeds the remaining, pre-bitmask drafts directly to
-``accept_tokens``.  XGrammar correctly rejects them, but the direct call emits
+speculative window, v0.28.0 feeds the remaining, pre-bitmask drafts directly to
+``accept_tokens``. XGrammar correctly rejects them, but the direct call emits
 FSM errors and risks leaving the speculative/grammar state out of sync.
 
 Upstream commit c6e19b3be24338759a443e03c8325d76da9ee202 first probes those
 drafts with the non-mutating ``validate_tokens`` path and advances only valid
-ones.  This is its exact source-equivalent backport for the stable v0.27.1 pin.
+ones. This is its exact source-equivalent backport for the stable v0.28.0 pin;
+the fix merged after the release tag.
 
 Idempotent; exact-anchor guarded; ast.parse checked before writing.
 """

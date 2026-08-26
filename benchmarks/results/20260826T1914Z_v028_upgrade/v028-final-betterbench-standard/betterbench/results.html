@@ -1,0 +1,477 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BetterBench — Qwen3.8-27B</title>
+<style>
+  :root {
+    color-scheme: light;
+    --page:#f9f9f7; --surface:#fcfcfb;
+    --ink:#0b0b0b; --ink-2:#52514e; --muted:#898781;
+    --grid:#e1e0d9; --axis:#c3c2b7; --border:rgba(11,11,11,0.10);
+    --s1:#2a78d6; --s2:#eb6834;
+    --s1-mid:#86b6ef; --s1-soft:rgba(42,120,214,0.13);
+    --tip-bg:#ffffff;
+    --sans:system-ui,-apple-system,"Segoe UI",sans-serif;
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --page:#0d0d0d; --surface:#1a1a19;
+      --ink:#ffffff; --ink-2:#c3c2b7; --muted:#898781;
+      --grid:#2c2c2a; --axis:#383835; --border:rgba(255,255,255,0.10);
+      --s1:#3987e5; --s2:#d95926;
+      --s1-mid:#256abf; --s1-soft:rgba(57,135,229,0.16);
+      --tip-bg:#232322;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --page:#0d0d0d; --surface:#1a1a19;
+    --ink:#ffffff; --ink-2:#c3c2b7; --muted:#898781;
+    --grid:#2c2c2a; --axis:#383835; --border:rgba(255,255,255,0.10);
+    --s1:#3987e5; --s2:#d95926;
+    --s1-mid:#256abf; --s1-soft:rgba(57,135,229,0.16);
+    --tip-bg:#232322;
+  }
+
+  * { box-sizing:border-box; }
+  body { background:var(--page); color:var(--ink); font-family:var(--sans);
+         line-height:1.55; margin:0; padding:32px 20px 72px; }
+  .wrap { max-width:1080px; margin:0 auto; display:flex; flex-direction:column; gap:26px; }
+
+  header { display:flex; flex-direction:column; gap:13px; }
+  .eyebrow { font-family:var(--mono); font-size:11px; letter-spacing:.13em;
+             text-transform:uppercase; color:var(--muted); }
+  h1 { font-size:clamp(26px,4vw,36px); line-height:1.12; margin:0;
+       letter-spacing:-.02em; text-wrap:balance; }
+  .runbar { display:flex; flex-wrap:wrap; gap:8px; }
+  .chip { font-family:var(--mono); font-size:12px; color:var(--ink-2);
+          border:1px solid var(--border); border-radius:6px; padding:4px 9px;
+          background:var(--surface); display:inline-flex; align-items:center; gap:7px; }
+  .chip code { font-family:var(--mono); font-size:12px; }
+  .swatch { width:9px; height:9px; border-radius:2px; flex:none; }
+
+  .tiles { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:13px; }
+  .tile { background:var(--surface); border:1px solid var(--border); border-radius:10px;
+          padding:15px 16px; display:flex; flex-direction:column; gap:4px; }
+  .tile .label { font-family:var(--mono); font-size:10.5px; letter-spacing:.1em;
+                 text-transform:uppercase; color:var(--muted); }
+  .tile .val { font-size:26px; font-weight:600; letter-spacing:-.02em; line-height:1.15; }
+  .tile .val small { font-size:14px; font-weight:400; color:var(--ink-2); letter-spacing:0; }
+  .tile .sub { font-family:var(--mono); font-size:11.5px; color:var(--muted); }
+
+  figure { margin:0; background:var(--surface); border:1px solid var(--border);
+           border-radius:10px; padding:18px 18px 14px;
+           display:flex; flex-direction:column; gap:2px; }
+  figcaption { display:flex; flex-direction:column; gap:3px; margin-bottom:8px; }
+  figcaption .t { font-size:15.5px; font-weight:600; letter-spacing:-.01em; }
+  figcaption .d { font-size:13px; color:var(--ink-2); max-width:76ch; }
+  .legend { display:flex; gap:16px; flex-wrap:wrap; margin:2px 0 10px; }
+  .legend span { font-family:var(--mono); font-size:12px; color:var(--ink-2);
+                 display:inline-flex; align-items:center; gap:6px; }
+  .chartbox { position:relative; width:100%; }
+  .chartbox svg { display:block; width:100%; height:auto; overflow:visible; }
+  .note { font-size:12.5px; color:var(--muted); margin:9px 0 0; }
+
+  text { font-family:var(--mono); }
+  .tick { font-size:10.5px; fill:var(--muted); }
+  .axtitle { font-size:10.5px; fill:var(--muted); letter-spacing:.08em; }
+  .dlabel { font-size:11px; font-weight:600; }
+  .gridline { stroke:var(--grid); stroke-width:1; }
+  .baseline { stroke:var(--axis); stroke-width:1; }
+  .refline { stroke:var(--muted); stroke-width:1; stroke-dasharray:4 4; }
+  .cross { stroke:var(--axis); stroke-width:1; stroke-dasharray:3 3; }
+
+  .tip { position:absolute; pointer-events:none; opacity:0; transition:opacity .1s ease;
+         z-index:5; background:var(--tip-bg); border:1px solid var(--border);
+         border-radius:7px; padding:8px 10px; box-shadow:0 3px 14px rgba(0,0,0,.13);
+         font-family:var(--mono); font-size:11.5px; color:var(--ink);
+         white-space:nowrap; min-width:132px; }
+  .tip .th { color:var(--muted); font-size:10px; letter-spacing:.08em;
+             text-transform:uppercase; margin-bottom:5px; }
+  .tip .row { display:flex; align-items:center; gap:10px; justify-content:space-between; }
+  .tip .nm { display:inline-flex; align-items:center; gap:6px; color:var(--ink-2); }
+  .tip b { font-weight:600; }
+
+  details { background:var(--surface); border:1px solid var(--border);
+            border-radius:10px; padding:0 18px; }
+  summary { cursor:pointer; padding:15px 0; font-size:14.5px; font-weight:600;
+            list-style:none; display:flex; align-items:center; gap:9px; }
+  summary::-webkit-details-marker { display:none; }
+  summary::before { content:"\25B8"; color:var(--muted); font-family:var(--mono); }
+  details[open] summary::before { content:"\25BE"; }
+  summary:focus-visible { outline:2px solid var(--s1); outline-offset:3px; border-radius:4px; }
+  .tscroll { overflow-x:auto; padding-bottom:14px; }
+  table { border-collapse:collapse; width:100%; font-size:12.5px; font-family:var(--mono);
+          font-variant-numeric:tabular-nums; margin-bottom:10px; }
+  caption { text-align:left; font-family:var(--sans); font-size:13px; color:var(--ink-2);
+            padding:10px 0 8px; }
+  th, td { padding:6px 11px 6px 0; text-align:right; white-space:nowrap; }
+  th:first-child, td:first-child { text-align:left; }
+  thead th { color:var(--muted); font-weight:500; font-size:10.5px; letter-spacing:.07em;
+             text-transform:uppercase; border-bottom:1px solid var(--axis); }
+  tbody tr + tr td { border-top:1px solid var(--grid); }
+  tbody td:first-child { color:var(--ink-2); }
+
+  footer { font-size:12.5px; color:var(--muted); border-top:1px solid var(--border);
+           padding-top:16px; }
+  footer code { font-family:var(--mono); font-size:12px; color:var(--ink-2); }
+  noscript p { font-size:13px; color:var(--ink-2); }
+  @media (prefers-reduced-motion: reduce) { * { transition:none !important; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="eyebrow">BetterBench 0.2.2 · 26 Aug 2026 · 19:53 · ai-deploy</div>
+    <h1>Qwen3.8-27B</h1>
+    <div class="runbar"><span class="chip"><span class="swatch" style="background:var(--s1)"></span>Qwen3.8-27B</span><span class="chip"><code>http://127.0.0.1:11435/v1</code></span><span class="chip">corpus v1.0</span><span class="chip">10 passes/cat</span><span class="chip">greedy</span><span class="chip">cold prefix cache (nonce)</span><span class="chip">[&#x27;card0,AMD Radeon AI PRO R9700,0x7551,Advanced Micro Devices Inc. [AMD/ATI],APM107573,0x5413,0xc0,1,23334,gfx1201&#x27;, &#x27;card1,AMD Radeon AI PRO R9700,0x7551,Advanced Micro Devices Inc. [AMD/ATI],APM107573,0x5413,0xc0,2,38948,gfx1201&#x27;, &#x27;card2,AMD Ryzen 5 9600X 6-Core Processor,0x13c0,Advanced Micro Devices Inc. [AMD/ATI],RAPHAEL,0x364e,0xc6,3,29972,gfx1036&#x27;]</span><span class="chip">8,192 tok context</span></div>
+  </header>
+  <section class="tiles">
+      <div class="tile">
+        <span class="label">Combined decode</span>
+        <span class="val">152.5 <small>t/s</small></span>
+        <span class="sub">weighted across categories</span>
+      </div>
+      <div class="tile">
+        <span class="label">Combined ITL 1% low</span>
+        <span class="val">115.3 <small>t/s</small></span>
+        <span class="sub">the trustworthy tail metric</span>
+      </div>
+      <div class="tile">
+        <span class="label">Combined TTFT p50</span>
+        <span class="val">74 <small>ms</small></span>
+        <span class="sub">single-stream, batch = 1</span>
+      </div>
+      <div class="tile">
+        <span class="label">Aggregate @ 8 concurrent</span>
+        <span class="val">474.0 <small>t/s</small></span>
+        <span class="sub">24/24 ok</span>
+      </div>
+      <div class="tile">
+        <span class="label">Prefill @ 7,000 tok</span>
+        <span class="val">3,938 <small>t/s</small></span>
+        <span class="sub">median prompt processing</span>
+      </div>
+  </section>
+<noscript><p>Charts need JavaScript — the full numbers are in the tables below.</p></noscript>
+  <figure>
+    <figcaption>
+      <span class="t">Decode throughput by category</span>
+      <span class="d">Median per-pass decode t/s at batch = 1, 10 passes per category. The dashed line is the weighted combined score.</span>
+    </figcaption>
+    
+    <div class="chartbox" id="cb-decode"></div>
+    <p class="note">Hover a bar for its IQR and coefficient of variation — a high CV means the category's passes disagree, so read small differences there with care.</p>
+  </figure>
+  <figure>
+    <figcaption>
+      <span class="t">Inter-token latency range by category</span>
+      <span class="d">Each bar spans the 1% low to the 99% high instantaneous token rate, with a tick at the median. Wide bars stutter; narrow bars feel smooth.</span>
+    </figcaption>
+    <div class="legend"><span><span class="swatch" style="background:var(--s1-mid)"></span>1% low → 99% high</span><span><span class="swatch" style="background:var(--ink)"></span>median</span></div>
+    <div class="chartbox" id="cb-itl"></div>
+    
+  </figure>
+  <figure>
+    <figcaption>
+      <span class="t">Aggregate throughput under concurrency</span>
+      <span class="d">Total tokens/sec across all in-flight requests as load rises — where this flattens is the throughput knee.</span>
+    </figcaption>
+    
+    <div class="chartbox" id="cb-conc"></div>
+    
+  </figure>
+  <figure>
+    <figcaption>
+      <span class="t">Time-to-first-token under concurrency</span>
+      <span class="d">Queueing shows up here first: p50 is the typical wait, p99 the tail.</span>
+    </figcaption>
+    <div class="legend"><span><span class="swatch" style="background:var(--s1)"></span>TTFT p50</span><span><span class="swatch" style="background:var(--s2)"></span>TTFT p99</span></div>
+    <div class="chartbox" id="cb-ttft"></div>
+    <p class="note">With a modest request count per level, p99 rests on very few observations — treat a spike as a prompt to re-run, not a conclusion.</p>
+  </figure>
+  <figure>
+    <figcaption>
+      <span class="t">Prompt processing throughput by depth</span>
+      <span class="d">Median prefill t/s (prompt tokens ÷ TTFT) at increasing input depth, cold prefix cache. The band spans the 1% low to the 99% high.</span>
+    </figcaption>
+    
+    <div class="chartbox" id="cb-prefill"></div>
+    
+  </figure>
+  <details open>
+    <summary>Full numbers</summary>
+    <div class="tscroll">
+      <table>
+        <caption>Single-stream, batch = 1</caption>
+        <thead><tr><th>category</th><th>passes</th><th>TTFT p50</th><th>TTFT p99</th><th>PP t/s med</th><th>ITL 1% low</th><th>ITL med</th><th>ITL 99% high</th><th>decode med</th><th>±IQR</th><th>CV</th></tr></thead>
+        <tbody>
+<tr><td>chat</td><td>10</td><td>76.0</td><td>78.5</td><td>1,878.6</td><td>86.6</td><td>91.2</td><td>152.8</td><td>101.9</td><td>32.7</td><td>22.8%</td></tr>
+<tr><td>code</td><td>10</td><td>72.0</td><td>74.5</td><td>1,539.1</td><td>101.2</td><td>145.6</td><td>187.0</td><td>158.1</td><td>24.0</td><td>18.9%</td></tr>
+<tr><td>file edit</td><td>10</td><td>78.3</td><td>87.2</td><td>1,865.2</td><td>144.5</td><td>168.8</td><td>241.2</td><td>173.1</td><td>48.3</td><td>20.1%</td></tr>
+<tr><td>json</td><td>10</td><td>73.3</td><td>77.3</td><td>1,602.1</td><td>148.3</td><td>191.2</td><td>225.0</td><td>198.5</td><td>10.2</td><td>10.2%</td></tr>
+<tr><td>math</td><td>10</td><td>71.8</td><td>77.9</td><td>1,425.1</td><td>166.1</td><td>186.2</td><td>212.9</td><td>193.7</td><td>18.7</td><td>7.6%</td></tr>
+<tr><td>prose</td><td>10</td><td>72.0</td><td>74.9</td><td>1,504.1</td><td>87.5</td><td>96.4</td><td>145.9</td><td>118.1</td><td>46.1</td><td>20.6%</td></tr>
+<tr><td>reasoning</td><td>10</td><td>72.5</td><td>77.0</td><td>1,539.2</td><td>88.8</td><td>106.9</td><td>180.2</td><td>118.9</td><td>54.1</td><td>26.3%</td></tr>
+<tr><td>summarization</td><td>10</td><td>78.5</td><td>87.7</td><td>1,959.4</td><td>151.1</td><td>166.3</td><td>186.5</td><td>169.6</td><td>15.9</td><td>6.2%</td></tr>
+        </tbody>
+      </table>
+      <table>
+        <caption>Concurrency sweep</caption>
+        <thead><tr><th>level</th><th>ok/req</th><th>aggregate t/s</th><th>TTFT p50</th><th>TTFT p99</th><th>per-req decode med</th></tr></thead>
+        <tbody>
+<tr><td>1</td><td>24/24</td><td>135.0</td><td>73.3</td><td>85.8</td><td>157.0</td></tr>
+<tr><td>2</td><td>24/24</td><td>222.3</td><td>109.2</td><td>161.1</td><td>149.3</td></tr>
+<tr><td>4</td><td>24/24</td><td>348.8</td><td>119.9</td><td>219.5</td><td>108.9</td></tr>
+<tr><td>8</td><td>24/24</td><td>474.0</td><td>149.3</td><td>347.0</td><td>80.0</td></tr>
+        </tbody>
+      </table>
+      <table>
+        <caption>Prefill sweep · cold prefix cache</caption>
+        <thead><tr><th>target depth</th><th>prompt tok med</th><th>TTFT p50</th><th>PP 1% low</th><th>PP median</th><th>PP 99% high</th></tr></thead>
+        <tbody>
+<tr><td>2,000</td><td>1,556</td><td>429.4</td><td>3,613.2</td><td>3,622.7</td><td>3,625.9</td></tr>
+<tr><td>4,000</td><td>3,024</td><td>735.7</td><td>4,105.8</td><td>4,109.6</td><td>4,112.1</td></tr>
+<tr><td>7,000</td><td>5,226</td><td>1,327.2</td><td>3,917.1</td><td>3,937.6</td><td>3,943.5</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </details>
+  <footer>Generated by BetterBench 0.2.2 from a corpus v1.0 run. Corpus hash <code>e332dceff176d033</code>. Combined-score weights — code 0.25, reasoning 0.2, prose 0.12, json 0.12, file_edit 0.1, summarization 0.09, math 0.07, chat 0.05. Results are only comparable within a corpus version. ITL (token-rich) is the trustworthy tail metric; per-run p99 needs the run count to support it — see METHODOLOGY.md §sample-size.</footer>
+</div>
+<script>
+"use strict";
+const D = {"cats": ["chat", "code", "file edit", "json", "math", "prose", "reasoning", "summarization"], "runs": [10, 10, 10, 10, 10, 10, 10, 10], "decode": [101.85150353136592, 158.05976117067945, 173.1109765022197, 198.4898086384507, 193.73572979589176, 118.0788569698027, 118.87610586920746, 169.62598189224036], "decodeIqr": [32.71206427994419, 24.02948823828939, 48.339371155336266, 10.224657325869117, 18.67296342138198, 46.106846922712265, 54.11671068028616, 15.877892687855592], "cv": [22.790215385431072, 18.88732617624732, 20.12697545633689, 10.158354985565948, 7.593371756635979, 20.640009936824526, 26.344500188875315, 6.1917564346909835], "itlLow": [86.6178005658954, 101.16506421116144, 144.49563890315096, 148.27569668952768, 166.07668159066236, 87.46821242137996, 88.77224362693876, 151.06415239448765], "itlMed": [91.24321390849455, 145.5776247335126, 168.80337798812002, 191.18940437941998, 186.2077607973265, 96.39034770697194, 106.85007998698192, 166.31169561939078], "itlHigh": [152.8033086782571, 186.9562769380998, 241.18679611416565, 225.00705187758373, 212.89036757462455, 145.8840836520743, 180.20866340010917, 186.47895271956804], "ttft50": [76.01922398316674, 72.00545651721768, 78.27662548515946, 73.26955598546192, 71.75095597631298, 72.04441851354204, 72.46413649409078, 78.48936598747969], "combined": 152.5099136223061, "conc": {"levels": [1, 2, 4, 8], "agg": [135.03871349858574, 222.2764939495368, 348.818392785601, 473.96924475753343], "t50": [73.32573598250747, 109.16386349708773, 119.85828151227906, 149.26501698209904], "t99": [85.81609058717731, 161.12442021432798, 219.51547875301912, 346.9770629069535], "per": [156.97319478355035, 149.3456537888418, 108.94981733580576, 79.97975189748553], "ok": [24, 24, 24, 24], "req": [24, 24, 24, 24]}, "pre": {"depths": [2000, 4000, 7000], "tok": [1556.0, 3023.5, 5226.0], "low": [3613.2106316362783, 4105.835264084252, 3917.1420182290935], "med": [3622.7013915206335, 4109.574409056501, 3937.6174580163347], "high": [3625.948640057789, 4112.0922101367605, 3943.5042071052917], "t50": [429.37577702105045, 735.7209479960147, 1327.1989174827468]}};
+const NS = "http://www.w3.org/2000/svg";
+const el = (n, a) => { const e = document.createElementNS(NS, n);
+  for (const k in a) e.setAttribute(k, a[k]); return e; };
+const fmt = (v, d) => (v === null || v === undefined) ? "—"
+  : v.toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d });
+const has = v => v !== null && v !== undefined;
+const maxOf = arrs => Math.max(...arrs.flat().filter(has));
+const niceTop = v => { if (!(v > 0)) return 1;
+  const p = Math.pow(10, Math.floor(Math.log10(v)) - 1);
+  return Math.ceil(v / (2 * p)) * 2 * p; };
+const box = id => document.getElementById(id);
+
+function mkTip(b) { const t = document.createElement("div"); t.className = "tip";
+  b.appendChild(t); return t; }
+function showTip(tip, b, x, y, html) {
+  tip.innerHTML = html; tip.style.opacity = "1";
+  let left = x + 14;
+  if (left + tip.offsetWidth > b.clientWidth) left = x - tip.offsetWidth - 14;
+  tip.style.left = Math.max(0, left) + "px";
+  tip.style.top = Math.max(0, y - tip.offsetHeight - 10) + "px";
+}
+const row = (color, name, val) =>
+  `<div class="row"><span class="nm">${color
+    ? `<span class="swatch" style="background:${color}"></span>` : ""}${name}</span><b>${val}</b></div>`;
+
+function frame(svg, M, iw, ih, yMin, yMax, yTitle, ticks) {
+  for (let k = 0; k <= (ticks || 4); k++) {
+    const v = yMin + ((yMax - yMin) * k) / (ticks || 4);
+    const y = M.t + ih - (ih * (v - yMin)) / (yMax - yMin);
+    svg.appendChild(el("line", { x1: M.l, x2: M.l + iw, y1: y, y2: y, class: "gridline" }));
+    const tx = el("text", { x: M.l - 10, y: y + 3.5, class: "tick", "text-anchor": "end" });
+    tx.textContent = fmt(v, v < 10 ? 1 : 0); svg.appendChild(tx);
+  }
+  svg.appendChild(el("line", { x1: M.l, x2: M.l + iw, y1: M.t + ih, y2: M.t + ih, class: "baseline" }));
+  const ay = el("text", { x: M.l - 10, y: M.t - 5, class: "axtitle", "text-anchor": "end" });
+  ay.textContent = yTitle; svg.appendChild(ay);
+}
+function xLabels(svg, labels, X, y) {
+  labels.forEach((lab, i) => {
+    const t = el("text", { x: X(i), y: y, class: "tick", "text-anchor": "middle" });
+    t.textContent = lab; svg.appendChild(t);
+  });
+}
+
+/* --- grouped / single bars, zero-based --- */
+function bars(id, o) {
+  const b = box(id); if (!b) return;
+  const W = 900, H = o.height || 340, M = { t: 20, r: 16, b: 50, l: 64 };
+  const iw = W - M.l - M.r, ih = H - M.t - M.b;
+  const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": o.aria });
+  const n = o.x.length, yMax = o.yMax;
+  const Y = v => M.t + ih - (ih * v) / yMax;
+  frame(svg, M, iw, ih, 0, yMax, o.yTitle);
+  const band = iw / n, ns = o.series.length, GAP = 2;
+  const bw = Math.min(40, (band - 24 - GAP * (ns - 1)) / ns);
+  xLabels(svg, o.x, i => M.l + band * i + band / 2, M.t + ih + 20);
+  if (has(o.ref)) {
+    const y = Y(o.ref);
+    svg.appendChild(el("line", { x1: M.l, x2: M.l + iw, y1: y, y2: y, class: "refline" }));
+    const t = el("text", { x: M.l + iw, y: y - 6, class: "tick", "text-anchor": "end" });
+    t.textContent = o.refLabel; svg.appendChild(t);
+  }
+  const tip = mkTip(b);
+  o.x.forEach((lab, i) => {
+    const cx = M.l + band * i + band / 2;
+    const start = cx - (ns * bw + (ns - 1) * GAP) / 2;
+    o.series.forEach((s, si) => {
+      const v = s.v[i]; if (!has(v)) return;
+      const x = start + si * (bw + GAP);
+      const r = el("rect", { x: x, y: Y(v), width: bw, height: Math.max(2, ih - (Y(v) - M.t)),
+                             rx: 4, ry: 4, fill: s.color });
+      r.style.cursor = "crosshair";
+      const html = `<div class="th">${lab}</div>` +
+        o.series.map(q => row(ns > 1 ? q.color : null, q.name, o.tipVal(q.v[i]))).join("") +
+        (o.extra ? o.extra(i) : "");
+      r.addEventListener("pointerenter", () => {
+        const rc = svg.getBoundingClientRect();
+        showTip(tip, b, ((x + bw / 2) / W) * rc.width, (Y(v) / H) * rc.height, html);
+      });
+      r.addEventListener("pointerleave", () => { tip.style.opacity = "0"; });
+      svg.appendChild(r);
+    });
+  });
+  b.appendChild(svg);
+}
+
+/* --- floating range bars with a median tick --- */
+function rangeBars(id, o) {
+  const b = box(id); if (!b) return;
+  const W = 900, H = 340, M = { t: 20, r: 16, b: 50, l: 64 };
+  const iw = W - M.l - M.r, ih = H - M.t - M.b;
+  const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": o.aria });
+  const n = o.x.length, yMax = o.yMax;
+  const Y = v => M.t + ih - (ih * v) / yMax;
+  frame(svg, M, iw, ih, 0, yMax, o.yTitle);
+  const band = iw / n, bw = Math.min(34, band - 26);
+  xLabels(svg, o.x, i => M.l + band * i + band / 2, M.t + ih + 20);
+  const tip = mkTip(b);
+  o.x.forEach((lab, i) => {
+    const lo = o.low[i], hi = o.high[i], md = o.med[i];
+    if (!has(lo) || !has(hi)) return;
+    const cx = M.l + band * i + band / 2, x = cx - bw / 2;
+    const r = el("rect", { x: x, y: Y(hi), width: bw, height: Math.max(3, Y(lo) - Y(hi)),
+                           rx: 4, ry: 4, fill: "var(--s1-mid)" });
+    r.style.cursor = "crosshair";
+    svg.appendChild(r);
+    if (has(md)) svg.appendChild(el("line", { x1: x, x2: x + bw, y1: Y(md), y2: Y(md),
+                                              stroke: "var(--ink)", "stroke-width": 2 }));
+    const html = `<div class="th">${lab}</div>` +
+      row(null, "99% high", o.tipVal(hi)) + row(null, "median", o.tipVal(md)) +
+      row(null, "1% low", o.tipVal(lo)) + (o.extra ? o.extra(i) : "");
+    r.addEventListener("pointerenter", () => {
+      const rc = svg.getBoundingClientRect();
+      showTip(tip, b, (cx / W) * rc.width, (Y(hi) / H) * rc.height, html);
+    });
+    r.addEventListener("pointerleave", () => { tip.style.opacity = "0"; });
+  });
+  b.appendChild(svg);
+}
+
+/* --- line chart with optional band --- */
+function line(id, o) {
+  const b = box(id); if (!b) return;
+  const W = 900, H = 320, M = { t: 20, r: 24, b: 52, l: 64 };
+  const iw = W - M.l - M.r, ih = H - M.t - M.b;
+  const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": o.aria });
+  const n = o.x.length, yMin = o.yMin, yMax = o.yMax;
+  const X = i => M.l + (n === 1 ? iw / 2 : (iw * i) / (n - 1));
+  const Y = v => M.t + ih - (ih * (v - yMin)) / (yMax - yMin);
+  frame(svg, M, iw, ih, yMin, yMax, o.yTitle);
+  xLabels(svg, o.x, X, M.t + ih + 20);
+  if (o.xTitle) {
+    const t = el("text", { x: M.l, y: H - 8, class: "axtitle" });
+    t.textContent = o.xTitle; svg.appendChild(t);
+  }
+  if (o.band && o.band.low.every(has) && o.band.high.every(has)) {
+    const up = o.band.high.map((v, i) => (i ? "L" : "M") + X(i) + " " + Y(v)).join(" ");
+    const dn = o.band.low.map((v, i) => "L" + X(n - 1 - i) + " " + Y(o.band.low[n - 1 - i])).join(" ");
+    svg.appendChild(el("path", { d: up + " " + dn + " Z", fill: "var(--s1-soft)", stroke: "none" }));
+  }
+  svg.appendChild(el("path", {
+    d: o.v.map((v, i) => (i ? "L" : "M") + X(i) + " " + Y(v)).join(" "),
+    fill: "none", stroke: "var(--s1)", "stroke-width": 2,
+    "stroke-linejoin": "round", "stroke-linecap": "round" }));
+  o.v.forEach((v, i) => svg.appendChild(el("circle", {
+    cx: X(i), cy: Y(v), r: 5, fill: "var(--s1)", stroke: "var(--surface)", "stroke-width": 2 })));
+  const cross = el("line", { class: "cross", y1: M.t, y2: M.t + ih, opacity: 0 });
+  svg.appendChild(cross);
+  const hit = el("rect", { x: M.l, y: M.t, width: iw, height: ih, fill: "transparent" });
+  svg.appendChild(hit);
+  b.appendChild(svg);
+  const tip = mkTip(b);
+  hit.addEventListener("pointermove", ev => {
+    const rc = svg.getBoundingClientRect();
+    const px = ((ev.clientX - rc.left) / rc.width) * W;
+    let i = 0, best = Infinity;
+    for (let k = 0; k < n; k++) { const d = Math.abs(X(k) - px); if (d < best) { best = d; i = k; } }
+    cross.setAttribute("x1", X(i)); cross.setAttribute("x2", X(i)); cross.setAttribute("opacity", 1);
+    showTip(tip, b, (X(i) / W) * rc.width, (Y(o.v[i]) / H) * rc.height,
+      `<div class="th">${o.tipHead(i)}</div>` + o.tipBody(i));
+  });
+  hit.addEventListener("pointerleave", () => { tip.style.opacity = "0"; cross.setAttribute("opacity", 0); });
+}
+
+/* ------------------------------ build ------------------------------ */
+if (D.cats.length) {
+  bars("cb-decode", {
+    aria: "Median decode throughput per category.",
+    x: D.cats, yTitle: "DECODE T/S (MEDIAN)",
+    yMax: niceTop(maxOf([D.decode])), height: 350,
+    ref: D.combined, refLabel: "combined " + fmt(D.combined, 1),
+    series: [{ name: "decode t/s", color: "var(--s1)", v: D.decode }],
+    tipVal: v => fmt(v, 1) + " t/s",
+    extra: i => row(null, "±IQR", fmt(D.decodeIqr[i], 1)) +
+                row(null, "CV", fmt(D.cv[i], 1) + "%") +
+                row(null, "passes", D.runs[i])
+  });
+  rangeBars("cb-itl", {
+    aria: "Inter-token latency range per category, 1% low to 99% high.",
+    x: D.cats, yTitle: "INSTANTANEOUS T/S",
+    yMax: niceTop(maxOf([D.itlHigh])),
+    low: D.itlLow, med: D.itlMed, high: D.itlHigh,
+    tipVal: v => fmt(v, 1) + " t/s",
+    extra: i => row(null, "spread", has(D.itlHigh[i]) && has(D.itlLow[i])
+      ? fmt(D.itlHigh[i] - D.itlLow[i], 1) + " t/s" : "—")
+  });
+}
+if (D.conc.levels.length > 1) {
+  line("cb-conc", {
+    aria: "Aggregate throughput as concurrency rises.",
+    x: D.conc.levels.map(String), xTitle: "CONCURRENCY LEVEL",
+    yTitle: "AGGREGATE T/S", yMin: 0, yMax: niceTop(maxOf([D.conc.agg])),
+    v: D.conc.agg,
+    tipHead: i => "concurrency " + D.conc.levels[i] + " · " + D.conc.ok[i] + "/" + D.conc.req[i] + " ok",
+    tipBody: i => row(null, "aggregate", fmt(D.conc.agg[i], 1) + " t/s") +
+                  row(null, "per-req", fmt(D.conc.per[i], 1) + " t/s") +
+                  row(null, "TTFT p50", fmt(D.conc.t50[i], 1) + " ms")
+  });
+  bars("cb-ttft", {
+    aria: "TTFT p50 and p99 by concurrency level.",
+    x: D.conc.levels.map(String), yTitle: "TTFT (MS)",
+    yMax: niceTop(maxOf([D.conc.t99, D.conc.t50])), height: 300,
+    series: [{ name: "p50", color: "var(--s1)", v: D.conc.t50 },
+             { name: "p99", color: "var(--s2)", v: D.conc.t99 }],
+    tipVal: v => fmt(v, 1) + " ms",
+    extra: i => row(null, "requests", D.conc.ok[i] + "/" + D.conc.req[i])
+  });
+}
+if (D.pre.depths.length > 1) {
+  const lo = Math.min(...D.pre.low.filter(has).concat(D.pre.med.filter(has)));
+  const hi = Math.max(...D.pre.high.filter(has).concat(D.pre.med.filter(has)));
+  const pad = (hi - lo) * 0.25 || hi * 0.1;
+  line("cb-prefill", {
+    aria: "Prefill throughput by input depth.",
+    x: D.pre.depths.map(d => d >= 1000 ? (d / 1000) + "k" : String(d)),
+    xTitle: "TARGET INPUT DEPTH (TOKENS)", yTitle: "PP T/S (MEDIAN)",
+    yMin: Math.max(0, lo - pad), yMax: hi + pad,
+    v: D.pre.med, band: { low: D.pre.low, high: D.pre.high },
+    tipHead: i => D.pre.depths[i].toLocaleString() + " target · "
+                  + fmt(D.pre.tok[i], 0) + " actual tok",
+    tipBody: i => row(null, "99% high", fmt(D.pre.high[i], 1)) +
+                  row(null, "median", fmt(D.pre.med[i], 1)) +
+                  row(null, "1% low", fmt(D.pre.low[i], 1)) +
+                  row(null, "TTFT p50", fmt(D.pre.t50[i], 0) + " ms")
+  });
+}
+</script>
+</body>
+</html>

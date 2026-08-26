@@ -1,0 +1,1 @@
+Final v0.28 candidate: MXFP4 W4A8 target, tcclaviger FP8 DFlash K7 fast draft, TP2, FP8 KV, 8K/C8, PIECEWISE, prefix cache off; includes shared-parser, DFlash cache-stride, speculative XGrammar, and ROCm current-stream graph backports.
