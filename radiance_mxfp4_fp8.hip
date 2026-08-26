@@ -35,6 +35,7 @@ namespace py = pybind11;
 typedef float floatx8 __attribute__((ext_vector_type(8)));
 typedef int int2_t __attribute__((ext_vector_type(2)));
 typedef unsigned int uint4_t __attribute__((ext_vector_type(4)));
+typedef unsigned int uint2_t __attribute__((ext_vector_type(2)));
 
 __device__ __constant__ unsigned char kLUT[16] = {
     0x00, 0x30, 0x38, 0x3C, 0x40, 0x44, 0x48, 0x4C,
@@ -227,7 +228,12 @@ __global__ __launch_bounds__(NWAVE * 32) void radiance_mxfp4_fp8_gemm(
 //   M=2048 +1.3%   M=1536 -1.6%  M=1024 -4.2%  M=512 -8.8%
 // Below the crossover the wide tile cannot fill: it halves the block count in N while BMF still
 // masks most of a short M. Hence TN=4 only from M >= 2048; RADIANCE_MXFP4_TN4_MIN_M overrides.
-template <int TN>
+// WPERM selects the weight layout. false is the checkpoint's own [N, K/2]; true is fragment
+// order, one 32-lane uint32 slot per (n-tile, k-step), which is what libr4d's
+// r4d_gemm_mxfp4a8_nt_m64 reads and what makes a wave's weight read 128 contiguous bytes instead
+// of sixteen rows K/2 bytes apart. Both paths produce the SAME sW tile, so everything downstream
+// of the staging loop is untouched.
+template <int TN, bool WPERM>
 __global__ __launch_bounds__(NTHREADS) void radiance_mxfp4_fp8_gemm_folded(
     const unsigned char *__restrict__ A, const unsigned char *__restrict__ W,
     const unsigned char *__restrict__ Ws, const unsigned char *__restrict__ Wref,
@@ -260,6 +266,57 @@ __global__ __launch_bounds__(NTHREADS) void radiance_mxfp4_fp8_gemm_folded(
       *(uint4_t *)(&sA[r * ASTR + c]) = v;
     }
     // ---- W tile: BN*BK/2 packed bytes, 8 B per thread per iteration -> 16 e4m3 bytes ----
+    if constexpr (WPERM) {
+      // Fragment order: slot s of the tile is one lane's four packed bytes (eight elements) for
+      // one (n-tile, k-step), so consecutive threads read consecutive uint32 and a wave takes 128
+      // contiguous bytes. Each thread now stages 8 elements instead of 16; the loop runs twice as
+      // many iterations at a quarter the request size, which is the trade that buys coalescing.
+      // TWO lane slots per thread. One slot is only 4 bytes, and staging the whole weight tile at
+      // a 4-byte request cost 14-25% of PREFILL against the checkpoint-order path, which reads 8.
+      // Coalescing was never prefill's problem -- it stages cooperatively and already got 32-byte
+      // runs -- so narrowing the request to buy coalescing was a straight loss there. Adjacent
+      // slots are contiguous and differ only in the row (lane index is half*16 + row), so an
+      // 8-byte read covers two adjacent rows at the same k, and the wave still reads 256 bytes
+      // contiguously.
+      constexpr int KSTEPS_T = BK / 16, NTILES_T = BNF_T / 16;
+      const unsigned int *__restrict__ Wp = (const unsigned int *)W;
+      const int ksteps_g = K / 16, nt0 = n0 / 16, kstep0 = k0 / 16;
+#pragma unroll
+      for (int off = 0; off < NTILES_T * KSTEPS_T * 16; off += NTHREADS) {
+        const int sl = (off + tid) * 2;                 // first of the pair; always even
+        const int lane_ = sl & 31, rest = sl >> 5;
+        const int kst = rest % KSTEPS_T, ntl = rest / KSTEPS_T;
+        const int r = ntl * 16 + (lane_ & 15), kloc = kst * 16 + (lane_ >> 4) * 8;
+        const int gn = n0 + r;
+        uint2_t wv = uint2_t{0u, 0u};
+        int dsh0 = 0, dsh1 = 0;
+        if (gn < N) {
+          wv = *(const uint2_t *)&Wp[((size_t)(nt0 + ntl) * ksteps_g + kstep0 + kst) * 32 + lane_];
+          const int blk = (k0 + kst * 16) / 32;
+          const int ref0 = (int)Wref[gn];
+          dsh0 = ref0 - (int)Ws[(size_t)blk * N + gn];
+          dsh0 = dsh0 < 0 ? 0 : (dsh0 > 15 ? 15 : dsh0);
+          if (gn + 1 < N) {
+            dsh1 = (int)Wref[gn + 1] - (int)Ws[(size_t)blk * N + gn + 1];
+            dsh1 = dsh1 < 0 ? 0 : (dsh1 > 15 ? 15 : dsh1);
+          }
+        }
+#pragma unroll
+        for (int q = 0; q < 2; ++q) {
+          const int d = q ? dsh1 : dsh0;
+          const unsigned int t0 = kMag[d][0], t1 = kMag[d][1];
+          const unsigned int ev = wv[q] & 0x0F0F0F0Fu;
+          const unsigned int od = (wv[q] >> 4) & 0x0F0F0F0Fu;
+          const unsigned int be = __builtin_amdgcn_perm(t1, t0, ev & 0x07070707u)
+                                | ((ev & 0x08080808u) << 4);
+          const unsigned int bo = __builtin_amdgcn_perm(t1, t0, od & 0x07070707u)
+                                | ((od & 0x08080808u) << 4);
+          *(uint2_t *)(&sW[(r + q) * WSTR + kloc]) =
+              uint2_t{__builtin_amdgcn_perm(bo, be, 0x05010400u),
+                      __builtin_amdgcn_perm(bo, be, 0x07030602u)};
+        }
+      }
+    } else
 #pragma unroll
     for (int off = 0; off < BNF_T * BK / 2; off += NTHREADS * 8) {
       const int idx = off + tid * 8;
@@ -358,7 +415,7 @@ __global__ __launch_bounds__(NTHREADS) void radiance_mxfp4_fp8_gemm_folded(
 // DFlash at SPEC=7, which reaches exactly 64 at max_num_seqs=8. DTM 1..4 covers both.
 // Use the SMALLEST DTM that covers M: measured at M=20, DTM=2 beats DTM=3 by 12% (89.1 vs 99.9 us
 // on gate_up) purely because the wider tile computes rows nobody asked for.
-template <int DWN, int DBK, int DKS, int DTM>
+template <int DWN, int DBK, int DKS, int DTM, bool WPERM>
 __global__ __launch_bounds__(DWN * 32) void radiance_mxfp4_fp8_gemm_decode(
     const unsigned char *__restrict__ A, const unsigned char *__restrict__ W,
     const unsigned char *__restrict__ Ws, const unsigned char *__restrict__ Wref,
@@ -398,6 +455,39 @@ __global__ __launch_bounds__(DWN * 32) void radiance_mxfp4_fp8_gemm_decode(
         *(uint4_t *)(&sA[r * DASTR + c]) = v;
       }
     }
+    if constexpr (WPERM) {
+      // Fragment order, as in the folded kernel: consecutive threads take consecutive uint32, so
+      // a wave's weight read is 128 contiguous bytes instead of sixteen rows K/2 bytes apart.
+      constexpr int KSTEPS_T = DBK / 16, NTILES_T = BND / 16;
+      const unsigned int *__restrict__ Wp = (const unsigned int *)W;
+      const int ksteps_g = K / 16, nt0 = n0 / 16, kstep0 = k0 / 16;
+#pragma unroll
+      for (int off = 0; off < NTILES_T * KSTEPS_T * 32; off += DNTHREADS) {
+        const int sl = off + tid;
+        const int lane_ = sl & 31, rest = sl >> 5;
+        const int kst = rest % KSTEPS_T, ntl = rest / KSTEPS_T;
+        const int r = ntl * 16 + (lane_ & 15), kloc = kst * 16 + (lane_ >> 4) * 8;
+        const int gn = n0 + r;
+        unsigned int wv = 0u;
+        int dsh = 0;
+        if (gn < N) {
+          wv = Wp[((size_t)(nt0 + ntl) * ksteps_g + kstep0 + kst) * 32 + lane_];
+          const int blk = (k0 + kst * 16) / 32;
+          dsh = (int)Wref[gn] - (int)Ws[(size_t)blk * N + gn];
+          dsh = dsh < 0 ? 0 : (dsh > 15 ? 15 : dsh);
+        }
+        const unsigned int t0 = kMag[dsh][0], t1 = kMag[dsh][1];
+        const unsigned int ev = wv & 0x0F0F0F0Fu;
+        const unsigned int od = (wv >> 4) & 0x0F0F0F0Fu;
+        const unsigned int be = __builtin_amdgcn_perm(t1, t0, ev & 0x07070707u)
+                              | ((ev & 0x08080808u) << 4);
+        const unsigned int bo = __builtin_amdgcn_perm(t1, t0, od & 0x07070707u)
+                              | ((od & 0x08080808u) << 4);
+        *(uint2_t *)(&sW[r * DWSTR + kloc]) =
+            uint2_t{__builtin_amdgcn_perm(bo, be, 0x05010400u),
+                    __builtin_amdgcn_perm(bo, be, 0x07030602u)};
+      }
+    } else
 #pragma unroll
     for (int off = 0; off < BND * DBK / 2; off += DNTHREADS * 8) {
       const int idx = off + tid * 8;
@@ -525,6 +615,13 @@ static void launch(uintptr_t a, uintptr_t w, uintptr_t ws, uintptr_t wref, uintp
       const char *e = getenv("RADIANCE_MXFP4_DECODE_MAX_M");
       return e ? atoi(e) : 0;
     }();
+    // Weight layout, set once for the process by the loader: it decides whether the tensor handed
+    // to us is the checkpoint's [N, K/2] or fragment order. Both kernels below read it, and it
+    // MUST agree with radiance_mxfp4.py's WPERM -- disagreeing reads the weight as garbage.
+    static const bool dec_wperm = [] {
+      const char *e = getenv("RADIANCE_MXFP4_WPERM");
+      return e && atoi(e) != 0;
+    }();
     dim3 fblock(NTHREADS);
     if (M > 0 && M <= decode_max_m && M <= DEC_MTILE * DEC_MAX_TM && N <= DEC_MAX_N &&
         (size_t)DEC_KS * M * N * sizeof(float) <= g_decode_partial_bytes &&
@@ -535,34 +632,46 @@ static void launch(uintptr_t a, uintptr_t w, uintptr_t ws, uintptr_t wref, uintp
       const dim3 dgrid((N + DBND - 1) / DBND, 1, DKS), dblock(DWN * 32);
       const int tm = (M + DEC_MTILE - 1) / DEC_MTILE;   // smallest tile that covers M
 #define RAD_DEC_LAUNCH(TM_)                                                                   \
-      hipLaunchKernelGGL((radiance_mxfp4_fp8_gemm_decode<DWN, DBK, DKS, TM_>), dgrid, dblock,  \
+      hipLaunchKernelGGL((radiance_mxfp4_fp8_gemm_decode<DWN, DBK, DKS, TM_, RAD_WPERM>),      \
+                         dgrid, dblock,                                                        \
                          0, (hipStream_t)stream, (const unsigned char *)a,                     \
                          (const unsigned char *)w, (const unsigned char *)ws,                  \
                          (const unsigned char *)wref, (const float *)as, P, g_decode_cnt,      \
                          (__bf16 *)c, M, N, K)
-      if (tm == 1)      RAD_DEC_LAUNCH(1);
-      else if (tm == 2) RAD_DEC_LAUNCH(2);
-      else if (tm == 3) RAD_DEC_LAUNCH(3);
-      else              RAD_DEC_LAUNCH(4);
+#define RAD_DEC_BY_TM                                                                         \
+      if (tm == 1)      RAD_DEC_LAUNCH(1);                                                     \
+      else if (tm == 2) RAD_DEC_LAUNCH(2);                                                     \
+      else if (tm == 3) RAD_DEC_LAUNCH(3);                                                     \
+      else              RAD_DEC_LAUNCH(4)
+      if (dec_wperm) {
+#define RAD_WPERM true
+        RAD_DEC_BY_TM;
+#undef RAD_WPERM
+      } else {
+#define RAD_WPERM false
+        RAD_DEC_BY_TM;
+#undef RAD_WPERM
+      }
+#undef RAD_DEC_BY_TM
 #undef RAD_DEC_LAUNCH
       return;
       // no scratch (alloc failed) -- fall through to the folded kernel, never produce nothing
     }
+#define RAD_FOLDED(TN_, WP_)                                                                    \
+    do {                                                                                        \
+      constexpr int B_ = BNF_OF(TN_);                                                           \
+      dim3 fgrid((N + B_ - 1) / B_, (M + BMF - 1) / BMF);                                       \
+      hipLaunchKernelGGL((radiance_mxfp4_fp8_gemm_folded<TN_, WP_>), fgrid, fblock, 0,          \
+                         (hipStream_t)stream, (const unsigned char *)a,                         \
+                         (const unsigned char *)w, (const unsigned char *)ws,                   \
+                         (const unsigned char *)wref, (const float *)as, (__bf16 *)c, M, N, K); \
+    } while (0)
     if (M >= tn4_min_m) {
-      constexpr int B4 = BNF_OF(4);
-      dim3 fgrid((N + B4 - 1) / B4, (M + BMF - 1) / BMF);
-      hipLaunchKernelGGL(radiance_mxfp4_fp8_gemm_folded<4>, fgrid, fblock, 0, (hipStream_t)stream,
-                         (const unsigned char *)a, (const unsigned char *)w,
-                         (const unsigned char *)ws, (const unsigned char *)wref,
-                         (const float *)as, (__bf16 *)c, M, N, K);
+      if (dec_wperm) RAD_FOLDED(4, true); else RAD_FOLDED(4, false);
     } else {
-      constexpr int B2 = BNF_OF(2);
-      dim3 fgrid((N + B2 - 1) / B2, (M + BMF - 1) / BMF);
-      hipLaunchKernelGGL(radiance_mxfp4_fp8_gemm_folded<2>, fgrid, fblock, 0, (hipStream_t)stream,
-                         (const unsigned char *)a, (const unsigned char *)w,
-                         (const unsigned char *)ws, (const unsigned char *)wref,
-                         (const float *)as, (__bf16 *)c, M, N, K);
+      if (dec_wperm) RAD_FOLDED(2, true); else RAD_FOLDED(2, false);
     }
+#undef RAD_FOLDED
   } else
     hipLaunchKernelGGL(radiance_mxfp4_fp8_gemm, grid, block, 0, (hipStream_t)stream,
                        (const unsigned char *)a, (const unsigned char *)w,
