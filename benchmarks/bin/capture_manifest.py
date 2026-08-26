@@ -28,6 +28,44 @@ def sha256(path: Path) -> str | None:
     return digest.hexdigest()
 
 
+def hf_metadata(model: Path, filename: str) -> tuple[str | None, str | None]:
+    """Return the pinned HF revision and content OID without rereading huge weights."""
+    metadata = model / ".cache" / "huggingface" / "download" / f"{filename}.metadata"
+    if not metadata.is_file():
+        return None, None
+    lines = metadata.read_text(encoding="utf-8").splitlines()
+    revision = lines[0] if lines else None
+    oid = lines[1] if len(lines) > 1 else None
+    return revision, oid
+
+
+def model_record(model: Path) -> dict[str, object]:
+    weights = []
+    revisions: set[str] = set()
+    for path in sorted(model.glob("*.safetensors")):
+        revision, oid = hf_metadata(model, path.name)
+        if revision:
+            revisions.add(revision)
+        weights.append(
+            {
+                "name": path.name,
+                "size_bytes": path.stat().st_size,
+                "hf_content_oid": oid,
+            }
+        )
+    config_revision, config_oid = hf_metadata(model, "config.json")
+    if config_revision:
+        revisions.add(config_revision)
+    return {
+        "path": str(model),
+        "hf_revision": next(iter(revisions)) if len(revisions) == 1 else None,
+        "config_sha256": sha256(model / "config.json"),
+        "config_hf_oid": config_oid,
+        "index_sha256": sha256(model / "model.safetensors.index.json"),
+        "weights": weights,
+    }
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", type=Path, required=True)
@@ -39,6 +77,7 @@ def main() -> None:
     parser.add_argument("--container", required=True)
     parser.add_argument("--image", required=True)
     parser.add_argument("--model-host", type=Path, required=True)
+    parser.add_argument("--draft-model-host", type=Path)
     parser.add_argument("--suite", required=True)
     parser.add_argument("--kv-cache-dtype", required=True)
     parser.add_argument("--max-model-len", type=int, required=True)
@@ -53,10 +92,6 @@ def main() -> None:
 
     model = args.model_host
     project = Path(__file__).resolve().parents[1]
-    weights = [
-        {"name": path.name, "size_bytes": path.stat().st_size}
-        for path in sorted(model.glob("*.safetensors"))
-    ]
     manifest = {
         "schema_version": 1,
         "captured_at": datetime.now(timezone.utc).isoformat(),
@@ -81,12 +116,10 @@ def main() -> None:
             "image_inspect": command("docker", "image", "inspect", args.image),
             "container_inspect": command("docker", "inspect", args.container),
         },
-        "model": {
-            "path": str(model),
-            "config_sha256": sha256(model / "config.json"),
-            "index_sha256": sha256(model / "model.safetensors.index.json"),
-            "weights": weights,
-        },
+        "model": model_record(model),
+        "draft_model": (
+            model_record(args.draft_model_host) if args.draft_model_host else None
+        ),
         "project": {
             "path": str(project),
             "compose_sha256": sha256(project / "compose.yaml"),

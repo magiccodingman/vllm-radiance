@@ -245,12 +245,26 @@ jq -e --arg expected "--kv-cache-dtype=${KV_CACHE_DTYPE}" 'index($expected) != n
   exit 1
 }
 
+manifest_draft_args=()
+if [[ $SPEC == on && -n $SPECULATIVE_CONFIG_JSON ]]; then
+  draft_container_path=$(jq -er '.model // empty' <<<"$SPECULATIVE_CONFIG_JSON" 2>/dev/null || true)
+  if [[ $draft_container_path == /models/* ]]; then
+    DRAFT_MODEL_HOST="$(dirname "$MODEL_HOST")/${draft_container_path#/models/}"
+    [[ -f ${DRAFT_MODEL_HOST}/config.json ]] || {
+      echo "Resolved draft model is missing: ${DRAFT_MODEL_HOST}" >&2
+      exit 1
+    }
+    manifest_draft_args=(--draft-model-host "$DRAFT_MODEL_HOST")
+  fi
+fi
+
 HIP_VISIBLE_DEVICES=$gpu_devices RADIANCE_IMAGE="$IMAGE" "${SCRIPT_DIR}/capture_manifest.py" \
   --output "${CONFIG_DIR}/manifest.json" \
   --label "$LABEL" --tp "$TP" --spec "$SPEC" \
   --cpu-offload-gb "$CPU_OFFLOAD_GB" \
   --gpu-memory-utilization "$GPU_MEMORY_UTILIZATION" \
   --container "$container" --image "$IMAGE" --model-host "$MODEL_HOST" \
+  "${manifest_draft_args[@]}" \
   --suite "$SUITE" --kv-cache-dtype "$KV_CACHE_DTYPE" --max-model-len "$MAX_MODEL_LEN" \
   --weight-quantization "$WEIGHT_QUANTIZATION" \
   --max-num-batched-tokens "$MAX_NUM_BATCHED_TOKENS" \

@@ -75,8 +75,6 @@ REGISTER_ANCHOR = (
     "        activation_quant_key=activation_quant_key,\n"
     "    )\n"
     "\n"
-    "    linear_backend = _get_linear_backend()\n"
-    "\n"
     "    platform = current_platform._enum\n"
     "    possible = list(_POSSIBLE_MXFP4_KERNELS.get(platform, []))\n"
 )
@@ -84,8 +82,6 @@ REGISTER_NEW = (
     "    config = MxFp4LinearLayerConfig(\n"
     "        activation_quant_key=activation_quant_key,\n"
     "    )\n"
-    "\n"
-    "    linear_backend = _get_linear_backend()\n"
     "\n"
     "    platform = current_platform._enum\n"
     "    possible = list(_POSSIBLE_MXFP4_KERNELS.get(platform, []))\n"

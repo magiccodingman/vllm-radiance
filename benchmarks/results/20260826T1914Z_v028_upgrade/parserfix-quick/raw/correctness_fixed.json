@@ -1,0 +1,116 @@
+{
+  "workload": "correctness_fixed",
+  "temperature": "0",
+  "seed": "per-prompt:20260822+index",
+  "prompts": [
+    "Explain why the daytime sky appears blue in three concise paragraphs.",
+    "Write a Python function that performs binary search on a sorted list, then explain its time complexity.",
+    "Compare FP8 and BF16 inference, including one benefit and one risk of each format.",
+    "A Docker container exits immediately after startup. Give a systematic five-step debugging checklist.",
+    "Show that the sum of the first n odd positive integers is n squared using induction.",
+    "Write a short scene in which an engineer discovers that a benchmark was measuring the wrong model.",
+    "Transform this into valid JSON and explain the correction: name: radiance, gpus: 2, kv_cache: fp8",
+    "Translate 'Reliable measurements require controlled conditions' into Spanish and Japanese, then define controlled conditions."
+  ],
+  "prompts_sha256": "f242b99c63c5362c2c11cf19c7e3c6093b70d7bf9e5c70bf31a33955c42ece82",
+  "input_lens": [
+    13,
+    19,
+    19,
+    16,
+    17,
+    18,
+    26,
+    19
+  ],
+  "output_lens": [
+    128,
+    128,
+    128,
+    128,
+    128,
+    128,
+    128,
+    128
+  ],
+  "generated_texts": [
+    "\n\nThe blue color of the daytime sky is primarily due to a phenomenon called Rayleigh scattering. When sunlight enters the Earth's atmosphere, it interacts with gas molecules, particularly nitrogen and oxygen. These molecules scatter the shorter wavelengths of light (blue and violet) more effectively than the longer wavelengths (red and orange). This scattering is inversely proportional to the fourth power of the wavelength, meaning that blue light, which has a shorter wavelength, is scattered much more than red light.\n\nHowever, the sky appears blue rather than violet, despite violet light being scattered even more than blue light. This is because the human eye is more sensitive to blue",
+    "\n\n<think>\nThe user wants two things:\n1. A Python function that performs binary search on a sorted list\n2. An explanation of its time complexity\n\nLet me write a clean, well-documented binary search function. I'll consider:\n- Iterative vs recursive: I'll go with iterative as it's more practical (no stack overflow risk) and slightly more efficient. But I could show both. Let me go with iterative as the primary and maybe mention recursive.\n- Edge cases: empty list, element not found, single element\n- Return value: I'll return the index if found, -1 if not",
+    "\n\nFP8 and BF16 are both low-precision formats used to accelerate inference, but they differ in bit layout and trade-offs.\n\n**FP8 (8-bit floating point)**\n- **Structure:** 1 sign bit, 4 exponent bits, 3 mantissa bits (e.g., E4M3 or E5M2 variants).\n- **Benefit:** Very small memory footprint and high throughput on modern hardware (e.g., H100/MI300), enabling faster inference and larger batch sizes.\n- **Risk:** Limited dynamic range and precision can cause accuracy degradation, especially in",
+    "Here is a systematic five-step debugging checklist for a Docker container that exits immediately after startup, with a visual guide for each step.\n\n### Step 1: Check the Container's Exit Code and Status\n\nThe first step is to get a high-level view of what happened. The exit code can give you a clue about the type of error.\n\n*   **Action:** Run `docker ps -a` to see the status of all containers, including stopped ones. Look for the \"STATUS\" column.\n*   **Clue:** An exit code of `0` means the container ran and finished successfully. Any other code indicates",
+    "\n\nTo prove that the sum of the first n odd positive integers is \\( n^2 \\) using mathematical induction, we will follow these steps:\n\n1. **Base Case**: Verify the statement for \\( n = 1 \\).\n   - The first odd positive integer is 1.\n   - The sum of the first 1 odd positive integer is \\( 1 \\).\n   - According to the formula, \\( 1^2 = 1 \\).\n   - Therefore, the base case holds true.\n\n2. **Inductive Step**: Assume the statement is true for some arbitrary positive integer \\( k",
+    "\n\n<think>\nThe user wants a short creative writing scene about an engineer discovering a benchmark was measuring the wrong model. Let me think about what makes this scenario interesting and funny/dramatic:\n\n- The engineer has been working on something, maybe trying to optimize or compare models\n- They discover the benchmark was actually measuring a different model than intended\n- The discovery should feel like a \"oh no\" moment\n- I want to make it feel authentic to engineering culture - the specific details matter\n- The humor/drama comes from the implications: maybe they've been presenting wrong results, or making decisions based on wrong data\n- I",
+    ",\n\nThe original text is not valid JSON because it lacks the required structure: a root object enclosed in curly braces `{}`, and all keys and string values must be enclosed in double quotes `\"`. Additionally, the trailing comma at the end is invalid in JSON.\n\nHere is the corrected JSON:\n\n```json\n{\n  \"name\": \"radiance\",\n  \"gpus\": 2,\n  \"kv_cache\": \"fp8\"\n}\n```\n\n### Explanation of Corrections:\n1. **Root Object**: Wrapped the entire structure in `{ }` to form a valid JSON object.\n2. **",
+    "\n\nHere are the translations and the definition you requested:\n\n### Translations\n\n**Spanish:**\n> \"Las mediciones fiables requieren condiciones controladas.\"\n\n**Japanese:**\n> 「信頼できる測定には、管理された環境条件が必要です。」\n> *(Shinrai dekiru sokutei ni wa, kanri sareta kankyou jōken ga hitsuyō desu.)*\n\n***\n\n### Definition: Controlled Conditions\n\n**Controlled conditions** refer to a specific environment where variables that could influence the outcome of an experiment, test, or measurement are strictly regulated, standardized, or held constant.\n\n"
+  ],
+  "repetitions": 1,
+  "logprobs": 0,
+  "samples": [
+    {
+      "prompt_index": 0,
+      "repetition": 0,
+      "seed": 20260822,
+      "input_len": 13,
+      "output_len": 128,
+      "generated_text": "\n\nThe blue color of the daytime sky is primarily due to a phenomenon called Rayleigh scattering. When sunlight enters the Earth's atmosphere, it interacts with gas molecules, particularly nitrogen and oxygen. These molecules scatter the shorter wavelengths of light (blue and violet) more effectively than the longer wavelengths (red and orange). This scattering is inversely proportional to the fourth power of the wavelength, meaning that blue light, which has a shorter wavelength, is scattered much more than red light.\n\nHowever, the sky appears blue rather than violet, despite violet light being scattered even more than blue light. This is because the human eye is more sensitive to blue"
+    },
+    {
+      "prompt_index": 1,
+      "repetition": 0,
+      "seed": 20260823,
+      "input_len": 19,
+      "output_len": 128,
+      "generated_text": "\n\n<think>\nThe user wants two things:\n1. A Python function that performs binary search on a sorted list\n2. An explanation of its time complexity\n\nLet me write a clean, well-documented binary search function. I'll consider:\n- Iterative vs recursive: I'll go with iterative as it's more practical (no stack overflow risk) and slightly more efficient. But I could show both. Let me go with iterative as the primary and maybe mention recursive.\n- Edge cases: empty list, element not found, single element\n- Return value: I'll return the index if found, -1 if not"
+    },
+    {
+      "prompt_index": 2,
+      "repetition": 0,
+      "seed": 20260824,
+      "input_len": 19,
+      "output_len": 128,
+      "generated_text": "\n\nFP8 and BF16 are both low-precision formats used to accelerate inference, but they differ in bit layout and trade-offs.\n\n**FP8 (8-bit floating point)**\n- **Structure:** 1 sign bit, 4 exponent bits, 3 mantissa bits (e.g., E4M3 or E5M2 variants).\n- **Benefit:** Very small memory footprint and high throughput on modern hardware (e.g., H100/MI300), enabling faster inference and larger batch sizes.\n- **Risk:** Limited dynamic range and precision can cause accuracy degradation, especially in"
+    },
+    {
+      "prompt_index": 3,
+      "repetition": 0,
+      "seed": 20260825,
+      "input_len": 16,
+      "output_len": 128,
+      "generated_text": "Here is a systematic five-step debugging checklist for a Docker container that exits immediately after startup, with a visual guide for each step.\n\n### Step 1: Check the Container's Exit Code and Status\n\nThe first step is to get a high-level view of what happened. The exit code can give you a clue about the type of error.\n\n*   **Action:** Run `docker ps -a` to see the status of all containers, including stopped ones. Look for the \"STATUS\" column.\n*   **Clue:** An exit code of `0` means the container ran and finished successfully. Any other code indicates"
+    },
+    {
+      "prompt_index": 4,
+      "repetition": 0,
+      "seed": 20260826,
+      "input_len": 17,
+      "output_len": 128,
+      "generated_text": "\n\nTo prove that the sum of the first n odd positive integers is \\( n^2 \\) using mathematical induction, we will follow these steps:\n\n1. **Base Case**: Verify the statement for \\( n = 1 \\).\n   - The first odd positive integer is 1.\n   - The sum of the first 1 odd positive integer is \\( 1 \\).\n   - According to the formula, \\( 1^2 = 1 \\).\n   - Therefore, the base case holds true.\n\n2. **Inductive Step**: Assume the statement is true for some arbitrary positive integer \\( k"
+    },
+    {
+      "prompt_index": 5,
+      "repetition": 0,
+      "seed": 20260827,
+      "input_len": 18,
+      "output_len": 128,
+      "generated_text": "\n\n<think>\nThe user wants a short creative writing scene about an engineer discovering a benchmark was measuring the wrong model. Let me think about what makes this scenario interesting and funny/dramatic:\n\n- The engineer has been working on something, maybe trying to optimize or compare models\n- They discover the benchmark was actually measuring a different model than intended\n- The discovery should feel like a \"oh no\" moment\n- I want to make it feel authentic to engineering culture - the specific details matter\n- The humor/drama comes from the implications: maybe they've been presenting wrong results, or making decisions based on wrong data\n- I"
+    },
+    {
+      "prompt_index": 6,
+      "repetition": 0,
+      "seed": 20260828,
+      "input_len": 26,
+      "output_len": 128,
+      "generated_text": ",\n\nThe original text is not valid JSON because it lacks the required structure: a root object enclosed in curly braces `{}`, and all keys and string values must be enclosed in double quotes `\"`. Additionally, the trailing comma at the end is invalid in JSON.\n\nHere is the corrected JSON:\n\n```json\n{\n  \"name\": \"radiance\",\n  \"gpus\": 2,\n  \"kv_cache\": \"fp8\"\n}\n```\n\n### Explanation of Corrections:\n1. **Root Object**: Wrapped the entire structure in `{ }` to form a valid JSON object.\n2. **"
+    },
+    {
+      "prompt_index": 7,
+      "repetition": 0,
+      "seed": 20260829,
+      "input_len": 19,
+      "output_len": 128,
+      "generated_text": "\n\nHere are the translations and the definition you requested:\n\n### Translations\n\n**Spanish:**\n> \"Las mediciones fiables requieren condiciones controladas.\"\n\n**Japanese:**\n> 「信頼できる測定には、管理された環境条件が必要です。」\n> *(Shinrai dekiru sokutei ni wa, kanri sareta kankyou jōken ga hitsuyō desu.)*\n\n***\n\n### Definition: Controlled Conditions\n\n**Controlled conditions** refer to a specific environment where variables that could influence the outcome of an experiment, test, or measurement are strictly regulated, standardized, or held constant.\n\n"
+    }
+  ],
+  "completed": 8,
+  "failed": 0
+}
