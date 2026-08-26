@@ -141,17 +141,20 @@ def section_opts():
 
     print("  " + dim("feature toggles (set to 0 to disable):"))
     for name, dflt, desc in [
-        ("RADIANCE_USE_R4D",          "1", "hand-written gfx1201 kernels: attention, gated delta net, vision, all-reduce, router GEMM"),
+        ("RADIANCE_USE_R4D",          "1", "hand-written gfx1201 kernels: attention, gated delta net, vision, all-reduce, DFlash GEMMs"),
         ("RADIANCE_USE_R4D_GDN",      "1", "R4D gated-delta-net prefill and speculative-decode path"),
         ("RADIANCE_USE_R4D_AR",       "1", "P2P one-shot all-reduce for TP=2, byte-identical to RCCL"),
         ("RADIANCE_USE_R4D_AR_QUANT", "1", "compressed all-reduce payload for large messages: rotated 6-bit (on; not RCCL-identical)"),
+        ("RADIANCE_SKINNY_GEMM",      "1", "measured BF16 skinny GEMMs; use 'all' only as an explicit experiment"),
+        ("RADIANCE_GDN_META",         "1", "byte-identical low-overhead GDN metadata construction"),
+        ("RADIANCE_TOPK_TRITON_MIN_ROWS", "1", "Triton top-k/top-p threshold on gfx1201"),
         ("RADIANCE_MXFP4",            "0", "native gfx1201 Quark/OCP MXFP4 routing (opt-in)"),
         ("RADIANCE_MXFP4_W4A8",       "0", "packed MXFP4 weights x dynamic FP8 activations via RDNA4 WMMA"),
         ("RADIANCE_QUARK_BF16_MTP",   "0", "load a verified BF16 MTP submodule outside the global Quark recipe"),
         ("RADIANCE_PRESHUFFLE",       "1", "preshuffled AITER FP8 blockscale GEMM"),
         ("RADIANCE_FUSE_RMS_QUANT",   "1", "fold group-FP8 quant into the RMSNorm epilogue"),
         ("RADIANCE_DYNAMIC_DRAFT",    "1", "per-request MTP draft-depth controller (needs speculative mtp)"),
-        ("RADIANCE_FAST_DRAFT",       "0", "2-bit MTP draft head behind an exact rerank (opt-in; needs speculative mtp)"),
+        ("RADIANCE_FAST_DRAFT",       "0", "INT2 exact-rerank head plus DFlash runtime W4 drafter (opt-in)"),
     ]:
         badge = ok("ON ") if _val(name, dflt) == "1" else warn("OFF")
         print(f"    {badge} {name:<26} " + dim(desc))

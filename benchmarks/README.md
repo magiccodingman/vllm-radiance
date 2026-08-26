@@ -235,7 +235,7 @@ WEIGHT_QUANTIZATION=auto \
 RADIANCE_MXFP4=1 \
 RADIANCE_MXFP4_W4A8=1 \
 RADIANCE_MXFP4_W4A8_MIN_M=0 \
-RADIANCE_MXFP4_DECODE_MAX_M=48 \
+RADIANCE_MXFP4_DECODE_MAX_M=64 \
 RADIANCE_MXFP4_TN4_MIN_M=2048 \
 RADIANCE_QUARK_BF16_MTP=1 \
 PREFIX_CACHING=off MAMBA_CACHE_MODE=none \
@@ -307,7 +307,8 @@ VLLM_USE_V2_MODEL_RUNNER=1 \
 RADIANCE_USE_R4D_AR_QUANT=1 \
 MAX_NUM_BATCHED_TOKENS=4096 \
 COMPILATION_CONFIG_JSON='{"cudagraph_mode":"PIECEWISE"}' \
-SPECULATIVE_CONFIG_JSON='{"method":"dflash","model":"/models/Qwen3.8-27B-heretic-ara-DFlash2-fp8-magiccodingman","num_speculative_tokens":7,"draft_tensor_parallel_size":2,"attention_backend":"TRITON_ATTN","max_model_len":8192}' \
+RADIANCE_FAST_DRAFT=1 \
+SPECULATIVE_CONFIG_JSON='{"method":"dflash","model":"/models/Qwen3.8-27B-heretic-ara-DFlash2-fp8-magiccodingman","num_speculative_tokens":7,"draft_tensor_parallel_size":2,"attention_backend":"TRITON_ATTN","max_model_len":8192,"disable_padded_drafter_batch":true}' \
 BETTERBENCH_PROFILE=standard \
 benchmarks/bin/run_configuration.sh \
   --run-root benchmarks/runs/RUN_ID --label tp2-r4d-dflash-k7 \
@@ -328,6 +329,25 @@ DFlash2 from PR #52816. Its context precompute also materializes the draft's
 scaled FP8 K/V slices before the raw fused `F.linear`; normal draft linears stay
 FP8. Set the MXFP4 variables from the preceding section and replace only the
 `model` value in `SPECULATIVE_CONFIG_JSON`.
+
+Radiance 0.9.3 extends `RADIANCE_FAST_DRAFT=1` to DFlash2: eligible draft
+linears are quantized to W4 at load time and the LM head uses INT2-g128 with
+exact reranking. The entrypoint automatically separates the persistent graph
+caches used by fast and ordinary draft weights. Set
+`RADIANCE_FAST_DRAFT_CACHE_NAMESPACE=0` only for a deliberate cache diagnostic.
+The benchmark wrapper can run the required multi-tool JSON-schema gate on the
+same live server with `BENCH_TOOL_SCHEMA_ATTEMPTS=30`; the attempt count is
+retained in the manifest and every response is preserved.
+
+The Radiance 0.9.3/libr4d 0.5.0 publication root is
+`20260826T023001Z_radiance093-r4d050-mxfp4-continuation`. Under this contract,
+matched non-spec, fast DFlash K5, and fast DFlash K7 measured
+43.6/136.2/145.4 weighted TPS; the matched fast-MTP K4 control measured 102.3.
+Their aggregate c1/c2/c4/c8 results were 43.2/83.1/145.7/241.3,
+123.0/216.4/343.0/435.7, 132.4/234.6/343.3/416.9, and
+97.8/173.1/284.5/372.1 for MTP. The full category table, telemetry,
+isolated M48/M64 control, correctness result, and negative runs are documented
+in `docs/RADIANCE_093_R4D050_MXFP4.md`.
 
 ## Results
 

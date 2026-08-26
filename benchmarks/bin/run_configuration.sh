@@ -17,6 +17,7 @@ MAX_MODEL_LEN=16384
 MAX_NUM_BATCHED_TOKENS=${MAX_NUM_BATCHED_TOKENS:-4096}
 MAX_NUM_SEQS=${MAX_NUM_SEQS:-8}
 ATTENTION_BACKEND=${ATTENTION_BACKEND:-R4D}
+TOOL_CALL_PARSER=${TOOL_CALL_PARSER:-hermes}
 ADDITIONAL_CONFIG_JSON=${ADDITIONAL_CONFIG_JSON:-}
 SPECULATIVE_CONFIG_JSON=${SPECULATIVE_CONFIG_JSON:-}
 COMPILATION_CONFIG_JSON=${COMPILATION_CONFIG_JSON:-}
@@ -180,7 +181,7 @@ server_args+=(
   --port=8000
   --enable-tokenizer-info-endpoint
   --enable-auto-tool-choice
-  --tool-call-parser=hermes
+  "--tool-call-parser=${TOOL_CALL_PARSER}"
   --language-model-only
 )
 
@@ -273,6 +274,17 @@ else
   MODEL_HOST="$MODEL_HOST" MODEL_NAME="$MODEL_NAME" BENCH_WORKLOADS="$WORKLOAD_FILTER" "${SCRIPT_DIR}/run_suite.sh" \
     --run-dir "$CONFIG_DIR" --config "$LABEL" --tp "$TP" --spec "$SPEC" \
     --cpu-offload-gb "$CPU_OFFLOAD_GB" --max-model-len "$MAX_MODEL_LEN" --suite "$SUITE"
+fi
+
+# Optional structured-tool regression gate. It is deliberately explicit so
+# ordinary throughput iteration does not acquire 30 extra requests, while a
+# milestone run can bind parser correctness to the same live server, manifest,
+# image, and immutable configuration directory.
+if [[ ${BENCH_TOOL_SCHEMA_ATTEMPTS:-0} =~ ^[1-9][0-9]*$ ]]; then
+  BASE_URL=http://127.0.0.1:11435/v1 MODEL_NAME="$MODEL_NAME" \
+    ATTEMPTS="$BENCH_TOOL_SCHEMA_ATTEMPTS" \
+    RUN_ID="${LABEL}-tool-schema" RUN_DIR="${CONFIG_DIR}/tool-schema-gate" \
+    "${SCRIPT_DIR}/run_tool_schema_gate.sh"
 fi
 
 docker logs "$container" >"${CONFIG_DIR}/logs/server.log" 2>&1 || true

@@ -258,62 +258,10 @@ def patch_dflash_base() -> None:
         "self.model = self.model_cls(\n",
         "dflash2: select model class",
     )
-    apply(
-        path,
-        '''        # KV projection weights: [num_layers * 2 * kv_size, hidden_size]
-        kv_weights = [a.qkv_proj.weight[a.q_size :] for a in layers_attn]
-        self._fused_kv_weight = torch.cat(kv_weights, dim=0)
-''',
-        '''        # KV projection weights: [num_layers * 2 * kv_size, hidden_size].
-        #
-        # DFlash bypasses LinearBase here and calls F.linear on one fused buffer.
-        # A serialized FP8 draft therefore needs its QKV weights materialized in
-        # the activation dtype first; otherwise raw float8 parameters reach
-        # F.linear and fail (or, with implicit casts, ignore their scales).  This
-        # only expands the small K/V slices used by context precomputation.  The
-        # ordinary draft forward path remains quantized and uses its configured
-        # FP8 kernel.
-        def dense_qkv_weight(attn: nn.Module) -> torch.Tensor:
-            proj = attn.qkv_proj
-            weight = proj.weight
-            if weight.dtype not in (torch.float8_e4m3fn, torch.float8_e5m2):
-                return weight
-
-            scale = getattr(proj, "weight_scale_inv", None)
-            if scale is None:
-                scale = getattr(proj, "weight_scale", None)
-            if scale is None:
-                raise RuntimeError(
-                    "DFlash FP8 QKV projection is missing its weight scale"
-                )
-
-            dtype = self._hidden_norm_weight.dtype
-            dense = weight.to(dtype)
-            scale = scale.to(dtype)
-            if scale.numel() == 1:
-                return dense * scale
-            if scale.ndim == 2:
-                block_shape = getattr(proj, "weight_block_size", None)
-                if not block_shape or len(block_shape) != 2:
-                    raise RuntimeError(
-                        "DFlash block-FP8 QKV projection is missing block shape"
-                    )
-                expanded = scale.repeat_interleave(block_shape[0], dim=0)
-                expanded = expanded.repeat_interleave(block_shape[1], dim=1)
-                return dense * expanded[: dense.shape[0], : dense.shape[1]]
-            if scale.ndim == 1 and scale.shape[0] == dense.shape[0]:
-                return dense * scale.unsqueeze(1)
-            raise RuntimeError(
-                f"Unsupported DFlash FP8 QKV scale shape {tuple(scale.shape)} "
-                f"for weight {tuple(dense.shape)}"
-            )
-
-        kv_weights = [dense_qkv_weight(a)[a.q_size :] for a in layers_attn]
-        self._fused_kv_weight = torch.cat(kv_weights, dim=0)
-''',
-        "def dense_qkv_weight(attn",
-        "dflash2: scaled FP8 fused context KV",
-    )
+    # Quantized fused context-K/V materialization is deliberately a separate
+    # guarded patch.  Keeping it outside this feature backport lets the loader
+    # use the quantization method itself instead of duplicating layout/scale
+    # rules for FP8, MXFP4, and future packed formats here.
 
 
 def patch_registry_and_dispatch() -> None:

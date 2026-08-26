@@ -44,9 +44,13 @@ if _PS is not None:
     @torch.library.custom_op("radiance::preshuffle_gemm", mutates_args=())
     def preshuffle_gemm(A: torch.Tensor, B: torch.Tensor, As: torch.Tensor,
                         Bs: torch.Tensor, N: int, K: int) -> torch.Tensor:
-        xs_shuf = As.transpose(0, 1).contiguous().view(*As.shape)   # physical transpose, same logical shape
+        # The preshuffle kernel accepts activation-scale strides.  Passing the
+        # original scale tensor avoids a physical transpose/contiguous launch
+        # for every GEMM while preserving the exact values seen by each lane.
+        cfg = _ps_cfg(A.shape[0], N, K)
         return _PS.gemm_a8w8_blockscale_preshuffle(
-            A, B, xs_shuf, Bs, torch.bfloat16, config=_ps_cfg(A.shape[0], N, K))
+            A, B, As, Bs, torch.bfloat16, config=cfg,
+            is_x_scale_tranposed=False)
 
     @preshuffle_gemm.register_fake
     def _(A, B, As, Bs, N, K):
@@ -66,6 +70,10 @@ def install_load_hook():
     def _wrapped(self, layer):
         _orig(self, layer)
         try:
+            # DFlash linears already packed by radiance_w4 no longer carry an
+            # FP8 weight that the preshuffle hook may transform.
+            if getattr(layer, "_radiance_w4", None) is not None:
+                return
             if not getattr(self, "block_quant", False):
                 return
             w = getattr(layer, "weight", None)
@@ -399,6 +407,13 @@ def install_r4d_report():
 def install_all():
     """Install every gated radiance runtime hook. Called once per process by the vLLM plugin loader,
     after torch/vllm/aiter are imported but before the model loads. Idempotent; each hook is env-gated."""
+    try:
+        # Install before preshuffle: both wrap process_weights_after_loading,
+        # and the DFlash W4 packer must observe the original quantized weight.
+        import radiance_w4
+        radiance_w4.install_load_hook()
+    except Exception as e:
+        sys.stderr.write(f"[radiance] radiance_w4 install failed: {e!r}\n")
     try:
         install_load_hook()
     except Exception as e:

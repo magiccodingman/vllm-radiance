@@ -4,9 +4,9 @@ vLLM inference server for the AMD Radeon AI PRO R9700 (gfx1201 / RDNA4), combini
 vLLM v0.27.1 with libr4d's hand-written RDNA4 kernels and Radiance's FP8/speculative paths.
 
 > **Status: experimental.** This fork publishes as `magiccodingman/vllm-radiance`.
-> `stilldeadcode/vllm-radiance:0.7.4` is DeadCode's separate upstream release
+> `stilldeadcode/vllm-radiance:0.9.3` is DeadCode's separate upstream release
 > and the external comparison baseline. Current pins and qualification evidence
-> are in `docs/UPGRADE_PROGRESS.md` and `docs/LIBR4D_BETTERBENCH.md`.
+> are in `docs/UPGRADE_PROGRESS.md` and `docs/RADIANCE_093_R4D050_MXFP4.md`.
 
 The current fork is validated primarily with
 `Qwen3.8-27B-heretic-ara-fp8-magiccodingman` and
@@ -16,7 +16,7 @@ sequences; it deliberately leaves VRAM headroom instead of finding the largest
 batch that fits. Earlier 0.5.8 performance numbers below remain useful history,
 but are not claims about the new compiler stack.
 
-## Current fork stack (`0.8.0-dev.vllm0.27.1-r4d0.4.0-mxfp4.dflash2.fusedsplitk`)
+## Current fork stack (`0.9.3-dev.vllm0.27.1-r4d0.5.0-mxfp4.dflash2`)
 
 | Component | Exact version/pin |
 |---|---|
@@ -27,7 +27,7 @@ but are not claims about the new compiler stack.
 | AITER | 0.1.20 (`fc2e5d57fb5b8ad8e7e23f7103071dde798ea618`) |
 | Transformers | 5.14.1 |
 | XGrammar | 0.2.3 |
-| libr4d | reports 0.4.0; fixed source `b9e42ab7202f53a3bc13d415f5d41481f9ca311b` |
+| libr4d | 0.5.0 / `e8de4bc1f3dbd608dcb8d3ffceb6b48acdf83bb7` |
 | ROCm userspace | 7.14, bundled |
 
 Use the repository `docker-compose.yml` for the current local image and model
@@ -51,11 +51,15 @@ defaults. Do not substitute an unpinned `main` checkout or generic PyTorch
 | `RADIANCE_NGRAM_EXTENSION` | `1` | verbatim n-gram tail for speculative drafting |
 | `RADIANCE_DRAFT_SCHEDULE` | `1:8,2:7,4:6,8:5,16:4` | MTP maximum depth by active batch size |
 | `RADIANCE_DRAFT_TAU` | `0.28` | confidence-product stop threshold |
-| `RADIANCE_FAST_DRAFT` | `0` | opt-in INT2-g128 MTP head with exact top-32 reranking |
+| `RADIANCE_SKINNY_GEMM` | `1` | exact selected BF16 skinny-GEMM route; `all` also enables ULP-different shapes |
+| `RADIANCE_GDN_META` | `1` | byte-identical GPU GDN metadata construction |
+| `RADIANCE_TOPK_TRITON_MIN_ROWS` | `1` | Triton top-k/top-p at small row counts |
+| `RADIANCE_FAST_DRAFT` | `0` | opt-in INT2 exact-rerank head for MTP/DFlash plus DFlash runtime W4 linears |
+| `RADIANCE_FAST_DRAFT_CACHE_NAMESPACE` | `1` | isolate persistent vLLM/Inductor graph caches for packed fast-draft weights |
 | `RADIANCE_MXFP4` | `0` | allow native Quark/OCP MXFP4 routing on gfx1201 |
 | `RADIANCE_MXFP4_W4A8` | `0` | packed MXFP4 weights with dynamic FP8 activations on RDNA4 WMMA |
 | `RADIANCE_MXFP4_W4A8_MIN_M` | `0` | first M routed to W4A8; keep 0 for the qualified AMD checkpoint |
-| `RADIANCE_MXFP4_DECODE_MAX_M` | `48` | upper bound for the fused small-M split-K decode kernel |
+| `RADIANCE_MXFP4_DECODE_MAX_M` | `64` | upper bound for the fused small-M split-K decode kernel |
 | `RADIANCE_MXFP4_TN4_MIN_M` | `2048` | switch the prefill kernel to its wider N tile |
 | `RADIANCE_QUARK_BF16_MTP` | `0` | load AMD's embedded BF16 MTP head outside the global Quark recipe |
 | `RADIANCE_SPECULATIVE_CONFIG` | unset | raw vLLM speculative-config JSON appended by the entrypoint; explicit CLI config wins |
@@ -90,11 +94,13 @@ PREFIX_CACHING_FLAG=--enable-prefix-caching
 MAMBA_CACHE_MODE=align
 VLLM_USE_V2_MODEL_RUNNER=1
 RADIANCE_COMPILATION_CONFIG='{"cudagraph_mode":"PIECEWISE"}'
-RADIANCE_SPECULATIVE_CONFIG='{"method":"dflash","model":"/models/Qwen3.8-27B-heretic-ara-DFlash2-fp8-magiccodingman","num_speculative_tokens":7,"draft_tensor_parallel_size":2,"attention_backend":"TRITON_ATTN","max_model_len":8192}'
+RADIANCE_FAST_DRAFT=1
+RADIANCE_SPECULATIVE_CONFIG='{"method":"dflash","model":"/models/Qwen3.8-27B-heretic-ara-DFlash2-fp8-magiccodingman","num_speculative_tokens":7,"draft_tensor_parallel_size":2,"attention_backend":"TRITON_ATTN","max_model_len":8192,"disable_padded_drafter_batch":true}'
 ```
 
 That is the measured selective-FP8 K7 lane: R4D target attention, Triton draft
-attention, draft TP2, and piecewise graphs. It remains opt-in because strict
+attention, draft TP2, piecewise graphs, runtime W4 draft linears, and the INT2
+exact-rerank head. Fast-draft graph caches are isolated automatically. It remains opt-in because strict
 cross-mode equivalence has not qualified. Published BetterBench results used
 `--no-enable-prefix-caching --mamba-cache-mode=none` only to enforce a cold,
 nonce-disjoint benchmark contract; those are not the recommended production
@@ -121,12 +127,16 @@ Untested (may or may not work): any other model/quantization recipe, more than
 two GPUs, or non-R9700 hardware. Treat the defaults below as a starting point
 for these measured setups, not a general recommendation.
 
-**Qwen3.8 Quark MXFP4/W4A8.** The final 10-pass/category BetterBench result was
-43.7 weighted non-spec TPS, 101.9 with fast MTP, 129.8 with target-matched
-DFlash K5, and 139.8 with K7. K7 won c1/c2/c4 at 125.9/225.6/357.3 TPS; K5
-won c8 at 506.7 TPS versus K7's 360.1. All category rows, acceptance, prefill,
-headroom, checksums, exact run IDs, and the failed strict-equivalence status are
-in `docs/MXFP4_W4A8_R9700.md` in the source repository.
+**Qwen3.8 Quark MXFP4/W4A8.** The Radiance 0.9.3/libr4d 0.5.0
+10-pass/category BetterBench result was 43.6 weighted non-spec TPS, 102.3 with
+fast MTP K4, 136.2 with fast DFlash K5, and 145.4 with fast DFlash K7. K7 reached
+132.4/234.6/343.3/416.9 aggregate TPS at c1/c2/c4/c8; K5 reached
+123.0/216.4/343.0/435.7 and MTP reached 97.8/173.1/284.5/372.1. K5 remains
+the C8 DFlash option. The M<=64 kernel boundary
+improved a direct C8 control by 10.4%. K7 passed 30/30 required multi-tool
+schema requests but only 1/8 strict non-spec equivalence prompts. All category
+rows, prefill, telemetry, negative results, pins, and run IDs are in
+`docs/RADIANCE_093_R4D050_MXFP4.md` in the source repository.
 
 The recommended long-context MXFP4 profile is 128K/C4 at 90% GPU allocation,
 FP8 KV, DFlash K5, `PIECEWISE` graphs, prefix caching, and GDN `align` state. It
