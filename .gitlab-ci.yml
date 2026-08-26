@@ -9,6 +9,8 @@ stages:
 variables:
   IMAGE_NAME: "magiccodingman/vllm-radiance"
   VERSION_SERIES: "1.0"
+  # Docker Hub rejects repository overviews larger than 25,000 bytes.
+  DOCKERHUB_README_MAX_BYTES: "25000"
   # This image compiles PyTorch, Triton, torchvision, AITER, and vLLM from source.
   # Keep compiler parallelism deliberately low for the 8 GiB RAM runner.
   RADIANCE_BUILD_JOBS: "2"
@@ -47,6 +49,13 @@ publish_docker:
     - |
       set -eu
 
+      README_BYTES="$(wc -c < README.md | tr -d '[:space:]')"
+      if [ "$README_BYTES" -gt "$DOCKERHUB_README_MAX_BYTES" ]; then
+        echo "README.md is ${README_BYTES} bytes; Docker Hub allows at most ${DOCKERHUB_README_MAX_BYTES}." >&2
+        echo "Move detailed material into docs/ and link it from the repository overview." >&2
+        exit 1
+      fi
+
       VERSION="${VERSION_SERIES}.${CI_PIPELINE_IID}"
       SHORT_SHA="$(printf '%.12s' "$CI_COMMIT_SHA")"
 
@@ -83,12 +92,15 @@ publish_docker:
         'https://hub.docker.com/v2/users/login/' | jq -er '.token')"
 
       jq -Rs '{full_description: .}' README.md > dockerhub-readme.json
-      curl --fail --silent --show-error \
-        --header "Authorization: JWT ${HUB_TOKEN}" \
-        --header 'Content-Type: application/json' \
-        --request PATCH \
-        --data-binary @dockerhub-readme.json \
-        "https://hub.docker.com/v2/repositories/${IMAGE_NAME}/" >/dev/null
+      if ! UPDATE_RESPONSE="$(curl --fail-with-body --silent --show-error \
+          --header "Authorization: JWT ${HUB_TOKEN}" \
+          --header 'Content-Type: application/json' \
+          --request PATCH \
+          --data-binary @dockerhub-readme.json \
+          "https://hub.docker.com/v2/repositories/${IMAGE_NAME}/")"; then
+        printf 'Docker Hub overview update failed:\n%s\n' "$UPDATE_RESPONSE" >&2
+        exit 1
+      fi
 
       printf 'Published %s:%s, %s:%s, %s:sha-%s, and %s:latest\n' \
         "$IMAGE_NAME" "$VERSION" \
