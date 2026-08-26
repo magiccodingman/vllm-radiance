@@ -224,6 +224,8 @@ immutable run IDs are in the
   DFlash draft linears.
 - **Hybrid-safe prefix caching:** automatic prefix caching with GDN convolution/recurrent-state restoration
   through `--mamba-cache-mode=align`.
+- **Spec-safe structured output:** upstream XGrammar termination and reasoning-boundary fixes prevent
+  speculative draft batches from overrunning or desynchronizing the tool-call grammar.
 - **Topology qualification:** a background startup sweep reports GPU enumeration, P2P access, NUMA distance,
   and peer-copy bandwidth.
 
@@ -236,7 +238,7 @@ The published image is built entirely from pinned source commits:
 
 | Component | Version/pin |
 |---|---|
-| vLLM | 0.27.1 plus reviewed DFlash2 backport |
+| vLLM | 0.27.1 plus reviewed DFlash2 and XGrammar speculative-output backports |
 | AMD PyTorch | 2.12 branch, `6bbd26020da1c6dc198625dfcdd968b1e4e6b1c5` |
 | AMD Triton | 3.7.1, `f0b55c07da61c71775bef6d1a15ebf846430ac75` |
 | AITER | 0.1.20, `fc2e5d57fb5b8ad8e7e23f7103071dde798ea618` |
@@ -266,6 +268,7 @@ and an earlier mismatched combination caused sustained TP hangs.
 - [MXFP4/W4A8 implementation and validation](https://gitlab.sayou.io/lance-wright/vllm-radiance/-/blob/main/docs/MXFP4_W4A8_R9700.md)
 - [Compose capacity and prefix-cache qualification](https://gitlab.sayou.io/lance-wright/vllm-radiance/-/blob/main/docs/COMPOSE_CAPACITY.md)
 - [DFlash2 optimization and correctness investigation](https://gitlab.sayou.io/lance-wright/vllm-radiance/-/blob/main/docs/DFLASH2_OPTIMIZATION.md)
+- [XGrammar speculative-decoding backport](https://gitlab.sayou.io/lance-wright/vllm-radiance/-/blob/main/docs/XGRAMMAR_SPECULATIVE_BACKPORT.md)
 - [BetterBench methodology and earlier mode comparison](https://gitlab.sayou.io/lance-wright/vllm-radiance/-/blob/main/docs/LIBR4D_BETTERBENCH.md)
 - [Benchmark laboratory usage](https://gitlab.sayou.io/lance-wright/vllm-radiance/-/blob/main/benchmarks/README.md)
 - [Complete runtime knob reference](https://gitlab.sayou.io/lance-wright/vllm-radiance/-/blob/main/DOCKERHUB.md)

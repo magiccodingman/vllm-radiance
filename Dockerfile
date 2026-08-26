@@ -258,7 +258,8 @@ RUN set -eu; cd /opt/patches; \
              patch_unpad patch_mtp_mm_mask patch_mtp_loopbreak patch_qwen3_toolparse patch_from_json_filter \
              patch_dynamo_metrics patch_conv1d_blockn patch_r4d patch_dflash_base patch_dflash2_v0271_backport \
              patch_dflash_fused_kv_fp8 patch_dflash_w4 patch_gdn_metadata patch_topk_triton_rows \
-             patch_quark_mxfp4 patch_quark_bf16_mtp patch_ar_maxbytes; do \
+             patch_quark_mxfp4 patch_quark_bf16_mtp patch_ar_maxbytes patch_xgrammar_spec_termination \
+             patch_xgrammar_spec_reasoning; do \
       echo "== applying $p =="; python "$p.py"; \
     done; \
     python -c "import ast,glob; [ast.parse(open(f).read()) for f in glob.glob('${SP}/radiance_*.py')]; print('radiance modules parse OK')"
@@ -392,7 +393,7 @@ RUN printf '%s\n' \
  && rm -f /tmp/_jit_probe.hip /tmp/_jit_probe.so \
  && echo "runtime JIT toolchain OK (hipcc + libstdc++ headers + Python.h + pybind11)"
 
-ARG RADIANCE_VERSION=0.9.3-dev.vllm0.27.1-r4d0.5.0-mxfp4.dflash2
+ARG RADIANCE_VERSION=0.9.3-dev.vllm0.27.1-r4d0.5.0-mxfp4.dflash2.xgrammar
 ENV RADIANCE_VERSION=${RADIANCE_VERSION}
 COPY VERSION /opt/radiance_version
 COPY radiance_preamble.py /opt/radiance_preamble.py

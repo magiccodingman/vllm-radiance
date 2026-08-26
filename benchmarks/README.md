@@ -71,6 +71,18 @@ observed. The fixture schema itself permits optional `stepFailed`, while
 `reasoning`, `confidence`, `stepComplete`, and the action-specific argument are
 required.
 
+For speculative structured-output changes, first run the GPU-free state-machine
+and source-overlay check inside the candidate image:
+
+```bash
+python benchmarks/bin/check_xgrammar_spec_termination.py
+```
+
+Then run the sampled gate and inspect the server log over the exact same time
+window. A qualified result requires both 100% valid calls and zero occurrences
+of `Failed to advance FSM`, `matcher has terminated`, or
+`Unexpected: grammar rejected`; valid response JSON alone is insufficient.
+
 TP=2 uses a model-neutral 16K server envelope at 85% GPU utilization. This
 reserves about 4.8 GiB outside vLLM's allocation on each 32 GiB card, leaves
 room for a DFlash2 drafter and runtime variation, and does not try to turn the
