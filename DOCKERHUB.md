@@ -4,9 +4,9 @@ vLLM inference server for the AMD Radeon AI PRO R9700 (gfx1201 / RDNA4), combini
 vLLM v0.27.1 with libr4d's hand-written RDNA4 kernels and Radiance's FP8/speculative paths.
 
 > **Status: experimental.** This fork publishes as `magiccodingman/vllm-radiance`.
-> `stilldeadcode/vllm-radiance:0.7.4` is DeadCode's separate upstream release
+> `stilldeadcode/vllm-radiance:0.9.3` is DeadCode's separate upstream release
 > and the external comparison baseline. Current pins and qualification evidence
-> are in `docs/UPGRADE_PROGRESS.md` and `docs/LIBR4D_BETTERBENCH.md`.
+> are in `docs/UPGRADE_PROGRESS.md` and `docs/RADIANCE_093_R4D050_MXFP4.md`.
 
 The current fork is validated primarily with
 `Qwen3.8-27B-heretic-ara-fp8-magiccodingman` and
@@ -16,7 +16,7 @@ sequences; it deliberately leaves VRAM headroom instead of finding the largest
 batch that fits. Earlier 0.5.8 performance numbers below remain useful history,
 but are not claims about the new compiler stack.
 
-## Current fork stack (`0.8.0-dev.vllm0.27.1-r4d0.4.0-mxfp4.dflash2.fusedsplitk`)
+## Current fork stack (`0.9.3-dev.vllm0.27.1-r4d0.5.0-mxfp4.dflash2`)
 
 | Component | Exact version/pin |
 |---|---|
@@ -27,7 +27,7 @@ but are not claims about the new compiler stack.
 | AITER | 0.1.20 (`fc2e5d57fb5b8ad8e7e23f7103071dde798ea618`) |
 | Transformers | 5.14.1 |
 | XGrammar | 0.2.3 |
-| libr4d | reports 0.4.0; fixed source `b9e42ab7202f53a3bc13d415f5d41481f9ca311b` |
+| libr4d | 0.5.0 / `e8de4bc1f3dbd608dcb8d3ffceb6b48acdf83bb7` |
 | ROCm userspace | 7.14, bundled |
 
 Use the repository `docker-compose.yml` for the current local image and model
@@ -51,11 +51,15 @@ defaults. Do not substitute an unpinned `main` checkout or generic PyTorch
 | `RADIANCE_NGRAM_EXTENSION` | `1` | verbatim n-gram tail for speculative drafting |
 | `RADIANCE_DRAFT_SCHEDULE` | `1:8,2:7,4:6,8:5,16:4` | MTP maximum depth by active batch size |
 | `RADIANCE_DRAFT_TAU` | `0.28` | confidence-product stop threshold |
-| `RADIANCE_FAST_DRAFT` | `0` | opt-in INT2-g128 MTP head with exact top-32 reranking |
+| `RADIANCE_SKINNY_GEMM` | `1` | exact selected BF16 skinny-GEMM route; `all` also enables ULP-different shapes |
+| `RADIANCE_GDN_META` | `1` | byte-identical GPU GDN metadata construction |
+| `RADIANCE_TOPK_TRITON_MIN_ROWS` | `1` | Triton top-k/top-p at small row counts |
+| `RADIANCE_FAST_DRAFT` | `0` | opt-in INT2 exact-rerank head for MTP/DFlash plus DFlash runtime W4 linears |
+| `RADIANCE_FAST_DRAFT_CACHE_NAMESPACE` | `1` | isolate persistent vLLM/Inductor graph caches for packed fast-draft weights |
 | `RADIANCE_MXFP4` | `0` | allow native Quark/OCP MXFP4 routing on gfx1201 |
 | `RADIANCE_MXFP4_W4A8` | `0` | packed MXFP4 weights with dynamic FP8 activations on RDNA4 WMMA |
 | `RADIANCE_MXFP4_W4A8_MIN_M` | `0` | first M routed to W4A8; keep 0 for the qualified AMD checkpoint |
-| `RADIANCE_MXFP4_DECODE_MAX_M` | `48` | upper bound for the fused small-M split-K decode kernel |
+| `RADIANCE_MXFP4_DECODE_MAX_M` | `64` | upper bound for the fused small-M split-K decode kernel |
 | `RADIANCE_MXFP4_TN4_MIN_M` | `2048` | switch the prefill kernel to its wider N tile |
 | `RADIANCE_QUARK_BF16_MTP` | `0` | load AMD's embedded BF16 MTP head outside the global Quark recipe |
 | `RADIANCE_SPECULATIVE_CONFIG` | unset | raw vLLM speculative-config JSON appended by the entrypoint; explicit CLI config wins |
@@ -65,8 +69,9 @@ defaults. Do not substitute an unpinned `main` checkout or generic PyTorch
 R4D attention is selected with `--attention-backend=R4D`. AITER attention and
 the older operator implementations remain fallbacks/controls. The portable
 Compose defaults to native FP8 weights, FP8 KV, TP2, 16K, 85% allocation,
-eight admitted sequences, and 4,096 batched tokens. Speculative decoding is
-off because its strict cross-mode output gate has not qualified. For Qwen's
+eight admitted sequences, 4,096 batched tokens, and automatic prefix caching
+with `--mamba-cache-mode=align`. Speculative decoding is off because its strict
+cross-mode output gate has not qualified. For Qwen's
 in-checkpoint MTP head, opt in without editing Compose by adding these two lines
 to `.env`:
 
@@ -85,16 +90,21 @@ below (replace the drafter path if its directory name differs):
 
 ```dotenv
 MAX_MODEL_LEN=8192
-PREFIX_CACHING_FLAG=--no-enable-prefix-caching
-MAMBA_CACHE_MODE=none
+PREFIX_CACHING_FLAG=--enable-prefix-caching
+MAMBA_CACHE_MODE=align
 VLLM_USE_V2_MODEL_RUNNER=1
 RADIANCE_COMPILATION_CONFIG='{"cudagraph_mode":"PIECEWISE"}'
-RADIANCE_SPECULATIVE_CONFIG='{"method":"dflash","model":"/models/Qwen3.8-27B-heretic-ara-DFlash2-fp8-magiccodingman","num_speculative_tokens":7,"draft_tensor_parallel_size":2,"attention_backend":"TRITON_ATTN","max_model_len":8192}'
+RADIANCE_FAST_DRAFT=1
+RADIANCE_SPECULATIVE_CONFIG='{"method":"dflash","model":"/models/Qwen3.8-27B-heretic-ara-DFlash2-fp8-magiccodingman","num_speculative_tokens":7,"draft_tensor_parallel_size":2,"attention_backend":"TRITON_ATTN","max_model_len":8192,"disable_padded_drafter_batch":true}'
 ```
 
 That is the measured selective-FP8 K7 lane: R4D target attention, Triton draft
-attention, draft TP2, and piecewise graphs. It remains opt-in because strict
-cross-mode equivalence has not qualified.
+attention, draft TP2, piecewise graphs, runtime W4 draft linears, and the INT2
+exact-rerank head. Fast-draft graph caches are isolated automatically. It remains opt-in because strict
+cross-mode equivalence has not qualified. Published BetterBench results used
+`--no-enable-prefix-caching --mamba-cache-mode=none` only to enforce a cold,
+nonce-disjoint benchmark contract; those are not the recommended production
+defaults.
 
 For the AMD Quark target, set `WEIGHT_QUANTIZATION=auto`, enable both MXFP4
 switches above, and use the target-matched
@@ -117,12 +127,25 @@ Untested (may or may not work): any other model/quantization recipe, more than
 two GPUs, or non-R9700 hardware. Treat the defaults below as a starting point
 for these measured setups, not a general recommendation.
 
-**Qwen3.8 Quark MXFP4/W4A8.** The final 10-pass/category BetterBench result was
-43.7 weighted non-spec TPS, 101.9 with fast MTP, 129.8 with target-matched
-DFlash K5, and 139.8 with K7. K7 won c1/c2/c4 at 125.9/225.6/357.3 TPS; K5
-won c8 at 506.7 TPS versus K7's 360.1. All category rows, acceptance, prefill,
-headroom, checksums, exact run IDs, and the failed strict-equivalence status are
-in `docs/MXFP4_W4A8_R9700.md` in the source repository.
+**Qwen3.8 Quark MXFP4/W4A8.** The Radiance 0.9.3/libr4d 0.5.0
+10-pass/category BetterBench result was 43.6 weighted non-spec TPS, 102.3 with
+fast MTP K4, 136.2 with fast DFlash K5, and 145.4 with fast DFlash K7. K7 reached
+132.4/234.6/343.3/416.9 aggregate TPS at c1/c2/c4/c8; K5 reached
+123.0/216.4/343.0/435.7 and MTP reached 97.8/173.1/284.5/372.1. K5 remains
+the C8 DFlash option. The M<=64 kernel boundary
+improved a direct C8 control by 10.4%. K7 passed 30/30 required multi-tool
+schema requests but only 1/8 strict non-spec equivalence prompts. All category
+rows, prefill, telemetry, negative results, pins, and run IDs are in
+`docs/RADIANCE_093_R4D050_MXFP4.md` in the source repository.
+
+The recommended long-context MXFP4 profile is 128K/C4 at 90% GPU allocation,
+FP8 KV, DFlash K5, `PIECEWISE` graphs, prefix caching, and GDN `align` state. It
+reported 576,001 KV tokens / 4.39x full-request capacity and completed four
+disjoint full-context requests with zero OOM or preemption and 5.17 GiB minimum
+headroom per GPU. A 32K repeated prefix reduced TTFT from 9.04 seconds cold to
+0.70-0.71 seconds warm (12.8x) with byte-identical sequential outputs. The
+prefix-disabled maximum-capacity sweep completed 32K C11, 64K C7, 128K C4, and
+256K C2; use the more conservative 32K C8 / 64K C6 settings in production.
 
 **Fine-grained MoE (Qwen3.6-35B-A3B-FP8).** Supported and tuned. Two MoE paths are baked in and activate automatically for it: RDNA4-tuned fused-MoE Triton configs (removes the stock config's `M>=96` cliff, lower prefill TTFT, lossless) and a custom bf16 MoE-gate GEMM (`RADIANCE_MOE_ROUTER`, on by default) for the skinny `n` in `[6,16]` batch band that rocBLAS serves poorly (~2.5x faster cold, bit-identical output; wvSplitK already covers `n<=5`). A serving requirement: with `--mamba-cache-mode=align` this model's attention block size is 2240, and align asserts `block_size <= max_num_batched_tokens`, so keep **`--max-num-batched-tokens >= 2240`**; the Compose default is 4096.
 
@@ -348,7 +371,7 @@ With an empty cache the first start spends a few extra minutes compiling Triton 
 | `--tensor-parallel-size` | `2` | one rank per R9700 |
 | `--quantization` | `fp8` | tuned for FP8 weights |
 | `--kv-cache-dtype` | `fp8`, `bf16`, or `auto` | fp8 = 1 byte/elem (most KV capacity); bf16 / `auto` keep full precision |
-| `--attention-backend` | `ROCM_AITER_UNIFIED_ATTN` | required for the tuned attention path |
+| `--attention-backend` | `R4D` | current tuned target attention path; AITER remains a fallback/control |
 | `--max-model-len` | model dependent | context length per request |
 | `--max-num-seqs` | workload dependent | max concurrent sequences |
 | `--gpu-memory-utilization` | `0.85` starting point | Leaves measured runtime/drafter headroom; raise only after a model-specific capacity qualification |
@@ -376,7 +399,7 @@ Prefix caching (shared system prompts, RAG, agentic context):
 --enable-prefix-caching --mamba-cache-mode align
 ```
 
-Automatic prefix caching reuses a shared prompt prefix across requests so only the new suffix is prefilled, a large time-to-first-token drop when many requests share a system prompt or document. On this **GDN hybrid you must pass both flags**: hybrid models default their prefix-caching support flag off ("experimental"), so vLLM **silently disables** prefix caching unless `--enable-prefix-caching` is given, and `--mamba-cache-mode align` is what makes the linear-attention (GDN) layers cacheable by snapshotting and restoring their conv + recurrent state at block boundaries. That restore is **verified bit-identical to a full recompute** (including under MTP), so outputs are unchanged; the win is purely latency (measured ~3.6x faster TTFT on shared prefixes). Trade-offs: align reconciles the mamba and attention page sizes, which raises the attention block size to 1664 tokens and adds one state block per linear-attention layer (slightly lower max concurrency at full context), and prefix hits land on 1664-token boundaries. Do **not** use `--mamba-cache-mode all` (unsupported by this model, raises at startup) and do **not** set `VLLM_SSM_CONV_STATE_LAYOUT=DS` (asserts under MTP + align).
+Automatic prefix caching reuses a shared prompt prefix across requests so only the new suffix is prefilled, a large time-to-first-token drop when many requests share a system prompt or document. On this **GDN hybrid you must pass both flags**: hybrid models default their prefix-caching support flag off ("experimental"), so vLLM **silently disables** prefix caching unless `--enable-prefix-caching` is given, and `--mamba-cache-mode align` is what makes the linear-attention (GDN) layers cacheable by snapshotting and restoring their conv + recurrent state at block boundaries. That restore is **verified bit-identical to a full recompute** (including under MTP), so outputs are unchanged; the win is purely latency (measured ~3.6x in the original qualification and 12.8x for a 32K shared prefix in the MXFP4+DFlash production profile). Trade-offs: align reconciles the mamba and attention page sizes, which raises the attention block size to 1664 tokens and adds one state block per linear-attention layer (slightly lower max concurrency at full context), and prefix hits land on 1664-token boundaries. Do **not** use `--mamba-cache-mode all` (unsupported by this model, raises at startup) and do **not** set `VLLM_SSM_CONV_STATE_LAYOUT=DS` (asserts under MTP + align).
 
 Tool-calling and reasoning:
 

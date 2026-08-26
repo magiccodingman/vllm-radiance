@@ -10,7 +10,7 @@ FP8 GEMM and speculative-decoding paths.
 
 > **Status: experimental.** The fork pins the exact vLLM v0.27.1 tag commit and a qualified AMD
 > ROCm compiler stack; see [docs/UPGRADE_PROGRESS.md](docs/UPGRADE_PROGRESS.md) and
-> [docs/LIBR4D_BETTERBENCH.md](docs/LIBR4D_BETTERBENCH.md). The Docker image is published at
+> [docs/RADIANCE_093_R4D050_MXFP4.md](docs/RADIANCE_093_R4D050_MXFP4.md). The Docker image is published at
 > [magiccodingman/vllm-radiance](https://hub.docker.com/r/magiccodingman/vllm-radiance).
 > The current regression models are **Qwen3.8-27B FP8** and AMD's Quark **Qwen3.8-27B MXFP4**.
 > Earlier Radiance work was measured on
@@ -41,8 +41,8 @@ That single command builds everything from source, in four stages. **builder** c
 torchvision, AITER, and vLLM for `PYTORCH_ROCM_ARCH=gfx1201` against the official `rocm/dev-ubuntu-24.04`
 base (digest-pinned) and leaves the wheels in `/wheels` (it also builds `rocm-bandwidth-test` for the startup
 sweep). **rocmprune** (`prune_rocm.sh`) cuts the 19 GB ROCm tree down to this one GPU architecture.
-**assemble** installs the wheels, applies the guarded RDNA4 patches, and builds the exact post-v0.4.0 libr4d
-commit containing the MXFP4 GDN exponent guards
+**assemble** installs the wheels, applies the guarded RDNA4 patches, and builds the exact libr4d v0.5.0
+commit containing the MXFP4, DFlash2, and GDN kernels
 with the image's own `hipcc`. **final** is the release image: a clean `ubuntu:24.04` that receives only the pruned ROCm tree, the
 venv, and the entrypoint, so neither the build toolchain nor the wheels ever reach the published image. No
 prebuilt component wheels, no rotating wheel indexes, and no checked-in binaries go into the image. It is a
@@ -54,9 +54,9 @@ the compiler stack:
 
 ```bash
 docker build -f Dockerfile.patch \
-  --build-arg BASE_IMAGE=vllm-radiance:0.8.0-dev.vllm0.27.1-r4d0.4.0-mxfp4.dflash2.fusedsplitk \
-  --build-arg RADIANCE_VERSION=0.8.0-dev.patch \
-  -t vllm-radiance:0.8.0-dev.patch .
+  --build-arg BASE_IMAGE=vllm-radiance:0.9.3-dev.vllm0.27.1-r4d0.5.0-mxfp4.dflash2 \
+  --build-arg RADIANCE_VERSION=0.9.3-dev.patch \
+  -t vllm-radiance:0.9.3-dev.patch .
 ```
 
 The overlay reruns every source-drift guard and import check and rebuilds the
@@ -103,10 +103,11 @@ The public Compose contains no machine-local paths or group IDs. Its portable
 fallbacks are `./models`, `./vllm-cache`, `/models/model`, and the published
 `magiccodingman/vllm-radiance:latest` image. The tuned starting envelope uses
 native FP8 weights, mandatory FP8 KV, TP2, a 16K maximum length, an eight-request
-admission ceiling, and 85% GPU allocation. Speculative decoding remains
-disabled for the correctness-qualified baseline. Runtime and capacity settings,
-including speculative decoding, can be overridden in `.env` without editing the
-public file.
+admission ceiling, 85% GPU allocation, and automatic prefix caching with hybrid
+GDN state alignment. Speculative decoding remains disabled for the
+correctness-qualified baseline. Runtime and capacity settings, including
+speculative decoding, can be overridden in `.env` without editing the public
+file.
 
 ### Optional Quark MXFP4 / native W4A8 target
 
@@ -118,7 +119,7 @@ WEIGHT_QUANTIZATION=auto
 RADIANCE_MXFP4=1
 RADIANCE_MXFP4_W4A8=1
 RADIANCE_MXFP4_W4A8_MIN_M=0
-RADIANCE_MXFP4_DECODE_MAX_M=48
+RADIANCE_MXFP4_DECODE_MAX_M=64
 RADIANCE_MXFP4_TN4_MIN_M=2048
 # MTP only: this checkpoint stores its embedded MTP tensors in BF16.
 RADIANCE_QUARK_BF16_MTP=1
@@ -134,7 +135,7 @@ emulation.
 
 Keep `RADIANCE_MXFP4_W4A8_MIN_M=0`: the generic AITER W4A4 fallback is numerically
 wrong for the Qwen GDN `N=5120,K=3072` projection. The decode-shaped kernel handles
-`M<=48`; the prefill kernel handles larger batches and selects its wider N tile from
+`M<=64`; the prefill kernel handles larger batches and selects its wider N tile from
 `M>=2048`. Mandatory FP8 KV and the normal R4D attention/GDN/all-reduce paths remain
 active. The AMD checkpoint also contains a one-layer BF16 MTP head. Its Quark
 metadata does not exclude those unpacked tensors from the global FP4 recipe, so
@@ -143,6 +144,35 @@ DFlash2 still requires a compatible separate drafter and its own qualification.
 
 The implementation, provenance, safety constraints, and exact benchmark run IDs
 are recorded in [docs/MXFP4_W4A8_R9700.md](docs/MXFP4_W4A8_R9700.md).
+
+For a measured long-context MXFP4 deployment on two 32 GiB R9700s, this profile
+completed four simultaneous 128K requests while retaining automatic prefix
+caching:
+
+```dotenv
+MODEL_PATH=/models/Qwen3.8-27B-Quark-AWQ-MXFP4-amd
+GPU_UTIL=0.90
+MAX_MODEL_LEN=131072
+MAX_NUM_SEQS=4
+WEIGHT_QUANTIZATION=auto
+RADIANCE_MXFP4=1
+RADIANCE_MXFP4_W4A8=1
+RADIANCE_MXFP4_W4A8_MIN_M=0
+RADIANCE_MXFP4_DECODE_MAX_M=64
+RADIANCE_MXFP4_TN4_MIN_M=2048
+PREFIX_CACHING_FLAG=--enable-prefix-caching
+MAMBA_CACHE_MODE=align
+VLLM_USE_V2_MODEL_RUNNER=1
+RADIANCE_COMPILATION_CONFIG='{"cudagraph_mode":"PIECEWISE"}'
+RADIANCE_FAST_DRAFT=1
+RADIANCE_SPECULATIVE_CONFIG='{"method":"dflash","model":"/models/Qwen3.8-27B-DFlash2-FP8-tcclaviger","num_speculative_tokens":5,"draft_tensor_parallel_size":2,"attention_backend":"TRITON_ATTN","max_model_len":131072,"disable_padded_drafter_batch":true}'
+```
+
+The engine exposed 576,001 GPU KV tokens (4.39 fully populated 128K
+requests). The full-context C4 pressure run completed without OOM or
+preemption and retained 5.17 GiB minimum physical headroom per GPU. Treat the
+paths above as examples inside the `/models` mount; host paths belong only in a
+private `.env` or developer overlay.
 
 The default server preserves the checkpoint's full language-and-vision
 capability; deployments that intentionally want text-only execution may add
@@ -167,11 +197,12 @@ either one speculative method or be unset. They are not cumulative.
 |---|---|---|---|
 | Qualified non-spec | unset | no | none |
 | Fast MTP | `"method":"mtp"` | no; head is in the target | `RADIANCE_FAST_DRAFT=1` |
-| Experimental DFlash2 | `"method":"dflash"` | yes | V2 runner, `PIECEWISE`, 8K, draft TP2, and the prefix-cache controls below |
+| Experimental DFlash2 | `"method":"dflash"` | yes | V2 runner, `PIECEWISE`, matched context, draft TP2; optional `RADIANCE_FAST_DRAFT=1` |
 
-To switch from MTP to DFlash2, replace—not append—the speculative JSON, remove
-`RADIANCE_FAST_DRAFT=1`, and add the DFlash2-only variables in the DFlash2 block
-below. To switch from DFlash2 to MTP, delete
+To switch from MTP to DFlash2, replace—not append—the speculative JSON and add
+the DFlash2-only variables in the block below. In 0.9.3,
+`RADIANCE_FAST_DRAFT=1` accelerates both MTP and DFlash and may remain enabled
+after the target/drafter pair passes its gate. To switch from DFlash2 to MTP, delete
 `VLLM_USE_V2_MODEL_RUNNER`, `RADIANCE_COMPILATION_CONFIG`,
 `PREFIX_CACHING_FLAG`, and `MAMBA_CACHE_MODE`, restore the desired
 `MAX_MODEL_LEN` (16K is the portable baseline), replace the speculative JSON
@@ -214,15 +245,16 @@ The measured high-throughput DFlash2 K7 profile is also selectable entirely
 from `.env`. Place the selective-FP8 drafter beneath the mounted `MODELS`
 directory (Hugging Face repository
 `magiccodingman/Qwen3.8-27B-heretic-ara-DFlash2-fp8`), adjust its in-container
-path if necessary, and use:
+path if necessary, and use the deployment-oriented cache settings below:
 
 ```dotenv
 MAX_MODEL_LEN=8192
-PREFIX_CACHING_FLAG=--no-enable-prefix-caching
-MAMBA_CACHE_MODE=none
+PREFIX_CACHING_FLAG=--enable-prefix-caching
+MAMBA_CACHE_MODE=align
 VLLM_USE_V2_MODEL_RUNNER=1
 RADIANCE_COMPILATION_CONFIG='{"cudagraph_mode":"PIECEWISE"}'
-RADIANCE_SPECULATIVE_CONFIG='{"method":"dflash","model":"/models/Qwen3.8-27B-heretic-ara-DFlash2-fp8-magiccodingman","num_speculative_tokens":7,"draft_tensor_parallel_size":2,"attention_backend":"TRITON_ATTN","max_model_len":8192}'
+RADIANCE_FAST_DRAFT=1
+RADIANCE_SPECULATIVE_CONFIG='{"method":"dflash","model":"/models/Qwen3.8-27B-heretic-ara-DFlash2-fp8-magiccodingman","num_speculative_tokens":7,"draft_tensor_parallel_size":2,"attention_backend":"TRITON_ATTN","max_model_len":8192,"disable_padded_drafter_batch":true}'
 ```
 
 For the AMD Quark MXFP4 target, use the target-matched
@@ -231,14 +263,23 @@ its mounted path in the same JSON. This checkpoint uses block-FP8 QKV weights;
 the image's DFlash2 backport applies their scales when constructing the fused
 context-K/V projection while leaving normal draft execution quantized.
 
-This selects the V2-compatible runner, the measured `PIECEWISE` graph mode,
+`RADIANCE_FAST_DRAFT=1` now applies DeadCode's runtime W4 draft-linear path and
+INT2 exact-rerank head to DFlash as well as MTP. The entrypoint gives the fast
+draft its own persistent vLLM/Inductor graph-cache namespace so an ordinary
+draft graph cannot be reused with packed weights. This selects the
+V2-compatible runner, the measured `PIECEWISE` graph mode,
 TP2 draft sharding, and `TRITON_ATTN` for the drafter while retaining R4D for
-the target. Prefix caching is disabled here to match the published BetterBench
-contract. On the original ARA FP8 target, K7 was the measured c1/c2/c4/c8
-winner. On the AMD Quark MXFP4 target below, K7 wins weighted single stream and
-c1-c4, while K5 is decisively faster at c8. DFlash2 is experimental and failed
-the strict cross-mode gate, so either profile is intentionally an explicit
-alternative rather than the default.
+the target. Prefix caching remains enabled for production because repeated
+system/RAG/agent histories benefit enormously. The published BetterBench lanes
+explicitly disabled it only to enforce cold, nonce-disjoint prompts; set
+`PREFIX_CACHING_FLAG=--no-enable-prefix-caching` and `MAMBA_CACHE_MODE=none`
+only when reproducing that benchmark contract or deliberately trading repeated-
+prefix latency for the largest possible context envelope. On the original ARA
+FP8 target, K7 was the measured c1/c2/c4/c8 winner. On the AMD Quark MXFP4
+target below, K7 wins weighted single stream and c1-c4, while K5 is decisively
+faster at c8. DFlash2 is experimental and failed the strict cross-mode gate, so
+either profile is intentionally an explicit alternative rather than the
+default.
 
 For source development, copy `docker-compose.dev.example.yml` to
 `docker-compose.dev.yml` and layer it explicitly:
@@ -254,10 +295,20 @@ ever force-added, preventing local paths and image tags from reaching a release.
 ### Context and concurrency capacity
 
 `MAX_NUM_SEQS` is an admission ceiling, not a guarantee that every admitted
-request can remain fully resident at `MAX_MODEL_LEN`. The following conservative
-pairs were measured on two 32 GiB R9700s with the native-FP8 Qwen3.8-27B target,
-FP8 KV, the 2.34 GiB selective-FP8 DFlash2 K5 drafter, TP2 `PIECEWISE` graphs,
-85% GPU allocation, and no CPU/KV offload:
+request can remain fully resident at `MAX_MODEL_LEN`. Prefix caching uses the
+same evictable GPU block pool as active KV; on Qwen's hybrid GDN, `align` mode
+also retains restorable convolution/recurrent state and reconciles page sizes.
+It can therefore reduce the absolute maximum context slightly while removing
+most repeated-prefill work. `PIECEWISE` graphs also consume a bounded memory
+reservation. The tables below keep those tradeoffs explicit instead of mixing
+unlike profiles.
+
+#### Native-FP8 target: cold-capacity profile
+
+These conservative pairs were measured on two 32 GiB R9700s with the 28.75 GiB
+native-FP8 Qwen3.8-27B target, FP8 KV, the 2.34 GiB selective-FP8 DFlash2 K5
+drafter, TP2 `PIECEWISE` graphs, 85% GPU allocation, no CPU/KV offload, and
+prefix caching disabled for the capacity laboratory:
 
 | Maximum context per request | Suggested `MAX_NUM_SEQS` | Validated simultaneous submissions |
 |---:|---:|---:|
@@ -276,6 +327,41 @@ different graph modes, or a different drafter need their own capacity check.
 DFlash2 itself remains experimental because strict greedy equivalence has not
 qualified; the table proves memory/serving capacity, not losslessness. See
 [docs/COMPOSE_CAPACITY.md](docs/COMPOSE_CAPACITY.md) for exact runs and method.
+
+#### Quark MXFP4/W4A8 target: measured capacity
+
+AMD's MXFP4 target safetensors are 18.44 GiB versus 28.75 GiB for the native-FP8
+regression target—a 10.31 GiB / 35.9% smaller target payload. With the 1.97 GiB
+target-matched DFlash2 drafter, FP8 KV, TP2 `PIECEWISE` graphs, 90% GPU
+allocation, and no offload, the prefix-disabled high-capacity sweep completed:
+
+| Maximum context per request | Conservative production C | Highest completed burst |
+|---:|---:|---:|
+| 32K | 8 | 11 |
+| 64K | 6 | 7 |
+| 128K | 4 | 4 |
+| 256K | 2 | 2 |
+
+The conservative column deliberately stays below the observed boundary at
+32K/64K. Every request completed without OOM; minimum physical headroom was
+5.06 GiB per GPU. The 256K/C2 profile is valid, but setting
+`MAX_NUM_SEQS=4` beside a 256K ceiling does **not** create room for four full
+256K requests—it merely allows four shorter requests to be admitted and may
+queue or preempt as they grow.
+
+For repeated agent/RAG/chat workloads, the recommended profile is prefix caching
+enabled, `MAMBA_CACHE_MODE=align`, `MAX_MODEL_LEN=131072`, and
+`MAX_NUM_SEQS=4`. That exact MXFP4+DFlash K5 configuration reported 576,001 KV
+tokens / 4.39x 128K capacity and completed a disjoint four-request 128K pressure
+run with zero failures, OOMs, or preemptions and 5.17 GiB minimum physical
+headroom. A 32K shared-prefix probe reduced TTFT from 9.04 seconds cold to
+0.70-0.71 seconds warm (12.8x), reused 93.7% of the prompt, and produced
+byte-identical sequential cold/warm outputs. Subsequent live agent turns reused
+96.2% of newly queried prefix tokens.
+
+The public Compose already defaults to `--enable-prefix-caching` plus
+`--mamba-cache-mode=align`. Disable those only for a cold-cache benchmark or a
+deliberate maximum-context experiment, then requalify the chosen envelope.
 
 To serve the fine-grained-MoE **Qwen3.6-35B-A3B-FP8**, point it
 at that model and keep the batch-token budget at **≥ 2240** (align mode
@@ -304,6 +390,22 @@ knob list (kernel toggles, draft controller, AITER routing, …) is in
 
 ## Measured performance
 
+The headline FP8-versus-MXFP4 operating points are summarized here. These are
+two separately published target checkpoints with their matching drafters, not a
+bit-identical quantization A/B, so the table describes deployable capability
+rather than attributing every delta to weight format alone:
+
+| Target | Target payload | Weighted non-spec | Weighted DFlash K5 | DFlash K5 c1 / c4 / c8 | Long-context capacity checkpoint |
+|---|---:|---:|---:|---:|---|
+| Native FP8 Qwen3.8-27B | 28.75 GiB | 35.8 TPS | 99.4 TPS | 93.3 / 293.6 / 451.6 TPS | 128K C2, APC off, 85% GPU |
+| AMD Quark MXFP4/W4A8 Qwen3.8-27B | 18.44 GiB | 43.6 TPS | 136.2 TPS | 123.0 / 343.0 / 435.7 TPS | 128K C4, APC+align on, 90% GPU |
+
+The MXFP4 production checkpoint also measured 355.8 output TPS at C4 on a
+disjoint 512-input/512-output serving control while retaining the 128K/C4
+envelope. Full-context output TPS is intentionally much lower because it
+includes four enormous cold prefills; use the BetterBench decode numbers above
+for generation throughput and the capacity section for residency.
+
 BetterBench v0.2.2 (`575cc3925bac922d6ad4a39e62502673799979d9`) used its v1 corpus,
 10 measured passes per category, greedy decoding, cold nonce-prefixed prompts,
 and c1/c2/c4/c8 on two R9700s. All fork lanes used the same native-FP8 target,
@@ -326,7 +428,44 @@ does not turn a failed strict gate into a pass. Exact run IDs and the external
 DeadCode 0.7.4 comparison are in
 [docs/LIBR4D_BETTERBENCH.md](docs/LIBR4D_BETTERBENCH.md).
 
-### Quark MXFP4/W4A8 on dual R9700
+### Quark MXFP4/W4A8 on dual R9700 — Radiance 0.9.3 / libr4d 0.5.0
+
+The current 0.9.3 lane adds libr4d 0.5.0's DFlash kernels, runtime W4 draft
+quantization, the INT2 exact-rerank head, and the M<=64 MXFP4 decode kernel.
+Under the same BetterBench v0.2.2 standard contract, the publication results
+are:
+
+| Category | Non-spec | Fast MTP K4 | Fast DFlash K5 | Fast DFlash K7 |
+|---|---:|---:|---:|---:|
+| Chat | 43.7 | 86.7 | **97.4** | 95.6 |
+| Code | 43.5 | 99.1 | 141.4 | **142.3** |
+| File edit | 43.6 | 120.5 | 143.4 | **176.2** |
+| JSON | 43.6 | 130.0 | 170.1 | **191.1** |
+| Math | 43.5 | 116.8 | 167.4 | **193.1** |
+| Prose | 43.6 | 78.7 | **106.0** | 94.1 |
+| Reasoning | 43.6 | 85.6 | 113.3 | **121.3** |
+| Summarization | 43.6 | 119.3 | 156.8 | **171.1** |
+| **Weighted** | **43.6** | **102.3** | **136.2** | **145.4** |
+
+| Mode | c1 | c2 | c4 | c8 | TTFT p50 | Minimum headroom/GPU |
+|---|---:|---:|---:|---:|---:|---:|
+| Non-spec | 43.2 | 83.1 | 145.7 | 241.3 | 72 ms | 4.9 GiB |
+| Fast MTP K4 | 97.8 | 173.1 | 284.5 | 372.1 | 82 ms | 6.0 GiB |
+| Fast DFlash K5 | 123.0 | 216.4 | 343.0 | **435.7** | 74 ms | 5.2 GiB |
+| Fast DFlash K7 | **132.4** | **234.6** | **343.3** | 416.9 | 73 ms | 5.3 GiB |
+
+K7 is the general recommendation: it is 3.33x matched non-spec and 42.1%
+faster than MTP by weighted decode, and wins most quality-sensitive categories.
+K5 remains useful for a
+steady C8-heavy deployment, where it was 4.5% faster. Moving the fused small-M
+MXFP4 boundary from 48 to 64 produced a direct 10.4% C8 gain. The K7 candidate
+also passed 30/30 required multi-tool schema calls and the 8K C1/C2 context
+gate, but strict speculative/non-spec greedy equivalence remains failed (1/8
+exact). DFlash therefore remains experimental and opt-in. Exact pins, telemetry,
+negative results, and immutable run IDs are in
+[docs/RADIANCE_093_R4D050_MXFP4.md](docs/RADIANCE_093_R4D050_MXFP4.md).
+
+### Earlier MXFP4 integration reference
 
 The same BetterBench standard contract was rerun with
 `amd/Qwen3.8-27B-Quark-AWQ-MXFP4`, the native gfx1201 W4A8 kernel, mandatory
@@ -373,9 +512,9 @@ Everything below is baked into the image; the tuned paths are env-gated and on b
   an attention LDS fit that shrinks the staged K/V tile into the R9700's 64 KiB shared memory for any head
   size and KV dtype (AITER sizes it for a larger LDS; without this, 2-byte KV at head 256 and fp8 KV at
   head 512 both abort at CUDA-graph capture).
-- **libr4d 0.4.0 kernels**: R4D attention for prefill/decode, all-R4D gated-delta-net prefill/decode/spec
+- **libr4d 0.5.0 kernels**: R4D attention for prefill/decode, all-R4D gated-delta-net prefill/decode/spec
   state handling, a head-dim-72 vision flash kernel, exact TP2 all-reduce, rotated six-bit compressed
-  all-reduce, and the router GEMM. The startup report proves every expected kernel resolves; measured AITER,
+  all-reduce, BF16/DFlash GEMMs, and DFlash-specific kernels. The startup report proves every expected kernel resolves; measured AITER,
   FLA, and Triton paths remain available as per-operator fallbacks and controls.
 - **Radiance FP8 target paths**: preshuffled block-FP8 GEMM selection, split-K alignment fixes, fused
   RMSNorm+quant, and guarded fallback dispatch. These remain because matched controls showed the generic
@@ -390,18 +529,21 @@ Everything below is baked into the image; the tuned paths are env-gated and on b
   removes the stock config's `M>=96` cliff for a lower prefill TTFT, lossless), plus a custom bf16 MoE-gate
   GEMM (`RADIANCE_MOE_ROUTER`) for the `n` in `[6,16]` band that rocBLAS serves poorly. Both inert on
   models they do not apply to.
-- **Dynamic MTP drafting**: a per-request confidence gate plus verbatim n-gram tail, with an opt-in
-  `RADIANCE_FAST_DRAFT=1` INT2-g128 copy of the MTP head followed by exact top-32 reranking. Target
+- **Fast speculative drafting**: MTP retains its per-request confidence gate plus verbatim n-gram tail;
+  `RADIANCE_FAST_DRAFT=1` provides an INT2-g128 head with exact top-32 reranking for MTP and DFlash,
+  plus runtime W4 quantization of eligible DFlash draft linears. Target
   verification remains in place, but this fork does not label the full speculative runner byte-equivalent
   while its strict cross-mode gate is failing.
 - **Experimental DFlash2** selectively backported onto stable vLLM v0.27.1: Qwen3.8 local-convolution and
   candidate-selector support, scaled context-K/V materialization for block-FP8 draft QKV weights, TP2
-  draft sharding, and piecewise graph execution. It stays explicit-only pending strict output qualification.
+  draft sharding, piecewise graph execution, and libr4d v0.5.0 fast-draft kernels. It stays explicit-only
+  pending strict output qualification.
 - **Prefix caching that works on the GDN hybrid** (enabled in the compose): hybrid models leave automatic
   prefix caching off by default, so it is turned on explicitly with `--enable-prefix-caching
   --mamba-cache-mode=align`. Align mode snapshots and restores the linear-attention (GDN) recurrent state at
   block boundaries (verified bit-identical to full recompute, including under MTP), giving a large TTFT drop
-  on shared prefixes (system prompts, RAG, agentic context).
+  on shared prefixes (system prompts, RAG, agentic context): 3.6x in the original qualification and 12.8x
+  for a 32K shared prefix in the MXFP4+DFlash production profile.
 - **Startup topology + bandwidth sweep** (`RADIANCE_RUN_BWTEST`, on by default): device list, P2P access
   matrix, NUMA distances, and peak uni/bidirectional copy bandwidth per agent pair, from a
   `rocm-bandwidth-test` compiled into the image. Backgrounded and about a second, so it never delays the

@@ -10,6 +10,19 @@ case "${1:-}" in
   -h|--help|--version|--help-all) exec vllm serve "$@" ;;
 esac
 
+# RADIANCE_FAST_DRAFT replaces several ordinary Linear weights with packed tensors at load time.
+# vLLM's persistent AOT cache key does not include this Radiance environment flag, so reusing a
+# graph compiled with FAST_DRAFT=0 can restore shape guards for the unpacked 2-D weights and then
+# fail against the packed representation (for example, "wrong number of dimensions" during the
+# DFlash profile run). Keep the two graph populations in separate namespaces. This preserves both
+# caches across restarts while making toggling the opt-in feature safe. Advanced users can disable
+# the automatic suffix only when they provide already-isolated cache roots themselves.
+if [ "${RADIANCE_FAST_DRAFT:-0}" = "1" ] \
+    && [ "${RADIANCE_FAST_DRAFT_CACHE_NAMESPACE:-1}" != "0" ]; then
+  export VLLM_CACHE_ROOT="${VLLM_CACHE_ROOT:-/root/.cache/vllm}/radiance-fast-draft"
+  export TORCHINDUCTOR_CACHE_DIR="${TORCHINDUCTOR_CACHE_DIR:-/tmp/torchinductor}/radiance-fast-draft"
+fi
+
 # ------------------------------------------------------------------ NUMA binding
 # Optional: pin the whole vLLM fleet to the NUMA node(s) local to the visible GPUs. vLLM's
 # TP workers inherit the parent's CPU-affinity mask + NUMA memory policy, so wrapping the

@@ -49,12 +49,11 @@ ARG VLLM_VERSION=0.27.1
 # has a plain CMakeLists: the rocm-7.x tags moved to a cmake framework that demands clang>=19 on PATH
 # plus vendored boost/fmt/curl submodules, none of which this tool needs.
 ARG RBT_VERSION=rocm-6.4.4
-# Hand-written gfx1201 kernels. The post-v0.4.0 commit contains the GDN
-# exponent-overflow guards required by MXFP4/W4A8 activations. The extension
-# still reports 0.4.0 because upstream has not tagged those fixes yet.
+# Hand-written gfx1201 kernels. v0.5.0 retains the MXFP4 GDN overflow guards
+# and adds the DFlash convolution plus BF16/W4A16/W4A8 decode kernels.
 ARG R4D_REPO=https://codeberg.org/StillDeadcode/libr4d.git
-ARG R4D_VERSION=v0.4.0
-ARG R4D_COMMIT=b9e42ab7202f53a3bc13d415f5d41481f9ca311b
+ARG R4D_VERSION=v0.5.0
+ARG R4D_COMMIT=e8de4bc1f3dbd608dcb8d3ffceb6b48acdf83bb7
 
 # =====================================================================================
 # STAGE 1 builder: compile the stack from source into /wheels
@@ -240,7 +239,7 @@ ENV ROCM_PATH=/opt/rocm HIP_PATH=/opt/rocm HIP_PLATFORM=amd \
 # every process, otherwise it enumerates 0 devices and platform detection fails.
 COPY radiance_amdsmi.py radiance_amdsmi.pth \
      radiance_kernels.py radiance_vit_attn.py radiance_allreduce.py \
-     radiance_draft.py radiance_draft_gpu.py radiance_drafthead.py radiance_router.py \
+     radiance_draft.py radiance_draft_gpu.py radiance_drafthead.py radiance_gemm.py radiance_w4.py \
      radiance_r4d_attn.py radiance_gdn.py radiance_mxfp4.py ${SP}/
 COPY fp8-configs/ ${SP}/vllm/model_executor/layers/quantization/utils/configs/
 COPY moe-configs/ ${SP}/vllm/model_executor/layers/fused_moe/configs/
@@ -254,10 +253,11 @@ COPY mxfp4-configs/ ${SP}/aiter/ops/triton/configs/gemm/
 # gram cast is handled in 0.26.0 upstream.
 COPY patch_*.py install_radiance_hooks.py _patchlib.py /opt/patches/
 RUN set -eu; cd /opt/patches; \
-    for p in patch_gfx1201 patch_radiance_dispatch patch_router_gemm patch_unified_attention_lds \
+    for p in patch_gfx1201 patch_radiance_dispatch patch_skinny_gemm patch_unified_attention_lds \
              patch_gdn_wmma patch_gdn_aiter_prefill patch_preshuffle install_radiance_hooks \
              patch_unpad patch_mtp_mm_mask patch_mtp_loopbreak patch_qwen3_toolparse patch_from_json_filter \
-             patch_dynamo_metrics patch_conv1d_blockn patch_r4d patch_dflash2_v0271_backport \
+             patch_dynamo_metrics patch_conv1d_blockn patch_r4d patch_dflash_base patch_dflash2_v0271_backport \
+             patch_dflash_fused_kv_fp8 patch_dflash_w4 patch_gdn_metadata patch_topk_triton_rows \
              patch_quark_mxfp4 patch_quark_bf16_mtp patch_ar_maxbytes; do \
       echo "== applying $p =="; python "$p.py"; \
     done; \
@@ -340,8 +340,9 @@ ENV VIRTUAL_ENV=/opt/vllm \
 # gfx1201 library. The AITER attention/GDN knobs remain available as measured fallbacks. ---
 ENV RADIANCE_USE_R4D=1 RADIANCE_USE_R4D_GDN=1 RADIANCE_R4D_REPORT=1 \
     RADIANCE_USE_R4D_AR=1 RADIANCE_USE_R4D_AR_QUANT=1 \
+    RADIANCE_SKINNY_GEMM=1 RADIANCE_GDN_META=1 RADIANCE_TOPK_TRITON_MIN_ROWS=1 \
     RADIANCE_MXFP4=0 RADIANCE_MXFP4_W4A8=0 RADIANCE_MXFP4_W4A8_MIN_M=0 RADIANCE_QUARK_BF16_MTP=0 \
-    RADIANCE_MXFP4_DECODE_MAX_M=48 RADIANCE_MXFP4_TN4_MIN_M=2048 \
+    RADIANCE_MXFP4_DECODE_MAX_M=64 RADIANCE_MXFP4_TN4_MIN_M=2048 \
     RADIANCE_PRESHUFFLE=1 RADIANCE_ATTN_TUNE=1 RADIANCE_FUSE_RMS_QUANT=1 \
     RADIANCE_DYNAMIC_DRAFT=1 RADIANCE_DRAFT_SCHEDULE=1:8,2:7,4:6,8:5,16:4 RADIANCE_DRAFT_TAU=0.28 \
     RADIANCE_FAST_DRAFT=0 RADIANCE_RUN_BWTEST=1
@@ -391,7 +392,7 @@ RUN printf '%s\n' \
  && rm -f /tmp/_jit_probe.hip /tmp/_jit_probe.so \
  && echo "runtime JIT toolchain OK (hipcc + libstdc++ headers + Python.h + pybind11)"
 
-ARG RADIANCE_VERSION=0.8.0-dev.vllm0.27.1-r4d0.4.0-mxfp4.dflash2.fusedsplitk
+ARG RADIANCE_VERSION=0.9.3-dev.vllm0.27.1-r4d0.5.0-mxfp4.dflash2
 ENV RADIANCE_VERSION=${RADIANCE_VERSION}
 COPY VERSION /opt/radiance_version
 COPY radiance_preamble.py /opt/radiance_preamble.py
