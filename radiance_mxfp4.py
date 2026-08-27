@@ -218,6 +218,9 @@ PERBLOCK_NK = {tuple(int(x) for x in pair.split(":")) for pair in _pb.split(",")
 # situ" from "something outside this op is wrong": if the model is coherent with this on, the op's
 # wiring is fine and only the kernel output differs; if it is still garbage, the fault is elsewhere.
 REF_LINEAR = os.environ.get("RADIANCE_MXFP4_REFLINEAR", "0") == "1"
+# Report every distinct (N, K, M) once, to see which M the production decode path actually
+# issues. Diagnostic only; off by default and free when off.
+MHIST = os.environ.get("RADIANCE_MXFP4_MHIST", "0") == "1"
 _E2M1 = None
 _dbg_seen = set()
 
@@ -404,6 +407,17 @@ def mxfp4_linear(x: torch.Tensor, weight: torch.Tensor, weight_scale: torch.Tens
                     weight_ref.data_ptr() if folded else 0,
                     x_scale.data_ptr(), out.data_ptr(), M, N, K,
                     torch.cuda.current_stream().cuda_stream)
+    # Diagnostic: report each (N, K, M) the dispatcher sees, once. The decode kernel is capped at
+    # M<=64 and a dflash drafter at SPEC=7 is supposed to reach exactly 8 x 8 = 64, so whether any
+    # production call lands ABOVE that cap decides whether the decode kernel runs at all at full
+    # batch. CHECK_ALL's own reporting cannot answer this: it prints per SHAPE, at call 1 and 64,
+    # so whichever M those two calls happened to carry is all you see.
+    if MHIST:
+        _mk = ("m", N, K, M)
+        if _mk not in _dbg_seen:
+            _dbg_seen.add(_mk)
+            sys.stderr.write(f"[radiance.mxfp4.mhist] N={N} K={K} M={M} "
+                             f"decode_kernel={'yes' if 0 < M <= DECODE_MAX_M else 'NO'}\n")
     # CHECK_MAX_M narrows the gate to a band. Without it the profile run's large-M calls use
     # up the per-shape reporting budget and the decode band is never checked at all, which
     # is exactly the band a decode kernel has to be right in.

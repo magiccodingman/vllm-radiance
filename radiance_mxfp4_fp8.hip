@@ -466,7 +466,7 @@ __global__ __launch_bounds__(NTHREADS) void radiance_mxfp4_fp8_gemm_folded(
 // DFlash at SPEC=7, which reaches exactly 64 at max_num_seqs=8. DTM 1..4 covers both.
 // Use the SMALLEST DTM that covers M: measured at M=20, DTM=2 beats DTM=3 by 12% (89.1 vs 99.9 us
 // on gate_up) purely because the wider tile computes rows nobody asked for.
-template <int DWN, int DBK, int DKS, int DTM, bool WPERM>
+template <int DWN, int DBK, int DKS, int DTM, bool WPERM, bool DIRECT = true>
 __global__ __launch_bounds__(DWN * 32) void radiance_mxfp4_fp8_gemm_decode(
     const unsigned char *__restrict__ A, const unsigned char *__restrict__ W,
     const unsigned char *__restrict__ Ws, const unsigned char *__restrict__ Wref,
@@ -588,6 +588,28 @@ __global__ __launch_bounds__(DWN * 32) void radiance_mxfp4_fp8_gemm_decode(
   }
 
   const int n = n0 + wave * 16 + col;
+
+  // At DKS==1 the accumulator already holds the whole K range, so the partial buffer, the
+  // threadfence, the atomic and the reduction pass are all pure overhead -- and that overhead is
+  // not small. Partial traffic is DKS*M*N floats: constant in the weight stream but LINEAR IN M,
+  // 11.1 MB against gate_up's 44.6 MB of weights at M=40 and 17.8 MB at M=64. Picking DKS by shape
+  // and by M is the launcher's job (split_k_for below); this is the path that makes DKS==1 free.
+  // Bit-identical to the DKS==1 reduction path, which summed a single term -- the DIRECT=false
+  // instantiation exists so that equivalence can be tested rather than asserted.
+  if constexpr (DKS == 1 && DIRECT) {
+    if (n < N) {
+      const float rf = __int_as_float((int)Wref[n] << 23);
+#pragma unroll
+      for (int i = 0; i < DTM; ++i)
+#pragma unroll
+        for (int e = 0; e < 8; ++e) {
+          const int m = i * 16 + kb8 + e;
+          if (m < M) C[(size_t)m * N + n] = (__bf16)(acc[i][e] * rf * As[m]);
+        }
+    }
+    return;
+  }
+
   if (n < N) {
 #pragma unroll
     for (int i = 0; i < DTM; ++i)
@@ -635,10 +657,67 @@ __global__ __launch_bounds__(DWN * 32) void radiance_mxfp4_fp8_gemm_decode(
 // pybind frame. Letting torch allocate it removes both problems and makes the buffer visible from
 // Python, where its lifetime is obvious.
 //
-// Sized KS(4) x 64 rows x N(<=32768) x 4 B = 32 MiB. Single-stream decode per rank is assumed.
+// Sized DEC_KS(4) x 64 rows x N(<=32768) x 4 B = 32 MiB, allocated in radiance_mxfp4.py. 64 rows
+// because a dflash drafter at SPEC=7 reaches M = max_num_seqs x 8 = 64. Single-stream decode per
+// rank is assumed. split_k_for() may choose a narrower split, which only shrinks the requirement.
 #define DEC_MAX_N 32768
 #define DEC_KS 4
-#define DEC_MAX_TM 4        // covers M<=64; DFlash SPEC=7 x max_num_seqs=8 reaches M=64
+#define DEC_DWN 8           // waves per decode block; the N tile is DEC_DWN*16 = 128 wide
+
+// Split-K width: the smallest split whose grid still fills the machine.
+//
+// The partial buffer costs DKS*M*N floats of write-then-read traffic -- invisible next to the
+// weight stream at M=5, dominant at M=64 (on gate_up, 17.8 MB against 44.6 MB of weights) -- and
+// the in-place reduction serialises onto whichever of the DKS blocks finishes last while the other
+// DKS-1 have exited. The benefit is grid fill: with DTM=1 the independent N-fragments number N/16,
+// so a narrow shape cannot fill the GPU without splitting K. Cost rises with M, benefit does not,
+// so the fill target the split has to clear FALLS as M rises. That is the whole rule.
+//
+// Measured cell by cell in ~/mxfp4_work/tier6 (mxks.hip, NCOPY=6 so every shape is DRAM-fed -- at
+// NCOPY=3 the 22.3 MB down weight sits in the 64 MB Infinity Cache, reads 847 GB/s, and flatters
+// whichever split reloads it least). Best DKS, us, this box:
+//
+//   shape     N      nblk   M=5  M=8  M=16 M=24 M=32 M=40 M=48 M=56 M=64
+//   gate_up   17408   136    4    4    1    1    1    1    1    1    1
+//   n8192      8192    64    4    2    2    2    2    2    2    2    2
+//   n7168      7168    56    4    2    2    2    2    2    2    2    2
+//   down       5120    40    4    4    4    4    4    4    4    2    2
+//   out        5120    40    4    4    4    4    4    4    4    2    2
+//   gate48       48     1    4    4    4    4    4    4    4    4    4
+//
+// Those six ARE the production shape list, read off a running server with RADIANCE_MXFP4_MHIST
+// rather than derived from the model config -- the config-derived guess had the fused qkv at
+// N=4096 and missed 7168 and 8192 completely, which is exactly the band where DKS=2 lives. Deriving
+// this shape list by hand got it wrong; do not do that again.
+//
+// Two further things the table says that a coarser rule gets wrong:
+//   * At M<=8 EVERY shape wants the widest split, gate_up included (96.3 us at DKS=4 against 98.0
+//     at DKS=1). That is the single-stream shape -- dflash SPEC=7 makes M = num_seqs*8 -- so a rule
+//     that reaches for DKS=1 on width alone would trade latency on the commonest call there is.
+//   * nblk=40 crosses over at M=56, but nblk=56 and nblk=64 cross over at M=8. The crossover is not
+//     a property of M alone, which is why the threshold is on nblk*ks and not on either separately.
+//
+// M in production is NOT just num_seqs*(SPEC+1): the same probe shows 1, 2, 8, 9, 13, 16, 21, 24,
+// 32, 47, 48 and 64 all reaching this kernel, plus 72 and 99 from mixed prefill+decode batches that
+// exceed DEC_MAX_TM*16 and fall through to the folded tile.
+static int split_k_for(int nblk, int M) {
+  // Cached, not a getenv per call: this runs once per decode GEMM and there are 304 of them per
+  // forward, against a 4.5 us launch gap. Same pattern as the other knobs in launch().
+  static const int forced = [] {
+    const char *e = getenv("RADIANCE_MXFP4_DECODE_KS");
+    return e ? atoi(e) : 0;
+  }();
+  if (forced) return forced;
+  // Fill target in blocks. Unreachable at M<=8, so every shape takes the widest split there.
+  const int fill = (M <= 8) ? (1 << 20) : (M <= 48) ? 110 : 78;
+  for (int ks = 1; ks < DEC_KS; ks <<= 1)
+    if (nblk * ks >= fill) return ks;
+  return DEC_KS;
+}
+#define DEC_MAX_TM 4        // covers M<=64. mtp SPEC=4 x max_num_seqs=8 reaches M=40, but a
+                            // dflash drafter drafts a whole block: at SPEC=7 M is batch x 8,
+                            // so max_num_seqs=8 reaches exactly 64. At TM=3 that call fell off
+                            // this kernel onto the BM=256 prefill tile.
 static float *g_decode_partial = nullptr;
 static size_t g_decode_partial_bytes = 0;
 static int *g_decode_cnt = nullptr;
@@ -682,35 +761,46 @@ static void launch(uintptr_t a, uintptr_t w, uintptr_t ws, uintptr_t wref, uintp
       return !e || atoi(e) != 0;
     }();
     dim3 fblock(NTHREADS);
+    constexpr int DWN = DEC_DWN, DBK = 128;      // tuned: ~/mxfp4_work/tier5/RESULTS.md
+    constexpr int DBND = DWN * 16;
+    const int dec_nblk = (N + DBND - 1) / DBND;
+    const int dks = split_k_for(dec_nblk, M);
+    // DKS==1 writes C directly and needs neither the partial buffer nor the block counter;
+    // anything wider needs both. Sizing the guard by the CHOSEN ks (not the widest) also means a
+    // shape that would have overflowed the scratch at DKS=4 can still take the kernel at DKS=1.
+    const bool have_scratch = g_decode_partial && g_decode_cnt &&
+        (size_t)dks * M * N * sizeof(float) <= g_decode_partial_bytes;
     if (M > 0 && M <= decode_max_m && M <= DEC_MTILE * DEC_MAX_TM && N <= DEC_MAX_N &&
-        (size_t)DEC_KS * M * N * sizeof(float) <= g_decode_partial_bytes &&
-        g_decode_partial && g_decode_cnt) {
-      constexpr int DWN = 8, DBK = 128, DKS = DEC_KS;  // tuned: ~/mxfp4_work/tier5/RESULTS.md
-      constexpr int DBND = DWN * 16;
+        (dks == 1 || have_scratch)) {
       float *P = g_decode_partial;
-      const dim3 dgrid((N + DBND - 1) / DBND, 1, DKS), dblock(DWN * 32);
+      const dim3 dblock(DWN * 32);
       const int tm = (M + DEC_MTILE - 1) / DEC_MTILE;   // smallest tile that covers M
-#define RAD_DEC_LAUNCH(TM_)                                                                   \
-      hipLaunchKernelGGL((radiance_mxfp4_fp8_gemm_decode<DWN, DBK, DKS, TM_, RAD_WPERM>),      \
-                         dgrid, dblock,                                                        \
+#define RAD_DEC_LAUNCH(KS_, TM_)                                                              \
+      hipLaunchKernelGGL((radiance_mxfp4_fp8_gemm_decode<DWN, DBK, KS_, TM_, RAD_WPERM>),      \
+                         dim3(dec_nblk, 1, KS_), dblock,                                       \
                          0, (hipStream_t)stream, (const unsigned char *)a,                     \
                          (const unsigned char *)w, (const unsigned char *)ws,                  \
                          (const unsigned char *)wref, (const float *)as, P, g_decode_cnt,      \
                          (__bf16 *)c, M, N, K)
-#define RAD_DEC_BY_TM                                                                         \
-      if (tm == 1)      RAD_DEC_LAUNCH(1);                                                     \
-      else if (tm == 2) RAD_DEC_LAUNCH(2);                                                     \
-      else if (tm == 3) RAD_DEC_LAUNCH(3);                                                     \
-      else              RAD_DEC_LAUNCH(4)
+#define RAD_DEC_BY_TM(KS_)                                                                    \
+      if (tm == 1)      RAD_DEC_LAUNCH(KS_, 1);                                                \
+      else if (tm == 2) RAD_DEC_LAUNCH(KS_, 2);                                                \
+      else if (tm == 3) RAD_DEC_LAUNCH(KS_, 3);                                                \
+      else              RAD_DEC_LAUNCH(KS_, 4)
+#define RAD_DEC_BY_KS                                                                         \
+      if (dks <= 1)      { RAD_DEC_BY_TM(1); }                                                 \
+      else if (dks == 2) { RAD_DEC_BY_TM(2); }                                                 \
+      else               { RAD_DEC_BY_TM(4); }
       if (dec_wperm) {
 #define RAD_WPERM true
-        RAD_DEC_BY_TM;
+        RAD_DEC_BY_KS;
 #undef RAD_WPERM
       } else {
 #define RAD_WPERM false
-        RAD_DEC_BY_TM;
+        RAD_DEC_BY_KS;
 #undef RAD_WPERM
       }
+#undef RAD_DEC_BY_KS
 #undef RAD_DEC_BY_TM
 #undef RAD_DEC_LAUNCH
       return;
