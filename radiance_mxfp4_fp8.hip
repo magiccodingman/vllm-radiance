@@ -233,7 +233,7 @@ __global__ __launch_bounds__(NWAVE * 32) void radiance_mxfp4_fp8_gemm(
 // r4d_gemm_mxfp4a8_nt_m64 reads and what makes a wave's weight read 128 contiguous bytes instead
 // of sixteen rows K/2 bytes apart. Both paths produce the SAME sW tile, so everything downstream
 // of the staging loop is untouched.
-template <int TN, bool WPERM>
+template <int TN, bool WPERM, bool EPIFAST = true>
 __global__ __launch_bounds__(NTHREADS) void radiance_mxfp4_fp8_gemm_folded(
     const unsigned char *__restrict__ A, const unsigned char *__restrict__ W,
     const unsigned char *__restrict__ Ws, const unsigned char *__restrict__ Wref,
@@ -397,6 +397,39 @@ __global__ __launch_bounds__(NTHREADS) void radiance_mxfp4_fp8_gemm_folded(
   for (int j = 0; j < TN; ++j) {
     const int n = n0 + wn * TN * 16 + j * 16 + col;
     rf[j] = (n < N) ? __int_as_float((int)Wref[n] << 23) : 0.f;
+  }
+  // Epilogue addressing and predication. `C[(size_t)m * N + n]` is a full 64-bit address per
+  // element and there are TM*TN*8 of them, each in its own s_and_saveexec region from the bounds
+  // test. Measured in the ISA: 145 v_add_co_u32/v_add_co_ci pairs, 103 s_and_saveexec and 130
+  // 64-bit shifts in a kernel with 32 WMMA -- about 15% of the instruction stream spent getting
+  // to memory rather than computing.
+  //
+  // Hoisting a wave-uniform base and indexing with a 32-bit offset gets the SADDR form, so a lane
+  // pays one 32-bit add instead of a 64-bit add pair -- the same reasoning as the staging bases
+  // above. And a block lying entirely inside M and N needs no bounds test at all; on a real
+  // prefill only the last row-block and column-block are ragged. The offset cannot overflow an
+  // int: at most (kb8 + (TM-1)*16 + 7) * N + N <= 64 * 34816.
+  //
+  // BIT-IDENTICAL to the path below by construction -- same operands, same order, same rounding.
+  // It is gated that way rather than on a tolerance, because nothing here may change numerics.
+  if constexpr (EPIFAST) {
+    __bf16 *__restrict__ Cb = C + (size_t)(m0 + wm * TM * 16) * N;
+    const float *__restrict__ Asb = As + m0 + wm * TM * 16;
+    const bool full = (m0 + wm * TM * 16 + (TM - 1) * 16 + kb8 + 7 < M) &&
+                      (n0 + wn * TN * 16 + (TN - 1) * 16 + col < N);
+    if (full) {
+#pragma unroll
+      for (int i = 0; i < TM; ++i)
+#pragma unroll
+        for (int j = 0; j < TN; ++j)
+#pragma unroll
+          for (int e = 0; e < 8; ++e) {
+            const int r = i * 16 + kb8 + e;
+            const int n = n0 + wn * TN * 16 + j * 16 + col;
+            Cb[r * N + n] = (__bf16)(acc[i][j][e] * rf[j] * Asb[r]);
+          }
+      return;
+    }
   }
 #pragma unroll
   for (int i = 0; i < TM; ++i)
