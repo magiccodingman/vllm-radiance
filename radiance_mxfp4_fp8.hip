@@ -673,6 +673,14 @@ static void launch(uintptr_t a, uintptr_t w, uintptr_t ws, uintptr_t wref, uintp
       const char *e = getenv("RADIANCE_MXFP4_WPERM");
       return e && atoi(e) != 0;
     }();
+    // Epilogue fast path. Default ON (it is bit-identical and worth 7.7-8.0% at prefill shapes),
+    // but reachable so the batched-throughput A/B can be run against the SAME binary and server
+    // config -- comparing against an older BetterBench run would confound it with every other
+    // launcher knob that has changed since.
+    static const bool epifast = [] {
+      const char *e = getenv("RADIANCE_MXFP4_EPIFAST");
+      return !e || atoi(e) != 0;
+    }();
     dim3 fblock(NTHREADS);
     if (M > 0 && M <= decode_max_m && M <= DEC_MTILE * DEC_MAX_TM && N <= DEC_MAX_N &&
         (size_t)DEC_KS * M * N * sizeof(float) <= g_decode_partial_bytes &&
@@ -708,21 +716,24 @@ static void launch(uintptr_t a, uintptr_t w, uintptr_t ws, uintptr_t wref, uintp
       return;
       // no scratch (alloc failed) -- fall through to the folded kernel, never produce nothing
     }
-#define RAD_FOLDED(TN_, WP_)                                                                    \
+#define RAD_FOLDED_E(TN_, WP_, EF_)                                                             \
     do {                                                                                        \
       constexpr int B_ = BNF_OF(TN_);                                                           \
       dim3 fgrid((N + B_ - 1) / B_, (M + BMF - 1) / BMF);                                       \
-      hipLaunchKernelGGL((radiance_mxfp4_fp8_gemm_folded<TN_, WP_>), fgrid, fblock, 0,          \
+      hipLaunchKernelGGL((radiance_mxfp4_fp8_gemm_folded<TN_, WP_, EF_>), fgrid, fblock, 0,     \
                          (hipStream_t)stream, (const unsigned char *)a,                         \
                          (const unsigned char *)w, (const unsigned char *)ws,                   \
                          (const unsigned char *)wref, (const float *)as, (__bf16 *)c, M, N, K); \
     } while (0)
+#define RAD_FOLDED(TN_, WP_)                                                                    \
+    do { if (epifast) RAD_FOLDED_E(TN_, WP_, true); else RAD_FOLDED_E(TN_, WP_, false); } while (0)
     if (M >= tn4_min_m) {
       if (dec_wperm) RAD_FOLDED(4, true); else RAD_FOLDED(4, false);
     } else {
       if (dec_wperm) RAD_FOLDED(2, true); else RAD_FOLDED(2, false);
     }
 #undef RAD_FOLDED
+#undef RAD_FOLDED_E
   } else
     hipLaunchKernelGGL(radiance_mxfp4_fp8_gemm, grid, block, 0, (hipStream_t)stream,
                        (const unsigned char *)a, (const unsigned char *)w,
