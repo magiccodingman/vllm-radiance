@@ -700,6 +700,33 @@ __global__ __launch_bounds__(DWN * 32) void radiance_mxfp4_fp8_gemm_decode(
 // M in production is NOT just num_seqs*(SPEC+1): the same probe shows 1, 2, 8, 9, 13, 16, 21, 24,
 // 32, 47, 48 and 64 all reaching this kernel, plus 72 and 99 from mixed prefill+decode batches that
 // exceed DEC_MAX_TM*16 and fall through to the folded tile.
+// BK for the decode tile, keyed to DTM.
+//
+// tier5 picked BK=128 for the whole decode band, but measured it only at M<=16 (DTM=1) and against
+// a SINGLE weight buffer -- 44.6 MB of gate_up sits inside the 64 MB last-level cache, and tier5's
+// own probe read 1251 GB/s there against a 635 GB/s cold-DRAM peak. Re-measured DRAM-fed
+// (~/mxfp4_work/tier6/grid.hip), BK=128 still wins on geomean, but it loses hard at DTM=4 because
+// LDS/block is (16*DTM + DWN*16)*(DBK+8): it grows 19.6 -> 26.1 KB across DTM while BK=64 goes only
+// 10.4 -> 13.8, so at DTM=4 it is 2 resident blocks per CU against 4, occupancy 8 against 12. That
+// is the same LDS cliff that set the PREFILL tile to BK=64; it reaches decode once the batch is
+// deep enough. gate_up at M=56/64 measures 0.80x / 0.79x, reproduced across three separate stages.
+//
+// Deliberately narrow. At DTM=4 the fill rule below yields ks==1 only for gate_up, so this touches
+// exactly the one shape where the win is decisive. down and out also measure ~0.955x at BK=64, and
+// n8192/n7168/gate48 measure 1.00-1.04x -- all inside the 1-4% run-to-run spread seen between
+// sweep stages, so they keep BK=128 until that is re-measured rather than widening a rule fitted to
+// six points. Note the two axes are coupled BOTH ways: at BK=64, down and out want KS=4 where at
+// BK=128 they want KS=2, so split_k_for's high-M band is a BK=128 property, not a shape property.
+//
+// RADIANCE_MXFP4_DECODE_BK=128 pins the old behaviour; that is the A/B control.
+static bool decode_bk64(int tm, int ks) {
+  static const bool pin128 = [] {
+    const char *e = getenv("RADIANCE_MXFP4_DECODE_BK");
+    return e && atoi(e) == 128;
+  }();
+  return !pin128 && tm == 4 && ks == 1;
+}
+
 static int split_k_for(int nblk, int M) {
   // Cached, not a getenv per call: this runs once per decode GEMM and there are 304 of them per
   // forward, against a 4.5 us launch gap. Same pattern as the other knobs in launch().
@@ -761,7 +788,7 @@ static void launch(uintptr_t a, uintptr_t w, uintptr_t ws, uintptr_t wref, uintp
       return !e || atoi(e) != 0;
     }();
     dim3 fblock(NTHREADS);
-    constexpr int DWN = DEC_DWN, DBK = 128;      // tuned: ~/mxfp4_work/tier5/RESULTS.md
+    constexpr int DWN = DEC_DWN;                 // tuned: ~/mxfp4_work/tier5 + tier6/grid.hip
     constexpr int DBND = DWN * 16;
     const int dec_nblk = (N + DBND - 1) / DBND;
     const int dks = split_k_for(dec_nblk, M);
@@ -775,22 +802,23 @@ static void launch(uintptr_t a, uintptr_t w, uintptr_t ws, uintptr_t wref, uintp
       float *P = g_decode_partial;
       const dim3 dblock(DWN * 32);
       const int tm = (M + DEC_MTILE - 1) / DEC_MTILE;   // smallest tile that covers M
-#define RAD_DEC_LAUNCH(KS_, TM_)                                                              \
-      hipLaunchKernelGGL((radiance_mxfp4_fp8_gemm_decode<DWN, DBK, KS_, TM_, RAD_WPERM>),      \
+      const bool bk64 = decode_bk64(tm, dks);
+#define RAD_DEC_LAUNCH(BK_, KS_, TM_)                                                         \
+      hipLaunchKernelGGL((radiance_mxfp4_fp8_gemm_decode<DWN, BK_, KS_, TM_, RAD_WPERM>),      \
                          dim3(dec_nblk, 1, KS_), dblock,                                       \
                          0, (hipStream_t)stream, (const unsigned char *)a,                     \
                          (const unsigned char *)w, (const unsigned char *)ws,                  \
                          (const unsigned char *)wref, (const float *)as, P, g_decode_cnt,      \
                          (__bf16 *)c, M, N, K)
-#define RAD_DEC_BY_TM(KS_)                                                                    \
-      if (tm == 1)      RAD_DEC_LAUNCH(KS_, 1);                                                \
-      else if (tm == 2) RAD_DEC_LAUNCH(KS_, 2);                                                \
-      else if (tm == 3) RAD_DEC_LAUNCH(KS_, 3);                                                \
-      else              RAD_DEC_LAUNCH(KS_, 4)
+#define RAD_DEC_BY_TM(BK_, KS_)                                                               \
+      if (tm == 1)      RAD_DEC_LAUNCH(BK_, KS_, 1);                                           \
+      else if (tm == 2) RAD_DEC_LAUNCH(BK_, KS_, 2);                                           \
+      else if (tm == 3) RAD_DEC_LAUNCH(BK_, KS_, 3);                                           \
+      else              RAD_DEC_LAUNCH(BK_, KS_, 4)
 #define RAD_DEC_BY_KS                                                                         \
-      if (dks <= 1)      { RAD_DEC_BY_TM(1); }                                                 \
-      else if (dks == 2) { RAD_DEC_BY_TM(2); }                                                 \
-      else               { RAD_DEC_BY_TM(4); }
+      if (dks <= 1)      { if (bk64) { RAD_DEC_BY_TM(64, 1); } else { RAD_DEC_BY_TM(128, 1); } }\
+      else if (dks == 2) { RAD_DEC_BY_TM(128, 2); }                                            \
+      else               { RAD_DEC_BY_TM(128, 4); }
       if (dec_wperm) {
 #define RAD_WPERM true
         RAD_DEC_BY_KS;
