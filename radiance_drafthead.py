@@ -284,11 +284,29 @@ def _quantize_draft_head(mtp, lp_attr="logits_processor"):
     return _quantize_head_now(lp, lm_head)
 
 
+# int2 buffers keyed by the bf16 weight they were derived from. DFlash2 shares ONE lm_head between
+# the drafter's candidate_logits_processor and the target's logits_processor, so when both are armed
+# the second one must reuse the first's packing rather than spend another 0.167 GiB/rank -- at
+# GPU_UTIL 0.98 that second copy comes straight out of the KV cache. Keyed by data_ptr because the
+# two LogitsProcessors hold the same tensor object anyway; a weight that moved would get a new
+# pointer and be repacked, which is the safe direction.
+_HEAD_CACHE: dict = {}
+
+
 def _quantize_head_now(lp, lm_head):
     w = lm_head.weight
     n, k = w.shape
     if k % (2 * GROUP):
         return f"hidden size {k} not a multiple of {2 * GROUP}"
+
+    cached = _HEAD_CACHE.get((w.data_ptr(), n, k))
+    if cached is not None:
+        (lp._radiance_wq, lp._radiance_scale, lp._radiance_zs,
+         lp._radiance_n, lp._radiance_nblk) = cached
+        lp._radiance_warned = False
+        lp._apply_head = types.MethodType(_apply_head_int2, lp)
+        return (f"draft head ({n}, {k}) reusing the int{BITS} packing already built for this "
+                f"lm_head, {KCAND} cand/block, rerank top-{RERANK} exact")
 
     # Asymmetric min/max at BITS, quarter-split packing (see the module docstring).
     # Quantise in row chunks: a whole-tensor fp32 intermediate is 2.5 GiB here, and the caching
@@ -331,6 +349,7 @@ def _quantize_head_now(lp, lm_head):
     lp._radiance_nblk = (n + BLOCK_N - 1) // BLOCK_N
     lp._radiance_warned = False
     lp._apply_head = types.MethodType(_apply_head_int2, lp)
+    _HEAD_CACHE[(w.data_ptr(), n, k)] = (packed, scale, zs, n, lp._radiance_nblk)
     torch.cuda.empty_cache()
 
     stored = (lp._radiance_wq.numel()
