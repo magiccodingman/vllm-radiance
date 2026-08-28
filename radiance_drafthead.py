@@ -71,7 +71,13 @@ FAST = os.environ.get("RADIANCE_FAST_DRAFT", "0") == "1"
 GROUP = 128        # weight-quantisation group along K; also the kernel's BLOCK_K
 BLOCK_N = 64       # do_bench optimum, and the width of one block-max entry
 BITS = 2
-RERANK = 32        # candidates scored exactly per row; swept, and KCAND is the recall lever
+# Candidates scored exactly per row. For an ARGMAX caller (mtp) this only caps how many of the
+# coarse pass's candidates get rescored, and KCAND is the recall lever -- see the docstring. For a
+# TOP-K caller (DFlash2, which asks for selector_top_k=16 candidates per position) it is a HARD
+# CEILING instead: _radiance_topk_only blanks every entry the rerank did not touch, so a top-16
+# request draws from exactly R tokens. Measured on Qwen3.8-27B + DFlash2-FP8 at ctx 0, R=32:
+# acc/draft 1.904 -> 1.804 against the bf16 head, i.e. 2R is too tight a pool for K=16.
+RERANK = int(os.environ.get("RADIANCE_DRAFT_RERANK", "32"))
 KCAND = 8          # candidates emitted per block; R caps the final count, K feeds it
 # Launch geometry, per M band. The head changes regime across the batch sizes one serve produces:
 # at M=16 it is memory-bound (427 GB/s, 68% of the DRAM roofline on its 152 MiB of int2) and at
