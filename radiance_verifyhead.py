@@ -66,6 +66,20 @@ except Exception as e:                  # pragma: no cover
     sys.stderr.write(f"[radiance.verifyhead] radiance_drafthead unavailable: {e!r}\n")
 
 ENABLED = os.environ.get("RADIANCE_VERIFY_HEAD", "0") == "1"
+# Rows above which the gate declines. NON-BINDING BY DEFAULT, deliberately.
+#
+# This knob was added at 32 because a BetterBench single pass showed conc 8 at -6.2%, and the theory
+# fit: the coarse pass is memory-bound at M=16 (372 us on 0.167 GiB) but compute-bound at M=64
+# (1218 us), while the bf16 head is flat in M, so the advantage shrinks with the batch. DFlash2
+# reaches M=64 in normal serving because its row count is num_reqs x (1 + num_speculative_tokens).
+#
+# THE REGRESSION WAS NOISE. conc 8 at 16 requests read 573.7 / 538.3 / 613.0 across three runs -- a
+# 14% spread. Re-measured at 48 requests, 3 reps per arm (aggregate t/s, mean):
+#     bf16 499.6 (494.1/497.9/506.7) | uncapped 505.3 (506.5/502.3/507.2) | capped 509.0
+# All three overlap. There is no measured M at which this head loses -- even the isolated figures
+# have int2 at 1218 us against bf16's 2002 at M=64. So the cap does not bind, and it is kept only
+# because batches wider than 64 rows are untested here (max_num_seqs=8 x SPEC 7 + 1 is the ceiling).
+MAX_ROWS = int(os.environ.get("RADIANCE_VERIFY_HEAD_MAX_M", "4096"))
 
 # NO_LOGPROBS sentinel in vllm/v1/worker/gpu/sample/states.py.
 _NO_LOGPROBS = -1
@@ -148,6 +162,11 @@ def _batch_is_safe(runner, input_batch, grammar_output) -> bool:
     # request in slot 7 would silently keep the fast path armed.
     idx = input_batch.idx_mapping_np[: input_batch.num_reqs]
     if idx.size == 0:
+        return False
+    # Decline a batch too wide for the int2 head to win on. logits_indices is one row per sampled
+    # position, which is exactly the M the head is about to be called with.
+    li = getattr(input_batch, "logits_indices", None)
+    if li is not None and li.shape[0] > MAX_ROWS:
         return False
     try:
         if int(ss.num_logprobs[idx].max()) != _NO_LOGPROBS:
