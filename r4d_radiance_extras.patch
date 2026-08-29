@@ -83,7 +83,7 @@ index cd4e294..3694dab 100644
      return 0;
  }
 diff --git a/r4d_attn_prefill_h256_gqa6.hip b/r4d_attn_prefill_h256_gqa6.hip
-index 513d97f..d3a19fa 100644
+index 513d97f..da52a10 100644
 --- a/r4d_attn_prefill_h256_gqa6.hip
 +++ b/r4d_attn_prefill_h256_gqa6.hip
 @@ -38,6 +38,25 @@
@@ -143,27 +143,36 @@ index 513d97f..d3a19fa 100644
      typedef DT16<F16> D;
      typedef typename D::frag frag16;
  
-@@ -113,11 +143,18 @@ void r4d_attn_prefill_kernel(const R4DArgs a)
+@@ -113,11 +143,24 @@ void r4d_attn_prefill_kernel(const R4DArgs a)
      constexpr int NTR     = (TILE / 8) * (HEAD_DIM / (KVP ? 32 : 64));
      constexpr int VREGS   = (NTR + NWARPS - 1) / NWARPS;        // uint4 of raw V per thread
      constexpr float PSHIFT = D::SHIFT;
 -    constexpr float PGROW  = D::GROW;
+-    static_assert(!KWIDE || KPASS == 1, "the wide K fetch is one straight-line pass");
 +    constexpr float PGROW  = PV8 ? 8.0f : D::GROW;   // e4m3 max is 448 = 2^8.8
-     static_assert(!KWIDE || KPASS == 1, "the wide K fetch is one straight-line pass");
++    // KPASS was pinned to 1 when the wide fetch was written for the 48-key tile (768 threads x
++    // 16 B is exactly that tile); the fetch/store loops always iterated KPASS and the index map
++    // extends verbatim, so larger tiles just take more passes. Bound it to keep kreg honest.
++    static_assert(!KWIDE || KPASS <= 2, "the wide K fetch covers at most two passes");
 +    static_assert((!QK8 && !PV8) || CTG, "the 8-bit fragment maps are written for CONTIG");
  
-     __shared__ uint16_t sK[TILE * KSTR];
-     __shared__ uint16_t sV16[HEAD_DIM * VSTR];
-+    // Raw-byte views for the 8-bit legs. Aliasing the 16-bit allocations wastes half of each --
-+    // deliberately: nothing else moves, and the harness prices the tiles separately. Strides are
-+    // in BYTES, padded 8 so the 16-row fragment reads spread across all 32 banks.
+-    __shared__ uint16_t sK[TILE * KSTR];
+-    __shared__ uint16_t sV16[HEAD_DIM * VSTR];
++    // The K and V tiles are BYTES under the 8-bit legs and the allocation is sized accordingly
++    // -- this is what unlocks TILE > 48 (bf16 tiles at TILE 64 need 68 KB > the 64 KB limit;
++    // byte tiles need 35 KB, and TILE 96 still fits at 52 KB), and at TILE 48 it takes the
++    // fp8-leg LDS from 54 KB to 27 KB, i.e. TWO resident workgroups per WGP instead of one.
++    // Strides are padded 8 (bytes or shorts alike) so the 16-row fragment reads spread across
++    // all 32 banks.
 +    constexpr int KSTR8 = HEAD_DIM + 8, VSTR8 = TILE + 8;
++    __shared__ uint16_t sK[QK8 ? (TILE * KSTR8 + 1) / 2 : TILE * KSTR];
++    __shared__ uint16_t sV16[PV8 ? (HEAD_DIM * VSTR8 + 1) / 2 : HEAD_DIM * VSTR];
 +    uint8_t* const sK8 = (uint8_t*)sK;
 +    uint8_t* const sV8 = (uint8_t*)sV16;
  
      const int tid = threadIdx.x, lane = tid & 31, warp = tid >> 5;
      const int c = lane & 15, h = lane >> 4;
-@@ -140,6 +177,7 @@ void r4d_attn_prefill_kernel(const R4DArgs a)
+@@ -140,6 +183,7 @@ void r4d_attn_prefill_kernel(const R4DArgs a)
      const float mul   = a.scale * kdesc * 1.44269504089f;
  
      frag16 qf[NKS];
@@ -171,7 +180,7 @@ index 513d97f..d3a19fa 100644
      {
          const uint16_t* qp = (const uint16_t*)a.q
                             + ((size_t)(seq * a.q_len + qrow) * a.q_heads + qhead) * HEAD_DIM;
-@@ -148,10 +186,21 @@ void r4d_attn_prefill_kernel(const R4DArgs a)
+@@ -148,10 +192,21 @@ void r4d_attn_prefill_kernel(const R4DArgs a)
              // CONTIG reads the same 8 d as ONE run; the legacy map splits them 4+4.
              const uint2 l0 = *(const uint2*)(qp + 16 * t + (CTG ? 8 * h : 4 * h));
              const uint2 h0 = *(const uint2*)(qp + 16 * t + (CTG ? 8 * h + 4 : 8 + 4 * h));
@@ -197,7 +206,7 @@ index 513d97f..d3a19fa 100644
          }
      }
  
-@@ -229,6 +278,11 @@ void r4d_attn_prefill_kernel(const R4DArgs a)
+@@ -229,6 +284,11 @@ void r4d_attn_prefill_kernel(const R4DArgs a)
                  const int key = KWIDE ? (2 * (i >> 5) + (i & 1)) : (i / (HEAD_DIM / KEL));
                  const int ch  = KWIDE ? ((i & 31) >> 1) : (i - key * (HEAD_DIM / KEL));
                  if (KWIDE && key >= TILE) continue;
@@ -209,7 +218,7 @@ index 513d97f..d3a19fa 100644
                  uint16_t* kd = &sK[key * KSTR + ch * KEL];
                  #pragma unroll
                  for (int q = 0; q < KEL / 8; ++q) {
-@@ -266,6 +320,11 @@ void r4d_attn_prefill_kernel(const R4DArgs a)
+@@ -266,6 +326,11 @@ void r4d_attn_prefill_kernel(const R4DArgs a)
                      // ADJACENT d; v_perm_b32 splits them back into two d rows.
                      const uint32_t lo0 = byte_gather(v.x, v.y, 0), lo1 = byte_gather(v.z, v.w, 0);
                      const uint32_t hi0 = byte_gather(v.x, v.y, 1), hi1 = byte_gather(v.z, v.w, 1);
@@ -221,7 +230,7 @@ index 513d97f..d3a19fa 100644
                      uint32_t wl[4], wh[4];
                      fp8x8_to_16x4w<D>(make_uint2(lo0, lo1), wl);
                      fp8x8_to_16x4w<D>(make_uint2(hi0, hi1), wh);
-@@ -310,7 +369,21 @@ void r4d_attn_prefill_kernel(const R4DArgs a)
+@@ -310,7 +375,21 @@ void r4d_attn_prefill_kernel(const R4DArgs a)
          #pragma unroll 1
          for (int mt = 0; mt < MT; ++mt) {
              v8f s = (v8f){0,0,0,0,0,0,0,0};
@@ -244,7 +253,7 @@ index 513d97f..d3a19fa 100644
                  const uint16_t* krow = &sK[(mt * 16 + c) * KSTR] + (CTG ? 8 * h : 0);
                  // PF fragments are LOADED before the matching PF WMMAs are ISSUED, so the wait in
                  // front of each WMMA becomes `s_wait_dscnt PF-1` instead of a full drain.
-@@ -368,7 +441,22 @@ void r4d_attn_prefill_kernel(const R4DArgs a)
+@@ -368,7 +447,22 @@ void r4d_attn_prefill_kernel(const R4DArgs a)
              }
              if (!DOT2) l_i += lsum;
  
