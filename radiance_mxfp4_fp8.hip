@@ -268,6 +268,9 @@ __global__ __launch_bounds__(NTHREADS) void radiance_mxfp4_fp8_gemm_folded(
     // r*K fits an int by a wide margin: r < BMF = 256 and K <= 17408, so r*K < 4.5e6.
     const unsigned char *__restrict__ Ab = A + (size_t)m0 * K + k0;
     const unsigned char *__restrict__ Wb = W + ((size_t)n0 * K + k0) / 2;
+    // s_prefetch_data on the next slab's weight runs: measured and REJECTED 2026-08-28 --
+    // -0.3 to -1% on every production shape (tier7 spfd mode). With branchless staging at
+    // occupancy 10 the loads are already fully overlapped; early L2 arrival buys nothing.
     const unsigned char *__restrict__ Wsb = Ws + (size_t)(k0 / 32) * N + n0;
     const unsigned char *__restrict__ Wrefb = Wref + n0;
     // ---- A tile: BM*BK bytes, 16 B per thread per iteration ----
@@ -282,44 +285,60 @@ __global__ __launch_bounds__(NTHREADS) void radiance_mxfp4_fp8_gemm_folded(
     if constexpr (WPERM) {
       // Fragment order: slot s of the tile is one lane's four packed bytes (eight elements) for
       // one (n-tile, k-step), so consecutive threads read consecutive uint32 and a wave takes 128
-      // contiguous bytes. Each thread now stages 8 elements instead of 16; the loop runs twice as
-      // many iterations at a quarter the request size, which is the trade that buys coalescing.
-      // TWO lane slots per thread. One slot is only 4 bytes, and staging the whole weight tile at
-      // a 4-byte request cost 14-25% of PREFILL against the checkpoint-order path, which reads 8.
-      // Coalescing was never prefill's problem -- it stages cooperatively and already got 32-byte
-      // runs -- so narrowing the request to buy coalescing was a straight loss there. Adjacent
-      // slots are contiguous and differ only in the row (lane index is half*16 + row), so an
-      // 8-byte read covers two adjacent rows at the same k, and the wave still reads 256 bytes
-      // contiguously.
+      // contiguous bytes. WSLOTS adjacent lane slots per thread; adjacent slots differ only in
+      // the row (lane index is half*16 + row), so one vector read covers WSLOTS adjacent rows at
+      // the same k and the wave still reads its bytes contiguously.
+      //
+      // WSLOTS is 4 (a 16 B request) whenever the tile has the slots for it, else 2 (8 B). The
+      // original 2-slot trade was priced against PREDICATED staging: one slot (4 B) cost 14-25%
+      // of prefill, two recovered most of it, and at TN=4 the remaining narrow-request penalty
+      // was ~11% against checkpoint order (tier7, 2026-08-28). A 4-slot group never straddles
+      // the k-half boundary because 16 % 4 == 0.
       constexpr int KSTEPS_T = BK / 16, NTILES_T = BNF_T / 16;
+      constexpr int TOT_SLOTS = NTILES_T * KSTEPS_T * 32;
+      constexpr int WSLOTS = (TOT_SLOTS >= NTHREADS * 4) ? 4 : 2;
       const unsigned int *__restrict__ Wp = (const unsigned int *)W;
-      const int ksteps_g = K / 16, nt0 = n0 / 16, kstep0 = k0 / 16;
+      const int ksteps_g = K / 16, kstep0 = k0 / 16;
 #pragma unroll
-      for (int off = 0; off < NTILES_T * KSTEPS_T * 16; off += NTHREADS) {
-        const int sl = (off + tid) * 2;                 // first of the pair; always even
+      for (int off = 0; off < TOT_SLOTS; off += NTHREADS * WSLOTS) {
+        const int sl = off + tid * WSLOTS;              // first of the group; WSLOTS-aligned
         const int lane_ = sl & 31, rest = sl >> 5;
         const int kst = rest % KSTEPS_T, ntl = rest / KSTEPS_T;
         const int r = ntl * 16 + (lane_ & 15), kloc = kst * 16 + (lane_ >> 4) * 8;
         const int gn = n0 + r;
-        // Clamp, never predicate (see the A-tile note in the first kernel). gn is always even
-        // here (lane_ and lane_ & 15 are even), and N % 16 == 0 under WPERM, so clamping to the
-        // last even row N - 2 keeps the uint2 read 8-byte aligned and gn + 1 in bounds; the
-        // fragment address is recomputed from the clamped row.
-        const int gc = gn < N - 2 ? gn : N - 2;
+        // Clamp, never predicate (see the A-tile note in the first kernel). gn is always
+        // WSLOTS-aligned here and N % 16 == 0 under WPERM, so clamping to the last WSLOTS-aligned
+        // row keeps the vector read aligned and every gc + q in bounds; the fragment address is
+        // recomputed from the clamped row.
+        const int gc = gn < N - WSLOTS ? gn : N - WSLOTS;
         const int lanec = (lane_ & 16) | (gc & 15);
-        const uint2_t wv =
-            *(const uint2_t *)&Wp[((size_t)(gc >> 4) * ksteps_g + kstep0 + kst) * 32 + lanec];
+        const unsigned int *src = &Wp[((size_t)(gc >> 4) * ksteps_g + kstep0 + kst) * 32 + lanec];
+        unsigned int wq[WSLOTS];
+        if constexpr (WSLOTS == 4) {
+          const uint4_t v = *(const uint4_t *)src;
+          wq[0] = v[0]; wq[1] = v[1]; wq[2] = v[2]; wq[3] = v[3];
+        } else {
+          const uint2_t v = *(const uint2_t *)src;
+          wq[0] = v[0]; wq[1] = v[1];
+        }
         const int blk = (k0 + kst * 16) / 32;
-        int dsh0 = (int)Wref[gc] - (int)Ws[(size_t)blk * N + gc];
-        dsh0 = dsh0 < 0 ? 0 : (dsh0 > 15 ? 15 : dsh0);
-        int dsh1 = (int)Wref[gc + 1] - (int)Ws[(size_t)blk * N + gc + 1];
-        dsh1 = dsh1 < 0 ? 0 : (dsh1 > 15 ? 15 : dsh1);
+        // One dword read each for the WSLOTS reference and block exponents instead of 2*WSLOTS
+        // byte reads: gc is WSLOTS-aligned and N % 16 == 0, so both reads are aligned.
+        unsigned int refw, wsw;
+        if constexpr (WSLOTS == 4) {
+          refw = *(const unsigned int *)(Wref + gc);
+          wsw = *(const unsigned int *)(Ws + (size_t)blk * N + gc);
+        } else {
+          refw = *(const unsigned short *)(Wref + gc);
+          wsw = *(const unsigned short *)(Ws + (size_t)blk * N + gc);
+        }
 #pragma unroll
-        for (int q = 0; q < 2; ++q) {
-          const int d = q ? dsh1 : dsh0;
+        for (int q = 0; q < WSLOTS; ++q) {
+          int d = (int)((refw >> (8 * q)) & 0xFF) - (int)((wsw >> (8 * q)) & 0xFF);
+          d = d < 0 ? 0 : (d > 15 ? 15 : d);
           const unsigned int t0 = kMag[d][0], t1 = kMag[d][1];
-          const unsigned int ev = wv[q] & 0x0F0F0F0Fu;
-          const unsigned int od = (wv[q] >> 4) & 0x0F0F0F0Fu;
+          const unsigned int ev = wq[q] & 0x0F0F0F0Fu;
+          const unsigned int od = (wq[q] >> 4) & 0x0F0F0F0Fu;
           const unsigned int be = __builtin_amdgcn_perm(t1, t0, ev & 0x07070707u)
                                 | ((ev & 0x08080808u) << 4);
           const unsigned int bo = __builtin_amdgcn_perm(t1, t0, od & 0x07070707u)
@@ -460,6 +479,7 @@ __global__ __launch_bounds__(NTHREADS) void radiance_mxfp4_fp8_gemm_folded(
 // ~/mxfp4_work/tier5/RESULTS.md.
 #define DEC_MTILE 16
 #define DEC_PAD 8
+static __device__ __forceinline__ unsigned int wq_dec(uint2_t v, int q) { return q ? v[1] : v[0]; }
 
 // DTM = number of 16-row M-fragments; the launcher picks ceil(M/16). vLLM captures decode at
 // num_seqs*(SPEC+1): 5/10/20/25/35/40 under MTP at SPEC=4, and batch x 8 under
@@ -508,34 +528,42 @@ __global__ __launch_bounds__(DWN * 32) void radiance_mxfp4_fp8_gemm_decode(
     if constexpr (WPERM) {
       // Fragment order, as in the folded kernel: consecutive threads take consecutive uint32, so
       // a wave's weight read is 128 contiguous bytes instead of sixteen rows K/2 bytes apart.
+      // TWO lane slots per thread (an 8 B request), the width the int4 twin measured optimal
+      // (4 B was 11% slower there; 16 B identical). Adjacent slots are adjacent rows at the same
+      // k, exactly as in the folded kernel above.
       constexpr int KSTEPS_T = DBK / 16, NTILES_T = BND / 16;
       const unsigned int *__restrict__ Wp = (const unsigned int *)W;
-      const int ksteps_g = K / 16, nt0 = n0 / 16, kstep0 = k0 / 16;
+      const int ksteps_g = K / 16, kstep0 = k0 / 16;
 #pragma unroll
-      for (int off = 0; off < NTILES_T * KSTEPS_T * 32; off += DNTHREADS) {
-        const int sl = off + tid;
+      for (int off = 0; off < NTILES_T * KSTEPS_T * 32; off += DNTHREADS * 2) {
+        const int sl = off + tid * 2;                   // first of the pair; always even
         const int lane_ = sl & 31, rest = sl >> 5;
         const int kst = rest % KSTEPS_T, ntl = rest / KSTEPS_T;
         const int r = ntl * 16 + (lane_ & 15), kloc = kst * 16 + (lane_ >> 4) * 8;
         const int gn = n0 + r;
-        // Clamp, never predicate; the fragment address is recomputed from the clamped row
-        // (N % 16 == 0 under WPERM, and a lone uint32 read has no alignment constraint to keep).
-        const int gc = gn < N - 1 ? gn : N - 1;
+        // Clamp, never predicate; gn is always even here and N % 16 == 0 under WPERM, so
+        // clamping to the last even row keeps the uint2 read 8-byte aligned and gc + 1 in
+        // bounds; the fragment address is recomputed from the clamped row.
+        const int gc = gn < N - 2 ? gn : N - 2;
         const int lanec = (lane_ & 16) | (gc & 15);
-        const unsigned int wv = Wp[((size_t)(gc >> 4) * ksteps_g + kstep0 + kst) * 32 + lanec];
+        const uint2_t wv =
+            *(const uint2_t *)&Wp[((size_t)(gc >> 4) * ksteps_g + kstep0 + kst) * 32 + lanec];
         const int blk = (k0 + kst * 16) / 32;
-        int dsh = (int)Wref[gc] - (int)Ws[(size_t)blk * N + gc];
-        dsh = dsh < 0 ? 0 : (dsh > 15 ? 15 : dsh);
-        const unsigned int t0 = kMag[dsh][0], t1 = kMag[dsh][1];
-        const unsigned int ev = wv & 0x0F0F0F0Fu;
-        const unsigned int od = (wv >> 4) & 0x0F0F0F0Fu;
-        const unsigned int be = __builtin_amdgcn_perm(t1, t0, ev & 0x07070707u)
-                              | ((ev & 0x08080808u) << 4);
-        const unsigned int bo = __builtin_amdgcn_perm(t1, t0, od & 0x07070707u)
-                              | ((od & 0x08080808u) << 4);
-        *(uint2_t *)(&sW[r * DWSTR + kloc]) =
-            uint2_t{__builtin_amdgcn_perm(bo, be, 0x05010400u),
-                    __builtin_amdgcn_perm(bo, be, 0x07030602u)};
+#pragma unroll
+        for (int q = 0; q < 2; ++q) {
+          int d = (int)Wref[gc + q] - (int)Ws[(size_t)blk * N + gc + q];
+          d = d < 0 ? 0 : (d > 15 ? 15 : d);
+          const unsigned int t0 = kMag[d][0], t1 = kMag[d][1];
+          const unsigned int ev = wq_dec(wv, q) & 0x0F0F0F0Fu;
+          const unsigned int od = (wq_dec(wv, q) >> 4) & 0x0F0F0F0Fu;
+          const unsigned int be = __builtin_amdgcn_perm(t1, t0, ev & 0x07070707u)
+                                | ((ev & 0x08080808u) << 4);
+          const unsigned int bo = __builtin_amdgcn_perm(t1, t0, od & 0x07070707u)
+                                | ((od & 0x08080808u) << 4);
+          *(uint2_t *)(&sW[(r + q) * DWSTR + kloc]) =
+              uint2_t{__builtin_amdgcn_perm(bo, be, 0x05010400u),
+                      __builtin_amdgcn_perm(bo, be, 0x07030602u)};
+        }
       }
     } else
 #pragma unroll
