@@ -22,8 +22,10 @@ streams are not guaranteed BYTE-identical only because the decode GEMM's split-K
 on M -- the same batch-size-dependent ulp drift the engine already has across concurrency levels.
 
 Inert unless RADIANCE_DYNAMIC_WIDTH=1. Knobs: RADIANCE_DYNW_ALPHA (EMA weight, 0.35),
-RADIANCE_DYNW_MARGIN (rows above the EMA, 2), RADIANCE_DYNW_MIN (floor, 2). Idempotent; run once
-pre-serve in the container.
+RADIANCE_DYNW_MARGIN (rows above the EMA, 2), RADIANCE_DYNW_MIN (floor, 2),
+RADIANCE_DYNW_MIN_BATCH (cap engages only at >= this many running requests, 3 -- below that the
+batch M sits in the weight-stream-bound flat zone where capping saves nothing and the tail
+truncation measured a conc-2 dip on the mixed corpus). Idempotent; run once pre-serve.
 """
 import ast
 import sysconfig
@@ -62,6 +64,7 @@ _RAD_DYNW = _rad_os.environ.get("RADIANCE_DYNAMIC_WIDTH", "0") == "1"
 _RAD_DYNW_ALPHA = float(_rad_os.environ.get("RADIANCE_DYNW_ALPHA", "0.35"))
 _RAD_DYNW_MARGIN = int(_rad_os.environ.get("RADIANCE_DYNW_MARGIN", "2"))
 _RAD_DYNW_MIN = int(_rad_os.environ.get("RADIANCE_DYNW_MIN", "2"))
+_RAD_DYNW_MIN_BATCH = int(_rad_os.environ.get("RADIANCE_DYNW_MIN_BATCH", "3"))
 
 
 def _radiance_dynw_observe(self, request, num_accepted, num_draft_tokens):
@@ -78,6 +81,13 @@ def _radiance_dynw_observe(self, request, num_accepted, num_draft_tokens):
 
 def _radiance_cap_spec_width(self, request):
     if not _RAD_DYNW or not request.spec_token_ids:
+        return
+    # The cap only pays where the batch's summed verify rows cross real cost boundaries; below
+    # M ~ 16 the decode GEMMs are weight-stream-bound and M-invariant, so capping a lone stream
+    # (or a pair) saves nothing and can only truncate a token that would have accepted -- the
+    # measured conc-2 dip. Gate the CAP on batch size, never the EMA observation above: history
+    # stays warm at every concurrency, so caps apply instantly the moment a batch forms.
+    if len(self.running) < _RAD_DYNW_MIN_BATCH:
         return
     ema = getattr(request, "_rad_dynw_ema", None)
     if ema is None:
