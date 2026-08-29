@@ -39,6 +39,33 @@ index c8c28c9..c223cb7 100644
  int r4d_gdn_recurrent_update_k128_v128_bf16_fp32state(
          const void* q, const void* k, const void* v, const void* a, const void* b,
          long ab_stride, int ab_is_bf16, const void* A_log, const void* dt_bias, void* state,
+diff --git a/r4d_ar_oneshot_2rank_wht6.h b/r4d_ar_oneshot_2rank_wht6.h
+index a4f359a..846b94a 100644
+--- a/r4d_ar_oneshot_2rank_wht6.h
++++ b/r4d_ar_oneshot_2rank_wht6.h
+@@ -20,6 +20,22 @@
+ //  * cudagraph-safe and double-buffered as in r4d_ar_oneshot_2rank_exact.hip: per-block device-resident
+ //    seq counter, slot = seq&1.
+ //
++// MEASURED AND CLOSED (2026-08-29), so nobody re-derives these:
++//  * The call decomposes into ~equal thirds -- wire (0.5 ms of a 1.47 ms 80 MiB call, Gen5 x16
++//    verified maxed), mandatory local DRAM (~280 MB/call), and peer-skew spin. The WHT/quantize
++//    ALU is negligible; block cap swept 48/96/192/384 -> 1512/1467/1507/1618 us (96 ships).
++//  * Holding the local pack in registers across the handshake (to skip its 60 MB round trip) is
++//    INFEASIBLE at this geometry: a wave owns ~7 chunks (~140 VGPRs, unbounded at compile time),
++//    the LDS alternative needs 328 KB/block at 96 blocks, and the quantized local half cannot be
++//    replaced by exact values -- both ranks must fold the identical quantized pair or they
++//    diverge.
++//  * Folding residual+RMSNorm into REDUCE re-priced BELOW the build threshold: rows (hidden dim)
++//    do not tile the 2048-element chunks, so single-pass normalize needs chunk residency a wave
++//    cannot afford; the block-local two-pass nets only ~0.1 ms/call against the ~0.5 ms the
++//    inductor-fused downstream add+rms actually costs, and the call-site plumbing is either
++//    graph-pattern surgery (matched zero twice on this stack) or decoder-forward patches plus a
++//    ppl gate. ~1% prefill for a fragile session; parked deliberately.
++//
+ // Layout, per slot, inside the shared 2*max_bytes scratch:
+ //   [ packed symbols, chunk-interleaved ] ... [ scale_off_bytes ] ... [ bf16 scales: n_groups ]
+ // A CHUNK is 32 groups = 2048 elements. One wave owns a chunk and every lane emits exactly 64
 diff --git a/r4d_attn_paged_h256_gqa6.hip b/r4d_attn_paged_h256_gqa6.hip
 index cd4e294..3694dab 100644
 --- a/r4d_attn_paged_h256_gqa6.hip
