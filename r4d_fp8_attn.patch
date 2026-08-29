@@ -1,0 +1,224 @@
+diff --git a/r4d_attn_paged_h256_gqa6.hip b/r4d_attn_paged_h256_gqa6.hip
+index cd4e294..3694dab 100644
+--- a/r4d_attn_paged_h256_gqa6.hip
++++ b/r4d_attn_paged_h256_gqa6.hip
+@@ -57,9 +57,35 @@ static int prefill_launch(const R4DArgs* a, hipStream_t s) {
+     if (a->q_heads / a->kv_heads != A_GQA) return -2;
+     constexpr int BQ = (P_NWARPS * 16) / A_GQA;
+     dim3 grid((a->q_len + BQ - 1) / BQ, a->kv_heads, a->num_seqs);
+-    hipLaunchKernelGGL((r4d_attn_prefill_kernel<P_NWARPS, P_TILE, A_HEAD_DIM, A_GQA, A_BLOCK_SIZE,
+-                                                KVP, P_OPT>),
+-                       grid, dim3(P_NWARPS * 32), 0, s, *a);
++    // R4D_ATTN_FP8: 0 = the shipped f16 legs; 1 = O_QK8, 2 = O_PV8, 3 = both. fp8 KV only.
++    // Opt-in and read once: the 8-bit legs trade oracle accuracy (1.7e-3 -> 1.7e-2/2.6e-2/3.1e-2
++    // row relRMSE) for WMMA issue rate (+10%/+24%/+56% at a hot 8k chunk, +18% at a cold 40k
++    // chunk, ~/mxfp4_work/tier8). Whether that accuracy trade is FREE at the end task is exactly
++    // what the serving gates (ppl + GSM8K paired) decide; kernel-level parity already decided the
++    // default, which is why these are bits and not the baseline.
++    int fp8mode = 0;
++    if constexpr (!KVP) {
++        static const int m = [] {
++            const char* e = getenv("R4D_ATTN_FP8");
++            return e ? atoi(e) : 0;
++        }();
++        fp8mode = m;
++    }
++#define P_LAUNCH(OPTX)                                                                            \
++    do {                                                                                          \
++        hipLaunchKernelGGL((r4d_attn_prefill_kernel<P_NWARPS, P_TILE, A_HEAD_DIM, A_GQA,          \
++                                                    A_BLOCK_SIZE, KVP, OPTX>),                    \
++                           grid, dim3(P_NWARPS * 32), 0, s, *a);                                  \
++    } while (0)
++    if constexpr (!KVP) {
++        if (fp8mode == 3)      P_LAUNCH(P_OPT | O_QK8 | O_PV8);
++        else if (fp8mode == 2) P_LAUNCH(P_OPT | O_PV8);
++        else if (fp8mode == 1) P_LAUNCH(P_OPT | O_QK8);
++        else                   P_LAUNCH(P_OPT);
++    } else {
++        P_LAUNCH(P_OPT);
++    }
++#undef P_LAUNCH
+     CHK();
+     return 0;
+ }
+diff --git a/r4d_attn_prefill_h256_gqa6.hip b/r4d_attn_prefill_h256_gqa6.hip
+index 513d97f..56d037b 100644
+--- a/r4d_attn_prefill_h256_gqa6.hip
++++ b/r4d_attn_prefill_h256_gqa6.hip
+@@ -38,6 +38,20 @@
+ 
+ #define O_F16     1
+ #define O_MSKIP   2
++// QK8/PV8: the deleted 8-bit arms, rebuilt as SEPARABLE opt-in bits for long-context serving.
++// The dispatch header records why they were deleted: single-term e4m3 Q measured 2.58e-2 against
++// the fp32 oracle vs 2.3e-3 for the f16 path. That is a KERNEL-level verdict; these bits exist to
++// let the END-TASK verdict (ppl + GSM8K, the fp8 all-reduce playbook) be measured on a build
++// where each leg can be flipped alone. Both require the fp8 KV cache (KVP == 0).
++//   QK8: Q quantized e4m3 once at load (the fold makes it ~0.1-0.5, well inside e4m3), K stays
++//        RAW BYTES in LDS -- the fp8->f16 upconvert in storeK disappears, sK halves, and the QK
++//        WMMA runs at the 2x fp8 issue rate.
++//   PV8: P packed e4m3 instead of f16 (v_cvt_pk_fp8_f32, same instruction count as pkrtz), V
++//        stays raw bytes, PV WMMA at 2x. GROW tightens to 8 octaves (e4m3 max 448 = 2^8.8) and
++//        DOT2 is off -- the denominator sums the pre-quantization p, which the old probe measured
++//        indistinguishable at these error levels.
++#define O_QK8    32
++#define O_PV8    64
+ #define O_FOLDQ   8
+ #define O_CONTIG  512
+ #define O_PF2    1024
+@@ -72,6 +86,13 @@
+ // ever orders LDS.
+ #define O_LDSB  2097152
+ 
++typedef int v2i32_r4d __attribute__((ext_vector_type(2)));   // one fp8 WMMA operand (8 e4m3)
++// pack 4 floats -> 4 e4m3 bytes in element order (RNE, saturating), 2 instructions
++__device__ __forceinline__ uint32_t pk_fp8x4(float a, float b, float c, float d) {
++    const uint32_t w = __builtin_amdgcn_cvt_pk_fp8_f32(a, b, 0u, false);
++    return __builtin_amdgcn_cvt_pk_fp8_f32(c, d, w, true);
++}
++
+ // bf16 dword -> 16-bit dword in the target format, optionally scaled. Used once per kernel on Q.
+ template<class D, int FOLDQ, int F16>
+ __device__ __forceinline__ uint32_t r4d_qcvt(uint32_t w, float s) {
+@@ -90,11 +111,15 @@ void r4d_attn_prefill_kernel(const R4DArgs a)
+     constexpr int CTG   = (OPT & O_CONTIG) ? 1 : 0;
+     constexpr int PF    = 1 << ((OPT >> 10) & 3);
+     constexpr int SGB   = (OPT & O_SGB) ? 1 : 0;
+-    constexpr int DOT2  = ((OPT & O_DOT2) && (OPT & O_F16)) ? 1 : 0;
++    constexpr int DOT2  = ((OPT & O_DOT2) && (OPT & O_F16) && !(OPT & O_PV8)) ? 1 : 0;
+     constexpr int BTS   = (OPT & O_BTS)   ? 1 : 0;
+     constexpr int GPREV = (OPT & O_GPREV) ? 1 : 0;
+     constexpr int LDSB  = (OPT & O_LDSB)  ? 1 : 0;
+     constexpr int KWIDE = (OPT & O_KWIDE) ? 1 : 0;
++    constexpr int QK8   = ((OPT & O_QK8) && !KVP) ? 1 : 0;
++    constexpr int PV8   = ((OPT & O_PV8) && !KVP) ? 1 : 0;
++    static_assert(!(OPT & (O_QK8 | O_PV8)) || !KVP, "8-bit legs need the fp8 KV cache");
++    static_assert(!(OPT & O_QK8) || KWIDE, "QK8 raw-byte staging is written for the wide K fetch");
+     typedef DT16<F16> D;
+     typedef typename D::frag frag16;
+ 
+@@ -113,11 +138,18 @@ void r4d_attn_prefill_kernel(const R4DArgs a)
+     constexpr int NTR     = (TILE / 8) * (HEAD_DIM / (KVP ? 32 : 64));
+     constexpr int VREGS   = (NTR + NWARPS - 1) / NWARPS;        // uint4 of raw V per thread
+     constexpr float PSHIFT = D::SHIFT;
+-    constexpr float PGROW  = D::GROW;
++    constexpr float PGROW  = PV8 ? 8.0f : D::GROW;   // e4m3 max is 448 = 2^8.8
+     static_assert(!KWIDE || KPASS == 1, "the wide K fetch is one straight-line pass");
++    static_assert((!QK8 && !PV8) || CTG, "the 8-bit fragment maps are written for CONTIG");
+ 
+     __shared__ uint16_t sK[TILE * KSTR];
+     __shared__ uint16_t sV16[HEAD_DIM * VSTR];
++    // Raw-byte views for the 8-bit legs. Aliasing the 16-bit allocations wastes half of each --
++    // deliberately: nothing else moves, and the harness prices the tiles separately. Strides are
++    // in BYTES, padded 8 so the 16-row fragment reads spread across all 32 banks.
++    constexpr int KSTR8 = HEAD_DIM + 8, VSTR8 = TILE + 8;
++    uint8_t* const sK8 = (uint8_t*)sK;
++    uint8_t* const sV8 = (uint8_t*)sV16;
+ 
+     const int tid = threadIdx.x, lane = tid & 31, warp = tid >> 5;
+     const int c = lane & 15, h = lane >> 4;
+@@ -140,6 +172,7 @@ void r4d_attn_prefill_kernel(const R4DArgs a)
+     const float mul   = a.scale * kdesc * 1.44269504089f;
+ 
+     frag16 qf[NKS];
++    v2i32_r4d qf8[QK8 ? NKS : 1];
+     {
+         const uint16_t* qp = (const uint16_t*)a.q
+                            + ((size_t)(seq * a.q_len + qrow) * a.q_heads + qhead) * HEAD_DIM;
+@@ -148,10 +181,21 @@ void r4d_attn_prefill_kernel(const R4DArgs a)
+             // CONTIG reads the same 8 d as ONE run; the legacy map splits them 4+4.
+             const uint2 l0 = *(const uint2*)(qp + 16 * t + (CTG ? 8 * h : 4 * h));
+             const uint2 h0 = *(const uint2*)(qp + 16 * t + (CTG ? 8 * h + 4 : 8 + 4 * h));
+-            qf[t] = D::mk(make_uint2(r4d_qcvt<D, FOLDQ, F16>(l0.x, mul),
+-                                     r4d_qcvt<D, FOLDQ, F16>(l0.y, mul)),
+-                          make_uint2(r4d_qcvt<D, FOLDQ, F16>(h0.x, mul),
+-                                     r4d_qcvt<D, FOLDQ, F16>(h0.y, mul)));
++            if constexpr (QK8) {
++                // e4m3 Q, folded scale first: the fold puts |q| in ~[0.05, 1], comfortably inside
++                // e4m3, and its error is relative so the fold costs nothing extra.
++                const float m_ = FOLDQ ? mul : 1.0f;
++                #define R4D_QB(w) __builtin_bit_cast(float, (w) << 16) * m_, \
++                                  __builtin_bit_cast(float, (w) & 0xffff0000u) * m_
++                qf8[t] = (v2i32_r4d){(int)pk_fp8x4(R4D_QB(l0.x), R4D_QB(l0.y)),
++                                     (int)pk_fp8x4(R4D_QB(h0.x), R4D_QB(h0.y))};
++                #undef R4D_QB
++            } else {
++                qf[t] = D::mk(make_uint2(r4d_qcvt<D, FOLDQ, F16>(l0.x, mul),
++                                         r4d_qcvt<D, FOLDQ, F16>(l0.y, mul)),
++                              make_uint2(r4d_qcvt<D, FOLDQ, F16>(h0.x, mul),
++                                         r4d_qcvt<D, FOLDQ, F16>(h0.y, mul)));
++            }
+         }
+     }
+ 
+@@ -229,6 +273,11 @@ void r4d_attn_prefill_kernel(const R4DArgs a)
+                 const int key = KWIDE ? (2 * (i >> 5) + (i & 1)) : (i / (HEAD_DIM / KEL));
+                 const int ch  = KWIDE ? ((i & 31) >> 1) : (i - key * (HEAD_DIM / KEL));
+                 if (KWIDE && key >= TILE) continue;
++                if constexpr (QK8) {
++                    // K stays e4m3: no upconvert, one b128 store, sK footprint halves.
++                    *(uint4*)(&sK8[key * KSTR8 + ch * KEL]) = kreg[p];
++                    continue;
++                }
+                 uint16_t* kd = &sK[key * KSTR + ch * KEL];
+                 #pragma unroll
+                 for (int q = 0; q < KEL / 8; ++q) {
+@@ -266,6 +315,11 @@ void r4d_attn_prefill_kernel(const R4DArgs a)
+                     // ADJACENT d; v_perm_b32 splits them back into two d rows.
+                     const uint32_t lo0 = byte_gather(v.x, v.y, 0), lo1 = byte_gather(v.z, v.w, 0);
+                     const uint32_t hi0 = byte_gather(v.x, v.y, 1), hi1 = byte_gather(v.z, v.w, 1);
++                    if constexpr (PV8) {
++                        *(uint2*)(&sV8[(d0 + 2 * vj)     * VSTR8 + kg * 8]) = make_uint2(lo0, lo1);
++                        *(uint2*)(&sV8[(d0 + 2 * vj + 1) * VSTR8 + kg * 8]) = make_uint2(hi0, hi1);
++                        continue;
++                    }
+                     uint32_t wl[4], wh[4];
+                     fp8x8_to_16x4w<D>(make_uint2(lo0, lo1), wl);
+                     fp8x8_to_16x4w<D>(make_uint2(hi0, hi1), wh);
+@@ -310,7 +364,21 @@ void r4d_attn_prefill_kernel(const R4DArgs a)
+         #pragma unroll 1
+         for (int mt = 0; mt < MT; ++mt) {
+             v8f s = (v8f){0,0,0,0,0,0,0,0};
+-            {
++            if constexpr (QK8) {
++                // Same PF discipline, half the fragment bytes, 2x the WMMA issue rate.
++                const uint8_t* krow8 = &sK8[(mt * 16 + c) * KSTR8] + 8 * h;
++                #pragma unroll
++                for (int g = 0; g < NKS; g += PF) {
++                    v2i32_r4d kb8[PF];
++                    #pragma unroll
++                    for (int j = 0; j < PF; ++j)
++                        kb8[j] = *(const v2i32_r4d*)(krow8 + 16 * (g + j));
++                    if (SGB) sched_barrier();
++                    #pragma unroll
++                    for (int j = 0; j < PF; ++j)
++                        s = __builtin_amdgcn_wmma_f32_16x16x16_fp8_fp8_w32_gfx12(kb8[j], qf8[g + j], s);
++                }
++            } else {
+                 const uint16_t* krow = &sK[(mt * 16 + c) * KSTR] + (CTG ? 8 * h : 0);
+                 // PF fragments are LOADED before the matching PF WMMAs are ISSUED, so the wait in
+                 // front of each WMMA becomes `s_wait_dscnt PF-1` instead of a full drain.
+@@ -368,7 +436,22 @@ void r4d_attn_prefill_kernel(const R4DArgs a)
+             }
+             if (!DOT2) l_i += lsum;
+ 
+-            {
++            if constexpr (PV8) {
++                const v2i32_r4d p8 = (v2i32_r4d){(int)pk_fp8x4(pf[0], pf[1], pf[2], pf[3]),
++                                                 (int)pk_fp8x4(pf[4], pf[5], pf[6], pf[7])};
++                const uint8_t* vbase8 = &sV8[c * VSTR8 + mt * 16 + 8 * h];
++                #pragma unroll
++                for (int g = 0; g < NKS; g += PF) {
++                    v2i32_r4d vb8[PF];
++                    #pragma unroll
++                    for (int j = 0; j < PF; ++j)
++                        vb8[j] = *(const v2i32_r4d*)(vbase8 + (size_t)(g + j) * 16 * VSTR8);
++                    if (SGB) sched_barrier();
++                    #pragma unroll
++                    for (int j = 0; j < PF; ++j)
++                        acc[g + j] = __builtin_amdgcn_wmma_f32_16x16x16_fp8_fp8_w32_gfx12(vb8[j], p8, acc[g + j]);
++                }
++            } else {
+                 uint32_t pw[4];
+                 #pragma unroll
+                 for (int e = 0; e < 8; e += 2) pw[e >> 1] = D::pk(pf[e], pf[e + 1]);
