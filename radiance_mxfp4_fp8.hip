@@ -108,24 +108,27 @@ __global__ __launch_bounds__(NWAVE * 32) void radiance_mxfp4_fp8_gemm(
       for (int e = 0; e < 8; ++e) acc[i][j][e] = 0.f;
 
   for (int k0 = 0; k0 < K; k0 += BK) {
-    {   // A tile: 32 B per thread, guarded on the M tail
-      const int r = tid >> 1, off = (tid & 1) * 32, gm = m0 + r;
-      uint4_t v0, v1;
-      if (gm < M) {
-        const unsigned char *src = A + (size_t)gm * K + k0 + off;
-        v0 = *(const uint4_t *)(src);
-        v1 = *(const uint4_t *)(src + 16);
-      } else {
-        v0 = uint4_t{0, 0, 0, 0};
-        v1 = uint4_t{0, 0, 0, 0};
-      }
+    {   // A tile: 32 B per thread. CLAMP, NEVER PREDICATE: a bounds-predicated staging load
+        // lands in its own s_and_saveexec region and the compiler cannot carry a counted
+        // s_wait_loadcnt across an exec-mask merge, so it emits s_wait_loadcnt 0x0 after every
+        // load -- one full memory round trip each where one per slab would do. Clamped, all the
+        // slab's loads issue back to back under a single wait. Safe because the epilogue already
+        // drops rows past M and columns past N, and a clamped read returns real data. Measured on
+        // the int4 twin (autoround-tests/RESULTS.md, 2026-08-26): worth 7-26% at decode and
+        // 5-20% at prefill. Applies to every staging load below.
+      const int r = tid >> 1, off = (tid & 1) * 32;
+      const int rc = r < M - 1 - m0 ? r : M - 1 - m0;
+      const unsigned char *src = A + (size_t)(m0 + rc) * K + k0 + off;
+      const uint4_t v0 = *(const uint4_t *)(src);
+      const uint4_t v1 = *(const uint4_t *)(src + 16);
       *(uint4_t *)(&sA[r * ASTR + off]) = v0;
       *(uint4_t *)(&sA[r * ASTR + off + 16]) = v1;
     }
     {   // W tile: 8 packed bytes per thread -> 16 e4m3 bytes, guarded on the N tail
-      const int r = tid >> 2, off = (tid & 3) * 8, gn = n0 + r;
-      unsigned long long packed = 0ull;
-      if (gn < N) packed = *(const unsigned long long *)(W + ((size_t)gn * K + k0) / 2 + off);
+      const int r = tid >> 2, off = (tid & 3) * 8;
+      const int rc = r < N - 1 - n0 ? r : N - 1 - n0;              // clamp, never predicate
+      const unsigned long long packed =
+          *(const unsigned long long *)(W + ((size_t)(n0 + rc) * K + k0) / 2 + off);
       unsigned char out[16];
 #pragma unroll
       for (int t = 0; t < 8; ++t) {
@@ -138,7 +141,8 @@ __global__ __launch_bounds__(NWAVE * 32) void radiance_mxfp4_fp8_gemm(
     if (tid < BN * (BK / 32)) {   // scales are [K/32, N]: coalesced across n
       const int r = tid / (BK / 32), b = tid % (BK / 32);
       const int gn = n0 + r;
-      sS[tid] = (gn < N) ? Ws[(size_t)(k0 / 32 + b) * N + gn] : 127;
+      const int gc = gn < N - 1 ? gn : N - 1;                      // clamp, never predicate
+      sS[tid] = Ws[(size_t)(k0 / 32 + b) * N + gc];
     }
     __syncthreads();
 
@@ -270,10 +274,9 @@ __global__ __launch_bounds__(NTHREADS) void radiance_mxfp4_fp8_gemm_folded(
 #pragma unroll
     for (int off = 0; off < BMF * BK; off += NTHREADS * 16) {
       const int idx = off + tid * 16;
-      const int r = idx / BK, c = idx % BK, gm = m0 + r;
-      uint4_t v = uint4_t{0, 0, 0, 0};
-      if (gm < M) v = *(const uint4_t *)(Ab + (r * K + c));
-      *(uint4_t *)(&sA[r * ASTR + c]) = v;
+      const int r = idx / BK, c = idx % BK;
+      const int rc = r < M - 1 - m0 ? r : M - 1 - m0;              // clamp, never predicate
+      *(uint4_t *)(&sA[r * ASTR + c]) = *(const uint4_t *)(Ab + (rc * K + c));
     }
     // ---- W tile: BN*BK/2 packed bytes, 8 B per thread per iteration -> 16 e4m3 bytes ----
     if constexpr (WPERM) {
@@ -298,19 +301,19 @@ __global__ __launch_bounds__(NTHREADS) void radiance_mxfp4_fp8_gemm_folded(
         const int kst = rest % KSTEPS_T, ntl = rest / KSTEPS_T;
         const int r = ntl * 16 + (lane_ & 15), kloc = kst * 16 + (lane_ >> 4) * 8;
         const int gn = n0 + r;
-        uint2_t wv = uint2_t{0u, 0u};
-        int dsh0 = 0, dsh1 = 0;
-        if (gn < N) {
-          wv = *(const uint2_t *)&Wp[((size_t)(nt0 + ntl) * ksteps_g + kstep0 + kst) * 32 + lane_];
-          const int blk = (k0 + kst * 16) / 32;
-          const int ref0 = (int)Wref[gn];
-          dsh0 = ref0 - (int)Ws[(size_t)blk * N + gn];
-          dsh0 = dsh0 < 0 ? 0 : (dsh0 > 15 ? 15 : dsh0);
-          if (gn + 1 < N) {
-            dsh1 = (int)Wref[gn + 1] - (int)Ws[(size_t)blk * N + gn + 1];
-            dsh1 = dsh1 < 0 ? 0 : (dsh1 > 15 ? 15 : dsh1);
-          }
-        }
+        // Clamp, never predicate (see the A-tile note in the first kernel). gn is always even
+        // here (lane_ and lane_ & 15 are even), and N % 16 == 0 under WPERM, so clamping to the
+        // last even row N - 2 keeps the uint2 read 8-byte aligned and gn + 1 in bounds; the
+        // fragment address is recomputed from the clamped row.
+        const int gc = gn < N - 2 ? gn : N - 2;
+        const int lanec = (lane_ & 16) | (gc & 15);
+        const uint2_t wv =
+            *(const uint2_t *)&Wp[((size_t)(gc >> 4) * ksteps_g + kstep0 + kst) * 32 + lanec];
+        const int blk = (k0 + kst * 16) / 32;
+        int dsh0 = (int)Wref[gc] - (int)Ws[(size_t)blk * N + gc];
+        dsh0 = dsh0 < 0 ? 0 : (dsh0 > 15 ? 15 : dsh0);
+        int dsh1 = (int)Wref[gc + 1] - (int)Ws[(size_t)blk * N + gc + 1];
+        dsh1 = dsh1 < 0 ? 0 : (dsh1 > 15 ? 15 : dsh1);
 #pragma unroll
         for (int q = 0; q < 2; ++q) {
           const int d = q ? dsh1 : dsh0;
@@ -330,16 +333,13 @@ __global__ __launch_bounds__(NTHREADS) void radiance_mxfp4_fp8_gemm_folded(
 #pragma unroll
     for (int off = 0; off < BNF_T * BK / 2; off += NTHREADS * 8) {
       const int idx = off + tid * 8;
-      const int r = idx / (BK / 2), c = idx % (BK / 2), gn = n0 + r;
-      unsigned long long packed = 0ull;
-      int dsh = 0;
-      if (gn < N) {
-        // Same hoist as A. r*(K/2) < 1.2e6 and the scale offset < 3*N, both comfortably int.
-        packed = *(const unsigned long long *)(Wb + (r * (K / 2) + c));
-        const int blk = (c * 2) / 32;                          // k0's share is in Wsb
-        dsh = (int)Wrefb[r] - (int)Wsb[blk * N + r];           // scales are [K/32, N]
-        dsh = dsh < 0 ? 0 : (dsh > 15 ? 15 : dsh);
-      }
+      const int r = idx / (BK / 2), c = idx % (BK / 2);
+      const int rc = r < N - 1 - n0 ? r : N - 1 - n0;          // clamp, never predicate
+      // Same hoist as A. rc*(K/2) < 1.2e6 and the scale offset < 3*N, both comfortably int.
+      const unsigned long long packed = *(const unsigned long long *)(Wb + (rc * (K / 2) + c));
+      const int blk = (c * 2) / 32;                            // k0's share is in Wsb
+      int dsh = (int)Wrefb[rc] - (int)Wsb[blk * N + rc];       // scales are [K/32, N]
+      dsh = dsh < 0 ? 0 : (dsh > 15 ? 15 : dsh);
       // v_perm_b32 resolves 4 table lookups per instruction from the 8-byte magnitude table;
       // the sign is separable because entries 8-15 are entries 0-7 with bit 7 set. The upconvert
       // measured 21% of runtime with per-byte constant loads (156 -> 188 TF with it removed
@@ -501,9 +501,8 @@ __global__ __launch_bounds__(DWN * 32) void radiance_mxfp4_fp8_gemm_decode(
       const int idx = off + tid * 16;
       if (idx < DEC_MTILE * DTM * DBK) {
         const int r = idx / DBK, c = idx % DBK;
-        uint4_t v = uint4_t{0, 0, 0, 0};
-        if (r < M) v = *(const uint4_t *)(A + (size_t)r * K + k0 + c);
-        *(uint4_t *)(&sA[r * DASTR + c]) = v;
+        const int rc = r < M - 1 ? r : M - 1;                  // clamp, never predicate
+        *(uint4_t *)(&sA[r * DASTR + c]) = *(const uint4_t *)(A + (size_t)rc * K + k0 + c);
       }
     }
     if constexpr (WPERM) {
@@ -519,14 +518,14 @@ __global__ __launch_bounds__(DWN * 32) void radiance_mxfp4_fp8_gemm_decode(
         const int kst = rest % KSTEPS_T, ntl = rest / KSTEPS_T;
         const int r = ntl * 16 + (lane_ & 15), kloc = kst * 16 + (lane_ >> 4) * 8;
         const int gn = n0 + r;
-        unsigned int wv = 0u;
-        int dsh = 0;
-        if (gn < N) {
-          wv = Wp[((size_t)(nt0 + ntl) * ksteps_g + kstep0 + kst) * 32 + lane_];
-          const int blk = (k0 + kst * 16) / 32;
-          dsh = (int)Wref[gn] - (int)Ws[(size_t)blk * N + gn];
-          dsh = dsh < 0 ? 0 : (dsh > 15 ? 15 : dsh);
-        }
+        // Clamp, never predicate; the fragment address is recomputed from the clamped row
+        // (N % 16 == 0 under WPERM, and a lone uint32 read has no alignment constraint to keep).
+        const int gc = gn < N - 1 ? gn : N - 1;
+        const int lanec = (lane_ & 16) | (gc & 15);
+        const unsigned int wv = Wp[((size_t)(gc >> 4) * ksteps_g + kstep0 + kst) * 32 + lanec];
+        const int blk = (k0 + kst * 16) / 32;
+        int dsh = (int)Wref[gc] - (int)Ws[(size_t)blk * N + gc];
+        dsh = dsh < 0 ? 0 : (dsh > 15 ? 15 : dsh);
         const unsigned int t0 = kMag[dsh][0], t1 = kMag[dsh][1];
         const unsigned int ev = wv & 0x0F0F0F0Fu;
         const unsigned int od = (wv >> 4) & 0x0F0F0F0Fu;
@@ -543,14 +542,12 @@ __global__ __launch_bounds__(DWN * 32) void radiance_mxfp4_fp8_gemm_decode(
     for (int off = 0; off < BND * DBK / 2; off += DNTHREADS * 8) {
       const int idx = off + tid * 8;
       const int r = idx / (DBK / 2), c = idx % (DBK / 2), gn = n0 + r;
-      unsigned long long packed = 0ull;
-      int dsh = 0;
-      if (gn < N) {
-        packed = *(const unsigned long long *)(W + ((size_t)gn * K + k0) / 2 + c);
-        const int blk = (k0 + c * 2) / 32;
-        dsh = (int)Wref[gn] - (int)Ws[(size_t)blk * N + gn];
-        dsh = dsh < 0 ? 0 : (dsh > 15 ? 15 : dsh);
-      }
+      const int gc = gn < N - 1 ? gn : N - 1;                  // clamp, never predicate
+      const unsigned long long packed =
+          *(const unsigned long long *)(W + ((size_t)gc * K + k0) / 2 + c);
+      const int blk = (k0 + c * 2) / 32;
+      int dsh = (int)Wref[gc] - (int)Ws[(size_t)blk * N + gc];
+      dsh = dsh < 0 ? 0 : (dsh > 15 ? 15 : dsh);
       const unsigned int t0 = kMag[dsh][0], t1 = kMag[dsh][1];
       unsigned int outw[4];
 #pragma unroll
@@ -735,8 +732,15 @@ static int split_k_for(int nblk, int M) {
     return e ? atoi(e) : 0;
   }();
   if (forced) return forced;
-  // Fill target in blocks. Unreachable at M<=8, so every shape takes the widest split there.
-  const int fill = (M <= 8) ? (1 << 20) : (M <= 48) ? 110 : 78;
+  // Fill target in blocks. Re-measured with branchless staging (~/mxfp4_work/tier7, 2026-08-28):
+  // the old M<=8 special case (widest split always) INVERTED -- the serialised staging round
+  // trips were what a wider split's extra fill was paying for, and with them gone the smallest
+  // filling split wins at M<=8 on every shape (gate_up dks4->dks1 -2.7/-5.3%, n8192/n7168
+  // dks4->dks2 -4.3/-8.4%). The down/out crossover to dks2 also moved down, M>=56 -> M>=32
+  // (down M=40 61.7->59.3, out M=48 32.6->30.4). fill=110 at M<=24 and 78 above reproduces the
+  // best measured cell on all six shapes within the 1-4% run spread; out M=16 is why the
+  // boundary cannot drop below 24 (dks2 there is +6%).
+  const int fill = (M <= 24) ? 110 : 78;
   for (int ks = 1; ks < DEC_KS; ks <<= 1)
     if (nblk * ks >= fill) return ks;
   return DEC_KS;
@@ -845,7 +849,11 @@ static void launch(uintptr_t a, uintptr_t w, uintptr_t ws, uintptr_t wref, uintp
     } while (0)
 #define RAD_FOLDED(TN_, WP_)                                                                    \
     do { if (epifast) RAD_FOLDED_E(TN_, WP_, true); else RAD_FOLDED_E(TN_, WP_, false); } while (0)
-    if (M >= tn4_min_m) {
+    // TN=4 only when the shape is wide enough to use the 128-wide tile: at N=48 (gdn gate)
+    // TN=4 computes 128 columns against 48 real ones and measures 1.8-2x SLOWER than TN=2 at
+    // every M >= 2048 (56 vs 101-115 us, ~/mxfp4_work/tier7 tnx). The M crossover itself
+    // re-measured within noise of 2048 on all large-N shapes with branchless staging.
+    if (M >= tn4_min_m && N >= BNF_OF(4)) {
       if (dec_wperm) RAD_FOLDED(4, true); else RAD_FOLDED(4, false);
     } else {
       if (dec_wperm) RAD_FOLDED(2, true); else RAD_FOLDED(2, false);
