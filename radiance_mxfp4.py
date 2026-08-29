@@ -606,10 +606,15 @@ def _make_kernel_class():
                     # torch owns it: allocating from the .so put a hipMalloc inside CUDA-graph
                     # capture, and any C++ exception escaping our pybind module gets relabelled by
                     # quark's TileLang exception translator into a bogus "libamdhip64.so not found".
+                    # Rows must cover the decode band: DEC_KS x DECODE_MAX_M x max N. Sized
+                    # from the env so the default (64) allocates exactly what it always has;
+                    # a 16-concurrent serve sets RADIANCE_MXFP4_DECODE_MAX_M=128 and pays the
+                    # extra 32 MiB only then.
                     _decode_scratch[0] = torch.empty(
-                        4 * 64 * 32768, dtype=torch.float32, device=layer.weight.device)
-                    # One counter per output block for the fused split-K reduction. The
-                    # last arriving block resets its counter, so this is zeroed once.
+                        4 * max(64, DECODE_MAX_M) * 32768, dtype=torch.float32,
+                        device=layer.weight.device)
+                    # Block counter for the fused reduction, one int per n-block. MUST start
+                    # zeroed; the kernel's last-arriving block resets it, so it stays that way.
                     _decode_scratch[1] = torch.zeros(
                         32768 // 128 + 8, dtype=torch.int32, device=layer.weight.device)
                     _ext.set_decode_scratch(_decode_scratch[0].data_ptr(),

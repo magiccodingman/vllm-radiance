@@ -773,10 +773,13 @@ static int split_k_for(int nblk, int M) {
     if (nblk * ks >= fill) return ks;
   return DEC_KS;
 }
-#define DEC_MAX_TM 4        // covers M<=64. mtp SPEC=4 x max_num_seqs=8 reaches M=40, but a
-                            // dflash drafter drafts a whole block: at SPEC=7 M is batch x 8,
-                            // so max_num_seqs=8 reaches exactly 64. At TM=3 that call fell off
-                            // this kernel onto the BM=256 prefill tile.
+#define DEC_MAX_TM 8        // covers M<=128: a dflash drafter at SPEC=7 and max_num_seqs=16
+                            // reaches batch x 8 = 128. Extended from 4 on 2026-08-29 for the
+                            // 16-concurrent serve; the launcher's decode_max_m env still gates
+                            // WHICH M take this kernel (64 at max_num_seqs=8, unchanged), so
+                            // the extension is inert until the serve opts in. The split-K
+                            // scratch must cover DEC_KS*decode_max_m rows -- radiance_mxfp4.py
+                            // sizes it from RADIANCE_MXFP4_DECODE_MAX_M.
 static float *g_decode_partial = nullptr;
 static size_t g_decode_partial_bytes = 0;
 static int *g_decode_cnt = nullptr;
@@ -823,7 +826,28 @@ static void launch(uintptr_t a, uintptr_t w, uintptr_t ws, uintptr_t wref, uintp
     constexpr int DWN = DEC_DWN;                 // tuned: ~/mxfp4_work/tier5 + tier6/grid.hip
     constexpr int DBND = DWN * 16;
     const int dec_nblk = (N + DBND - 1) / DBND;
-    const int dks = split_k_for(dec_nblk, M);
+    // M <= 64 keeps the shipped policy verbatim (split_k_for + decode_bk64) -- the 16-concurrent
+    // extension must not move a single cell of the 8-and-under band. M in (64, 128] is a NEW
+    // band, measured cell-by-cell in tier7 (2026-08-29, DRAM-fed, all six shapes to M=128):
+    //   nblk >= 110 (gate_up)  -> dks1/bk64   (bk128 is +38% at M=128: 251 vs 181 us)
+    //   nblk >= 48  (n8192/7168)-> dks1/bk128 (the old fill=78 rule picked dks2, -5%)
+    //   nblk <= 8   (gate48)   -> dks4/bk128  (widest split, as everywhere)
+    //   nblk ~40, K >= 6144 (down: 68 k-slabs) -> M <= 80: dks2/bk128; else dks4/bk64
+    //     (down goes non-monotonic: at M >= 96 the wide split + BK=64's occupancy wins,
+    //      d4/b64 111.8 vs d2/b128 153.4 at M=128)
+    //   nblk ~40, K <  6144 (out: 24 k-slabs)  -> dks1/bk128 (few slabs, splits never pay)
+    int dks, bkx;
+    if (M > 64) {
+      if (dec_nblk >= 110)      { dks = 1; bkx = 64; }
+      else if (dec_nblk >= 48)  { dks = 1; bkx = 128; }
+      else if (dec_nblk <= 8)   { dks = DEC_KS; bkx = 128; }
+      else if (K >= 6144)       { if (M <= 80) { dks = 2; bkx = 128; }
+                                  else         { dks = DEC_KS; bkx = 64; } }
+      else                      { dks = 1; bkx = 128; }
+    } else {
+      dks = split_k_for(dec_nblk, M);
+      bkx = 0;   // resolved below from decode_bk64, exactly as shipped
+    }
     // DKS==1 writes C directly and needs neither the partial buffer nor the block counter;
     // anything wider needs both. Sizing the guard by the CHOSEN ks (not the widest) also means a
     // shape that would have overflowed the scratch at DKS=4 can still take the kernel at DKS=1.
@@ -834,7 +858,7 @@ static void launch(uintptr_t a, uintptr_t w, uintptr_t ws, uintptr_t wref, uintp
       float *P = g_decode_partial;
       const dim3 dblock(DWN * 32);
       const int tm = (M + DEC_MTILE - 1) / DEC_MTILE;   // smallest tile that covers M
-      const bool bk64 = decode_bk64(tm, dks);
+      if (bkx == 0) bkx = decode_bk64(tm, dks) ? 64 : 128;
 #define RAD_DEC_LAUNCH(BK_, KS_, TM_)                                                         \
       hipLaunchKernelGGL((radiance_mxfp4_fp8_gemm_decode<DWN, BK_, KS_, TM_, RAD_WPERM>),      \
                          dim3(dec_nblk, 1, KS_), dblock,                                       \
@@ -846,11 +870,17 @@ static void launch(uintptr_t a, uintptr_t w, uintptr_t ws, uintptr_t wref, uintp
       if (tm == 1)      RAD_DEC_LAUNCH(BK_, KS_, 1);                                           \
       else if (tm == 2) RAD_DEC_LAUNCH(BK_, KS_, 2);                                           \
       else if (tm == 3) RAD_DEC_LAUNCH(BK_, KS_, 3);                                           \
-      else              RAD_DEC_LAUNCH(BK_, KS_, 4)
+      else if (tm == 4) RAD_DEC_LAUNCH(BK_, KS_, 4);                                           \
+      else if (tm == 5) RAD_DEC_LAUNCH(BK_, KS_, 5);                                           \
+      else if (tm == 6) RAD_DEC_LAUNCH(BK_, KS_, 6);                                           \
+      else if (tm == 7) RAD_DEC_LAUNCH(BK_, KS_, 7);                                           \
+      else              RAD_DEC_LAUNCH(BK_, KS_, 8)
 #define RAD_DEC_BY_KS                                                                         \
-      if (dks <= 1)      { if (bk64) { RAD_DEC_BY_TM(64, 1); } else { RAD_DEC_BY_TM(128, 1); } }\
+      if (dks <= 1)      { if (bkx == 64) { RAD_DEC_BY_TM(64, 1); }                            \
+                           else           { RAD_DEC_BY_TM(128, 1); } }                         \
       else if (dks == 2) { RAD_DEC_BY_TM(128, 2); }                                            \
-      else               { RAD_DEC_BY_TM(128, 4); }
+      else               { if (bkx == 64) { RAD_DEC_BY_TM(64, 4); }                            \
+                           else           { RAD_DEC_BY_TM(128, 4); } }
       if (dec_wperm) {
 #define RAD_WPERM true
         RAD_DEC_BY_KS;
