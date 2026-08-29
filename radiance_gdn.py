@@ -61,6 +61,26 @@ _CONV_PREP = _bind("gdn_conv_prep", conv_width=CONV_WIDTH, head_k=HEAD_K, head_v
 _CONV_UPDATE = _bind("gdn_conv_update", conv_width=CONV_WIDTH, head_k=HEAD_K, head_v=HEAD_V)
 _KKT_SOLVE = _bind("gdn_kkt_solve", head_k=HEAD_K, chunk=CHUNK)
 _RECURRENT_UPDATE = _bind("gdn_recurrent_update", head_k=HEAD_K, head_v=HEAD_V)
+_FUSED_UPDATE = _bind("gdn_fused_update", conv_width=CONV_WIDTH, head_k=HEAD_K, head_v=HEAD_V)
+# The fused decode step (conv -> grid barrier -> recurrent in ONE launch) removes one kernel
+# boundary per GDN layer per forward. Bit-identical to the pair by construction. Off by default
+# until the serving A/B has run; needs a build whose registry has gdn_fused_update.
+FUSED_UPDATE_ON = os.environ.get("RADIANCE_GDN_FUSED_UPDATE", "0") == "1" and _FUSED_UPDATE is not None
+# The barrier counter must exist BEFORE any CUDA-graph capture replays the kernel, and must NOT
+# be allocated at import -- that grabs a CUDA context before vLLM sets the device and breaks its
+# memory snapshot (the split-K decode scratch learned the same lesson; it allocates at weight
+# load). init_fused_counter() is called from the post-load hook in radiance_gdnmerge.merge_model.
+_FUSED_CNT = None
+
+
+def init_fused_counter():
+    global _FUSED_CNT, FUSED_UPDATE_ON
+    if FUSED_UPDATE_ON and _FUSED_CNT is None:
+        try:
+            _FUSED_CNT = torch.zeros(1, dtype=torch.int32, device="cuda")
+        except Exception as _e:                      # noqa: BLE001
+            FUSED_UPDATE_ON = False
+            sys.stderr.write(f"[radiance.gdn] fused update disabled, no counter: {_e!r}\n")
 _GATED_RMSNORM = _bind("gdn_gated_rmsnorm", channels=HEAD_V)
 
 if ENABLED and _CHUNK_SCAN is None:
@@ -287,6 +307,29 @@ def conv_update(x, conv_w, conv_bias, conv_state, state_len_max, cache_idx, num_
     return q, k, v
 
 
+def fused_update(x, conv_w, conv_bias, conv_state, state_len_max, cache_idx, num_accepted,
+                 cu, num_seqs, T, H, Hg, max_query_len, a, b, A_log, dt_bias, ssm_state, o,
+                 sidx, scale):
+    """conv_update + recurrent_update as one launch. Arguments are the union of the pair's."""
+    dev, dt = x.device, torch.bfloat16
+    q = torch.empty((T, Hg, HEAD_K), device=dev, dtype=dt)
+    k = torch.empty((T, Hg, HEAD_K), device=dev, dtype=dt)
+    v = torch.empty((T, H, HEAD_V), device=dev, dtype=dt)
+    _FUSED_UPDATE(
+        x.data_ptr(), x.stride(0), conv_w.data_ptr(),
+        conv_bias.data_ptr() if conv_bias is not None else 0,
+        conv_state.data_ptr(), conv_state.stride(0), conv_state.stride(1), conv_state.stride(2),
+        state_len_max, cache_idx.data_ptr(), cache_idx.stride(0),
+        num_accepted.data_ptr() if num_accepted is not None else 0,
+        cu.data_ptr(), num_seqs, H, Hg, HEAD_K, HEAD_V, CONV_WIDTH, max_query_len,
+        q.data_ptr(), k.data_ptr(), v.data_ptr(),
+        a.data_ptr(), b.data_ptr(), a.stride(0), a.dtype == torch.bfloat16,
+        A_log.data_ptr(), dt_bias.data_ptr(),
+        ssm_state.data_ptr(), ssm_state.stride(0), ssm_state.stride(1),
+        o.data_ptr(), sidx.data_ptr(), sidx.stride(0),
+        float(scale), SOFTPLUS_THRESHOLD, _FUSED_CNT.data_ptr(), _stream())
+
+
 def kkt_solve(k, beta, g, cu, num_seqs, T, H, Hg):
     """A = (I + strict_lower(diag(beta) K K^T e^dg))^-1 per chunk; the fp32 gram stays in LDS."""
     A = torch.empty((T, H, CHUNK), device=k.device, dtype=torch.bfloat16)
@@ -465,14 +508,18 @@ def forward_core_fused(self, mixed_qkv, b, a, core_attn_out) -> bool:
         nseq = md.num_spec_decodes
         maxq = sidx.size(-1)
         cu = md.spec_query_start_loc[: nseq + 1]
-        if CHECK:
-            _check_decode(self, mixed_qkv, a, b, conv_w, A_log, dt_bias, conv_state, ssm_state,
-                          sidx, cu, md, nseq, maxq, T, H, Hg)
+        o = core_attn_out[:T].view(T, H, HEAD_V)
+        if FUSED_UPDATE_ON:
+            fused_update(mixed_qkv, conv_w, self.conv1d.bias, conv_state,
+                         (4 - 1) + (maxq - 1), sidx[:, 0][:nseq], md.num_accepted_tokens,
+                         cu, nseq, T, H, Hg, maxq, a, b, A_log, dt_bias, ssm_state, o, sidx,
+                         HEAD_K ** -0.5)
+            _first("decode(fused)")
+            return True
         q, k, v = conv_update(mixed_qkv, conv_w, self.conv1d.bias, conv_state,
                               (4 - 1) + (maxq - 1), sidx[:, 0][:nseq],
                               md.num_accepted_tokens, cu, nseq, T, H, Hg, maxq)
         _first("decode")
-        o = core_attn_out[:T].view(T, H, HEAD_V)
         # Fold the layer's gated RMS norm into this kernel when z is visible: the workgroup owns
         # the whole 128-channel row here, so it is a reduction rather than a second pass. z is
         # stashed by the ROCm entry point (patch_r4d.py); without it the norm stays where it

@@ -117,7 +117,14 @@ def _merge_one(mod) -> bool:
 
 
 def merge_model(model) -> None:
-    """Merge every GDN layer's two input projections. Best-effort: never blocks the serve."""
+    """Merge every GDN layer's two input projections. Best-effort: never blocks the serve.
+
+    The same post-load point initializes the fused GDN barrier before graph capture."""
+    try:
+        import radiance_gdn
+        radiance_gdn.init_fused_counter()           # before any CUDA-graph capture
+    except Exception as e:                          # noqa: BLE001
+        _log(f"gdn fused counter init failed: {e!r}")
     if not ENABLED:
         return
     # Fragment order (RADIANCE_MXFP4_WPERM=1) is fine to merge: permute_w is tile-local along N

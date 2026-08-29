@@ -1,0 +1,623 @@
+diff --git a/build.sh b/build.sh
+index e0ee6a1..1e111cb 100755
+--- a/build.sh
++++ b/build.sh
+@@ -42,6 +42,7 @@ UNITS=(
+   "r4d_gdn_conv_w4_h128_bf16:"
+   "r4d_gdn_kkt_solve_k128_c64_bf16:"
+   "r4d_gdn_recurrent_update_k128_v128_bf16_fp32state:"
++  "r4d_gdn_fused_update_w4k128v128:"
+   "r4d_gdn_gated_rmsnorm_h128_bf16:"
+   "r4d_ar_oneshot_2rank_exact:"
+   "r4d_ar_oneshot_2rank_wht6:"
+@@ -66,7 +67,7 @@ echo "[hipcc] ${OUT} (link)"
+ # hipcc emits a fatbin per object; no -fgpu-rdc is needed, because no device function is called
+ # across translation units.
+ $HIPCC -shared --offload-arch="${GFX_ARCH}" r4d_attn_paged_h256_gqa6.o r4d_attn_vit_h72_bf16.o r4d_gdn_chunk_scan_k128_v128_c64_bf16.o r4d_gdn_conv_w4_h128_bf16.o \
+-  r4d_gdn_kkt_solve_k128_c64_bf16.o r4d_gdn_recurrent_update_k128_v128_bf16_fp32state.o r4d_gdn_gated_rmsnorm_h128_bf16.o \
++  r4d_gdn_kkt_solve_k128_c64_bf16.o r4d_gdn_recurrent_update_k128_v128_bf16_fp32state.o r4d_gdn_fused_update_w4k128v128.o r4d_gdn_gated_rmsnorm_h128_bf16.o \
+   r4d_ar_oneshot_2rank_exact.o r4d_ar_oneshot_2rank_wht6.o \
+   r4d_gemm_bf16_nt_m16.o r4d_registry.o r4d_module.o -o "${OUT}"
+ echo "[build.sh] $(ls -la "${OUT}")"
+diff --git a/r4d.h b/r4d.h
+index c8c28c9..c223cb7 100644
+--- a/r4d.h
++++ b/r4d.h
+@@ -147,6 +147,15 @@ int r4d_gdn_gated_rmsnorm_h128_bf16(const void* x, const void* z, const void* w,
+ // l2 norm, the state update and the output, against the paged state cache. The state is fp32
+ // (this model's config asks for it) and one is written per candidate token, which is the whole
+ // cost of the kernel. Replaces fused_sigmoid_gating_delta_rule_update.
++int r4d_gdn_fused_update_w4k128v128_bf16(
++    const void* x, long xpitch, const void* wgt, const void* bias, void* cstate,
++    long cs_seq, long cs_dim, long cs_tok, int state_len_max, const void* cache_idx,
++    long ci_stride, const void* num_accepted, const void* cu, int N, int H, int Hg,
++    int K, int V, int width, int max_query_len, void* q, void* k, void* v,
++    const void* a, const void* b, long ab_stride, int ab_is_bf16,
++    const void* A_log, const void* dt_bias, void* state, long st_slot, long st_head,
++    void* o, const void* sidx, long sidx_stride, float scale, float softplus_thr,
++    void* barrier_cnt, void* stream);
+ int r4d_gdn_recurrent_update_k128_v128_bf16_fp32state(
+         const void* q, const void* k, const void* v, const void* a, const void* b,
+         long ab_stride, int ab_is_bf16, const void* A_log, const void* dt_bias, void* state,
+diff --git a/r4d_attn_paged_h256_gqa6.hip b/r4d_attn_paged_h256_gqa6.hip
+index cd4e294..3694dab 100644
+--- a/r4d_attn_paged_h256_gqa6.hip
++++ b/r4d_attn_paged_h256_gqa6.hip
+@@ -57,9 +57,35 @@ static int prefill_launch(const R4DArgs* a, hipStream_t s) {
+     if (a->q_heads / a->kv_heads != A_GQA) return -2;
+     constexpr int BQ = (P_NWARPS * 16) / A_GQA;
+     dim3 grid((a->q_len + BQ - 1) / BQ, a->kv_heads, a->num_seqs);
+-    hipLaunchKernelGGL((r4d_attn_prefill_kernel<P_NWARPS, P_TILE, A_HEAD_DIM, A_GQA, A_BLOCK_SIZE,
+-                                                KVP, P_OPT>),
+-                       grid, dim3(P_NWARPS * 32), 0, s, *a);
++    // R4D_ATTN_FP8: 0 = the shipped f16 legs; 1 = O_QK8, 2 = O_PV8, 3 = both. fp8 KV only.
++    // Opt-in and read once: the 8-bit legs trade oracle accuracy (1.7e-3 -> 1.7e-2/2.6e-2/3.1e-2
++    // row relRMSE) for WMMA issue rate (+10%/+24%/+56% at a hot 8k chunk, +18% at a cold 40k
++    // chunk, ~/mxfp4_work/tier8). Whether that accuracy trade is FREE at the end task is exactly
++    // what the serving gates (ppl + GSM8K paired) decide; kernel-level parity already decided the
++    // default, which is why these are bits and not the baseline.
++    int fp8mode = 0;
++    if constexpr (!KVP) {
++        static const int m = [] {
++            const char* e = getenv("R4D_ATTN_FP8");
++            return e ? atoi(e) : 0;
++        }();
++        fp8mode = m;
++    }
++#define P_LAUNCH(OPTX)                                                                            \
++    do {                                                                                          \
++        hipLaunchKernelGGL((r4d_attn_prefill_kernel<P_NWARPS, P_TILE, A_HEAD_DIM, A_GQA,          \
++                                                    A_BLOCK_SIZE, KVP, OPTX>),                    \
++                           grid, dim3(P_NWARPS * 32), 0, s, *a);                                  \
++    } while (0)
++    if constexpr (!KVP) {
++        if (fp8mode == 3)      P_LAUNCH(P_OPT | O_QK8 | O_PV8);
++        else if (fp8mode == 2) P_LAUNCH(P_OPT | O_PV8);
++        else if (fp8mode == 1) P_LAUNCH(P_OPT | O_QK8);
++        else                   P_LAUNCH(P_OPT);
++    } else {
++        P_LAUNCH(P_OPT);
++    }
++#undef P_LAUNCH
+     CHK();
+     return 0;
+ }
+diff --git a/r4d_attn_prefill_h256_gqa6.hip b/r4d_attn_prefill_h256_gqa6.hip
+index 513d97f..d3a19fa 100644
+--- a/r4d_attn_prefill_h256_gqa6.hip
++++ b/r4d_attn_prefill_h256_gqa6.hip
+@@ -38,6 +38,25 @@
+ 
+ #define O_F16     1
+ #define O_MSKIP   2
++// QK8/PV8: the deleted 8-bit arms, rebuilt as SEPARABLE opt-in bits for long-context serving.
++// The dispatch header records why they were deleted: single-term e4m3 Q measured 2.58e-2 against
++// the fp32 oracle vs 2.3e-3 for the f16 path. That is a KERNEL-level verdict; these bits exist to
++// let the END-TASK verdict (ppl + GSM8K, the fp8 all-reduce playbook) be measured on a build
++// where each leg can be flipped alone. Both require the fp8 KV cache (KVP == 0).
++//   QK8: Q quantized e4m3 once at load (the fold makes it ~0.1-0.5, well inside e4m3), K stays
++//        RAW BYTES in LDS -- the fp8->f16 upconvert in storeK disappears, sK halves, and the QK
++//        WMMA runs at the 2x fp8 issue rate.
++//   PV8: P packed e4m3 instead of f16 (v_cvt_pk_fp8_f32, same instruction count as pkrtz), V
++//        stays raw bytes, PV WMMA at 2x. GROW tightens to 8 octaves (e4m3 max 448 = 2^8.8) and
++//        DOT2 is off -- the denominator sums the pre-quantization p, which the old probe measured
++//        indistinguishable at these error levels.
++#define O_QK8    32
++#define O_PV8    64
++// A K prefetch across the m-tile loop (the GPREV pattern applied to K) was re-measured under the
++// 8-bit legs on 2026-08-29, on the theory that the register headroom they free (qf8 is 32 VGPRs
++// against qf's 64) removes the spill that killed upstream's three attempts. It still LOSES:
++// -5% at an 8k chunk, -1% at 40k, bit-identical output -- the live range across the loop is the
++// cost, not the spill. Do not build it a fifth time.
+ #define O_FOLDQ   8
+ #define O_CONTIG  512
+ #define O_PF2    1024
+@@ -72,6 +91,13 @@
+ // ever orders LDS.
+ #define O_LDSB  2097152
+ 
++typedef int v2i32_r4d __attribute__((ext_vector_type(2)));   // one fp8 WMMA operand (8 e4m3)
++// pack 4 floats -> 4 e4m3 bytes in element order (RNE, saturating), 2 instructions
++__device__ __forceinline__ uint32_t pk_fp8x4(float a, float b, float c, float d) {
++    const uint32_t w = __builtin_amdgcn_cvt_pk_fp8_f32(a, b, 0u, false);
++    return __builtin_amdgcn_cvt_pk_fp8_f32(c, d, w, true);
++}
++
+ // bf16 dword -> 16-bit dword in the target format, optionally scaled. Used once per kernel on Q.
+ template<class D, int FOLDQ, int F16>
+ __device__ __forceinline__ uint32_t r4d_qcvt(uint32_t w, float s) {
+@@ -90,11 +116,15 @@ void r4d_attn_prefill_kernel(const R4DArgs a)
+     constexpr int CTG   = (OPT & O_CONTIG) ? 1 : 0;
+     constexpr int PF    = 1 << ((OPT >> 10) & 3);
+     constexpr int SGB   = (OPT & O_SGB) ? 1 : 0;
+-    constexpr int DOT2  = ((OPT & O_DOT2) && (OPT & O_F16)) ? 1 : 0;
++    constexpr int DOT2  = ((OPT & O_DOT2) && (OPT & O_F16) && !(OPT & O_PV8)) ? 1 : 0;
+     constexpr int BTS   = (OPT & O_BTS)   ? 1 : 0;
+     constexpr int GPREV = (OPT & O_GPREV) ? 1 : 0;
+     constexpr int LDSB  = (OPT & O_LDSB)  ? 1 : 0;
+     constexpr int KWIDE = (OPT & O_KWIDE) ? 1 : 0;
++    constexpr int QK8   = ((OPT & O_QK8) && !KVP) ? 1 : 0;
++    constexpr int PV8   = ((OPT & O_PV8) && !KVP) ? 1 : 0;
++    static_assert(!(OPT & (O_QK8 | O_PV8)) || !KVP, "8-bit legs need the fp8 KV cache");
++    static_assert(!(OPT & O_QK8) || KWIDE, "QK8 raw-byte staging is written for the wide K fetch");
+     typedef DT16<F16> D;
+     typedef typename D::frag frag16;
+ 
+@@ -113,11 +143,18 @@ void r4d_attn_prefill_kernel(const R4DArgs a)
+     constexpr int NTR     = (TILE / 8) * (HEAD_DIM / (KVP ? 32 : 64));
+     constexpr int VREGS   = (NTR + NWARPS - 1) / NWARPS;        // uint4 of raw V per thread
+     constexpr float PSHIFT = D::SHIFT;
+-    constexpr float PGROW  = D::GROW;
++    constexpr float PGROW  = PV8 ? 8.0f : D::GROW;   // e4m3 max is 448 = 2^8.8
+     static_assert(!KWIDE || KPASS == 1, "the wide K fetch is one straight-line pass");
++    static_assert((!QK8 && !PV8) || CTG, "the 8-bit fragment maps are written for CONTIG");
+ 
+     __shared__ uint16_t sK[TILE * KSTR];
+     __shared__ uint16_t sV16[HEAD_DIM * VSTR];
++    // Raw-byte views for the 8-bit legs. Aliasing the 16-bit allocations wastes half of each --
++    // deliberately: nothing else moves, and the harness prices the tiles separately. Strides are
++    // in BYTES, padded 8 so the 16-row fragment reads spread across all 32 banks.
++    constexpr int KSTR8 = HEAD_DIM + 8, VSTR8 = TILE + 8;
++    uint8_t* const sK8 = (uint8_t*)sK;
++    uint8_t* const sV8 = (uint8_t*)sV16;
+ 
+     const int tid = threadIdx.x, lane = tid & 31, warp = tid >> 5;
+     const int c = lane & 15, h = lane >> 4;
+@@ -140,6 +177,7 @@ void r4d_attn_prefill_kernel(const R4DArgs a)
+     const float mul   = a.scale * kdesc * 1.44269504089f;
+ 
+     frag16 qf[NKS];
++    v2i32_r4d qf8[QK8 ? NKS : 1];
+     {
+         const uint16_t* qp = (const uint16_t*)a.q
+                            + ((size_t)(seq * a.q_len + qrow) * a.q_heads + qhead) * HEAD_DIM;
+@@ -148,10 +186,21 @@ void r4d_attn_prefill_kernel(const R4DArgs a)
+             // CONTIG reads the same 8 d as ONE run; the legacy map splits them 4+4.
+             const uint2 l0 = *(const uint2*)(qp + 16 * t + (CTG ? 8 * h : 4 * h));
+             const uint2 h0 = *(const uint2*)(qp + 16 * t + (CTG ? 8 * h + 4 : 8 + 4 * h));
+-            qf[t] = D::mk(make_uint2(r4d_qcvt<D, FOLDQ, F16>(l0.x, mul),
+-                                     r4d_qcvt<D, FOLDQ, F16>(l0.y, mul)),
+-                          make_uint2(r4d_qcvt<D, FOLDQ, F16>(h0.x, mul),
+-                                     r4d_qcvt<D, FOLDQ, F16>(h0.y, mul)));
++            if constexpr (QK8) {
++                // e4m3 Q, folded scale first: the fold puts |q| in ~[0.05, 1], comfortably inside
++                // e4m3, and its error is relative so the fold costs nothing extra.
++                const float m_ = FOLDQ ? mul : 1.0f;
++                #define R4D_QB(w) __builtin_bit_cast(float, (w) << 16) * m_, \
++                                  __builtin_bit_cast(float, (w) & 0xffff0000u) * m_
++                qf8[t] = (v2i32_r4d){(int)pk_fp8x4(R4D_QB(l0.x), R4D_QB(l0.y)),
++                                     (int)pk_fp8x4(R4D_QB(h0.x), R4D_QB(h0.y))};
++                #undef R4D_QB
++            } else {
++                qf[t] = D::mk(make_uint2(r4d_qcvt<D, FOLDQ, F16>(l0.x, mul),
++                                         r4d_qcvt<D, FOLDQ, F16>(l0.y, mul)),
++                              make_uint2(r4d_qcvt<D, FOLDQ, F16>(h0.x, mul),
++                                         r4d_qcvt<D, FOLDQ, F16>(h0.y, mul)));
++            }
+         }
+     }
+ 
+@@ -229,6 +278,11 @@ void r4d_attn_prefill_kernel(const R4DArgs a)
+                 const int key = KWIDE ? (2 * (i >> 5) + (i & 1)) : (i / (HEAD_DIM / KEL));
+                 const int ch  = KWIDE ? ((i & 31) >> 1) : (i - key * (HEAD_DIM / KEL));
+                 if (KWIDE && key >= TILE) continue;
++                if constexpr (QK8) {
++                    // K stays e4m3: no upconvert, one b128 store, sK footprint halves.
++                    *(uint4*)(&sK8[key * KSTR8 + ch * KEL]) = kreg[p];
++                    continue;
++                }
+                 uint16_t* kd = &sK[key * KSTR + ch * KEL];
+                 #pragma unroll
+                 for (int q = 0; q < KEL / 8; ++q) {
+@@ -266,6 +320,11 @@ void r4d_attn_prefill_kernel(const R4DArgs a)
+                     // ADJACENT d; v_perm_b32 splits them back into two d rows.
+                     const uint32_t lo0 = byte_gather(v.x, v.y, 0), lo1 = byte_gather(v.z, v.w, 0);
+                     const uint32_t hi0 = byte_gather(v.x, v.y, 1), hi1 = byte_gather(v.z, v.w, 1);
++                    if constexpr (PV8) {
++                        *(uint2*)(&sV8[(d0 + 2 * vj)     * VSTR8 + kg * 8]) = make_uint2(lo0, lo1);
++                        *(uint2*)(&sV8[(d0 + 2 * vj + 1) * VSTR8 + kg * 8]) = make_uint2(hi0, hi1);
++                        continue;
++                    }
+                     uint32_t wl[4], wh[4];
+                     fp8x8_to_16x4w<D>(make_uint2(lo0, lo1), wl);
+                     fp8x8_to_16x4w<D>(make_uint2(hi0, hi1), wh);
+@@ -310,7 +369,21 @@ void r4d_attn_prefill_kernel(const R4DArgs a)
+         #pragma unroll 1
+         for (int mt = 0; mt < MT; ++mt) {
+             v8f s = (v8f){0,0,0,0,0,0,0,0};
+-            {
++            if constexpr (QK8) {
++                // Same PF discipline, half the fragment bytes, 2x the WMMA issue rate.
++                const uint8_t* krow8 = &sK8[(mt * 16 + c) * KSTR8] + 8 * h;
++                #pragma unroll
++                for (int g = 0; g < NKS; g += PF) {
++                    v2i32_r4d kb8[PF];
++                    #pragma unroll
++                    for (int j = 0; j < PF; ++j)
++                        kb8[j] = *(const v2i32_r4d*)(krow8 + 16 * (g + j));
++                    if (SGB) sched_barrier();
++                    #pragma unroll
++                    for (int j = 0; j < PF; ++j)
++                        s = __builtin_amdgcn_wmma_f32_16x16x16_fp8_fp8_w32_gfx12(kb8[j], qf8[g + j], s);
++                }
++            } else {
+                 const uint16_t* krow = &sK[(mt * 16 + c) * KSTR] + (CTG ? 8 * h : 0);
+                 // PF fragments are LOADED before the matching PF WMMAs are ISSUED, so the wait in
+                 // front of each WMMA becomes `s_wait_dscnt PF-1` instead of a full drain.
+@@ -368,7 +441,22 @@ void r4d_attn_prefill_kernel(const R4DArgs a)
+             }
+             if (!DOT2) l_i += lsum;
+ 
+-            {
++            if constexpr (PV8) {
++                const v2i32_r4d p8 = (v2i32_r4d){(int)pk_fp8x4(pf[0], pf[1], pf[2], pf[3]),
++                                                 (int)pk_fp8x4(pf[4], pf[5], pf[6], pf[7])};
++                const uint8_t* vbase8 = &sV8[c * VSTR8 + mt * 16 + 8 * h];
++                #pragma unroll
++                for (int g = 0; g < NKS; g += PF) {
++                    v2i32_r4d vb8[PF];
++                    #pragma unroll
++                    for (int j = 0; j < PF; ++j)
++                        vb8[j] = *(const v2i32_r4d*)(vbase8 + (size_t)(g + j) * 16 * VSTR8);
++                    if (SGB) sched_barrier();
++                    #pragma unroll
++                    for (int j = 0; j < PF; ++j)
++                        acc[g + j] = __builtin_amdgcn_wmma_f32_16x16x16_fp8_fp8_w32_gfx12(vb8[j], p8, acc[g + j]);
++                }
++            } else {
+                 uint32_t pw[4];
+                 #pragma unroll
+                 for (int e = 0; e < 8; e += 2) pw[e >> 1] = D::pk(pf[e], pf[e + 1]);
+diff --git a/r4d_gdn_fused_update_w4k128v128.hip b/r4d_gdn_fused_update_w4k128v128.hip
+new file mode 100644
+index 0000000..82c99c9
+--- /dev/null
++++ b/r4d_gdn_fused_update_w4k128v128.hip
+@@ -0,0 +1,274 @@
++// r4d_gdn_fused_update_w4k128v128.hip -- the decode GDN step as ONE launch: the rolling
++// speculative conv update, then the recurrent delta-rule update, separated by a grid-wide
++// barrier instead of a kernel boundary.
++//
++// WHY. The two stages are 7-13 us kernels launched 2 x 48 layers per forward; at the measured
++// ~3.3 us graph-dispatch gap the boundary costs as much as the smaller kernel. They cannot be
++// block-fused: a recurrent head hv consumes q/k written by DIFFERENT conv units, so the handoff
++// has to cross workgroups. The barrier is the decode GEMM's fused split-K pattern (arrive on an
++// atomic, last arrival resets it, so the counter is zeroed for the next launch and graph replay
++// needs no clearing pass) -- and it is deadlock-free BY CONSTRUCTION, not by luck: the grid is
++// capped at FU_MAXWG workgroups of 8 waves, far under residency, and both phases WORK-LOOP over
++// their items instead of assuming one item per block.
++//
++// The math is copied VERBATIM from r4d_gdn_conv_w4_h128_bf16.hip (decode entry) and
++// r4d_gdn_recurrent_update_k128_v128_bf16_fp32state.hip (ABF16 templated, NM=0 -- the production
++// configuration; a caller wanting the fused row norm must use the unfused pair). Outputs are
++// bit-identical to the pair: every (n, unit) / (n, head) item is independent, so the work-loop
++// remap changes scheduling only. If either source kernel changes, this file has to follow -- the
++// duplication is the price of not linking device code across TUs (no -fgpu-rdc in this build).
++#include <hip/hip_runtime.h>
++#include "r4d.h"
++#include "r4d_common.h"
++#include "r4d_gdn_wmma.h"
++
++#define FU_HD    128
++#define FU_W       4
++#define FU_ST   (FU_W - 1)
++#define FU_DPL     4
++#define FU_MAXT    1            // matches CU_MAXT: the x preload band of the decode conv
++#define FU_K     128
++#define FU_V     128
++#define FU_HK     64
++#define FU_MAXWG  32            // 8-wave workgroups; 32 is <= 1 per WGP, always resident
++
++__device__ __forceinline__ float fu_silu(float x) { return x / (1.0f + __expf(-x)); }
++__device__ __forceinline__ float fu_softplus(float x, float thr) {
++  if (x > thr) return x;
++  return (x > 0.0f) ? (x + __logf(1.0f + __expf(-x))) : __logf(1.0f + __expf(x));
++}
++template <int ABF16>
++__device__ __forceinline__ float fu_ab(const void* p, size_t i) {
++  return ABF16 ? bf2f(((const unsigned short*)p)[i]) : ((const float*)p)[i];
++}
++
++template <int ABF16>
++__global__ __launch_bounds__(256)
++void r4d_gdn_fused_update_kernel(
++    const unsigned short* __restrict__ x, long xpitch,
++    const unsigned short* __restrict__ wgt, const unsigned short* __restrict__ bias,
++    unsigned short* __restrict__ cstate, long cs_seq, long cs_dim, long cs_tok,
++    int state_len_max, const int* __restrict__ cache_idx, long ci_stride,
++    const int* __restrict__ naccept, const int* __restrict__ cu,
++    int N, int H, int Hg, int maxq,
++    unsigned short* __restrict__ q, unsigned short* __restrict__ k,
++    unsigned short* __restrict__ v,
++    const void* __restrict__ av, const void* __restrict__ bv, long ab_stride,
++    const float* __restrict__ A_log, const float* __restrict__ dt_bias,
++    float* __restrict__ state, long st_slot, long st_head,
++    unsigned short* __restrict__ o,
++    const int* __restrict__ sidx, long sidx_stride,
++    float scale, float sp_thr, int* __restrict__ bar, int numWG)
++{
++  const int tid = threadIdx.x, lane = tid & 31, warp = tid >> 5;
++  const int units = 2 * Hg + H;
++
++  // ---- phase 1: the decode conv, one warp per (sequence, unit), work-looped -----------------
++  for (int item = blockIdx.x * 8 + warp; item < N * units; item += numWG * 8) {
++    const int n = item / units, unit = item - n * units;
++    const int bos = cu[n], slen = cu[n + 1] - bos;
++    if (slen <= 0) continue;
++    const int slot = cache_idx[(size_t)n * ci_stride];
++    if (slot <= 0) continue;
++
++    const int off = naccept ? (naccept[n] - 1) : 0;
++    const int slen_eff = state_len_max - (maxq - slen);
++    const int d0 = unit * FU_HD + lane * FU_DPL;
++
++    float wt[FU_W][FU_DPL], bs[FU_DPL];
++#pragma unroll
++    for (int c = 0; c < FU_DPL; ++c) {
++      const ushort4 w4 = *(const ushort4*)(wgt + (size_t)(d0 + c) * FU_W);
++      const unsigned short* ws = (const unsigned short*)&w4;
++#pragma unroll
++      for (int i = 0; i < FU_W; ++i) wt[i][c] = bf2f(ws[i]);
++      bs[c] = bias ? bf2f(bias[d0 + c]) : 0.0f;
++    }
++
++    unsigned short* sp = cstate + (size_t)slot * cs_seq + (size_t)d0 * cs_dim;
++    float win[FU_W][FU_DPL];
++    unsigned short hist[FU_ST][FU_DPL];
++#pragma unroll
++    for (int i = 0; i < FU_ST; ++i)
++#pragma unroll
++      for (int c = 0; c < FU_DPL; ++c) {
++        const unsigned short raw = sp[(size_t)c * cs_dim + (size_t)(off + i) * cs_tok];
++        hist[i][c] = raw;
++        win[i][c] = bf2f(raw);
++      }
++
++    const int hq = unit, hk2 = unit - Hg, hv2 = unit - 2 * Hg;
++    const int region = (unit < Hg) ? 0 : ((unit < 2 * Hg) ? 1 : 2);
++
++    ushort4 xb[FU_MAXT];
++    const bool xpre = (slen <= FU_MAXT);
++#pragma unroll
++    for (int t = 0; t < FU_MAXT; ++t)
++      if (xpre && t < slen) xb[t] = *(const ushort4*)(x + (size_t)(bos + t) * xpitch + d0);
++
++    for (int t = 0; t < slen; ++t) {
++      const ushort4 raw = xpre ? xb[t]
++                               : *(const ushort4*)(x + (size_t)(bos + t) * xpitch + d0);
++      win[FU_W - 1][0] = bf2f(raw.x); win[FU_W - 1][1] = bf2f(raw.y);
++      win[FU_W - 1][2] = bf2f(raw.z); win[FU_W - 1][3] = bf2f(raw.w);
++
++      unsigned short out[FU_DPL];
++#pragma unroll
++      for (int c = 0; c < FU_DPL; ++c) {
++        float acc = bs[c];
++#pragma unroll
++        for (int i = 0; i < FU_W; ++i) acc += wt[i][c] * win[i][c];
++        out[c] = f2bf(fu_silu(acc));
++      }
++      unsigned short* dst = (region == 2)
++          ? (v + ((size_t)(bos + t) * H + hv2) * FU_HD + lane * FU_DPL)
++          : ((region ? k : q) + ((size_t)(bos + t) * Hg + (region ? hk2 : hq)) * FU_HD
++             + lane * FU_DPL);
++      *(ushort4*)dst = make_ushort4(out[0], out[1], out[2], out[3]);
++
++#pragma unroll
++      for (int i = 0; i < FU_W - 1; ++i)
++#pragma unroll
++        for (int c = 0; c < FU_DPL; ++c) win[i][c] = win[i + 1][c];
++    }
++
++    const int VAL = FU_W - 2;
++#pragma unroll
++    for (int c = 0; c < FU_DPL; ++c) {
++      unsigned short* dst = sp + (size_t)c * cs_dim;
++      for (int i = 0; i < slen_eff; ++i) {
++        unsigned short val;
++        if (i + slen < slen_eff) {
++          val = hist[i + 1][c];
++        } else {
++          const int ti = i - VAL;
++          val = (xpre && ti >= 0 && ti < slen)
++                    ? ((const unsigned short*)&xb[ti])[c]
++                    : x[(size_t)(bos + ti) * xpitch + d0 + c];
++        }
++        dst[(size_t)i * cs_tok] = val;
++      }
++    }
++  }
++
++  // ---- grid barrier: arrive, last resets -- counter is zero again for the next launch -------
++  __threadfence();
++  __syncthreads();
++  if (tid == 0) {
++    if (atomicAdd(bar, 1) == numWG - 1) {
++      __threadfence();
++      atomicExch(bar, 0);
++    } else {
++      while (atomicAdd(bar, 0) != 0) { __builtin_amdgcn_s_sleep(8); }
++    }
++  }
++  __syncthreads();
++  __threadfence();
++
++  // ---- phase 2: the recurrent update, one workgroup per (sequence, v-head), work-looped -----
++  // 256 threads = the VS=1 shape: two threads per v row, a thread owns half the k range.
++  const int row = tid >> 1, half = tid & 1, k0 = half * FU_HK;
++  for (int item = blockIdx.x; item < N * H; item += numWG) {
++    const int n = item / H, hv = item - n * H;
++    const int bos = cu[n], T = cu[n + 1] - bos;
++    if (T <= 0) continue;
++    const int hk = hv / (H / Hg);
++    const int it = naccept ? (naccept[n] - 1) : 0;
++    const int si = sidx[(size_t)n * sidx_stride + it];
++    if (si <= 0) continue;
++
++    float h[FU_HK];
++    {
++      const float* p = state + (size_t)si * st_slot + (size_t)hv * st_head
++                     + (size_t)row * FU_K + k0;
++#pragma unroll
++      for (int j = 0; j < FU_HK; j += 4) *(float4*)&h[j] = *(const float4*)(p + j);
++    }
++    const float alog = __expf(A_log[hv]), dtb = dt_bias[hv];
++
++    for (int t = 0; t < T; ++t) {
++      const int tok = bos + t;
++      const unsigned short* qp = q + ((size_t)tok * Hg + hk) * FU_K + k0;
++      const unsigned short* kp = k + ((size_t)tok * Hg + hk) * FU_K + k0;
++
++      float qq[FU_HK], kk[FU_HK];
++#pragma unroll
++      for (int j = 0; j < FU_HK; j += 8) {
++        const uint4 wq = *(const uint4*)(qp + j), wk = *(const uint4*)(kp + j);
++        const unsigned short* sq2 = (const unsigned short*)&wq;
++        const unsigned short* sk2 = (const unsigned short*)&wk;
++#pragma unroll
++        for (int e = 0; e < 8; ++e) { qq[j + e] = bf2f(sq2[e]); kk[j + e] = bf2f(sk2[e]); }
++      }
++
++      float sq = 0.0f, sk = 0.0f;
++#pragma unroll
++      for (int j = 0; j < FU_HK; ++j) { sq += qq[j] * qq[j]; sk += kk[j] * kk[j]; }
++      sq += __shfl_xor(sq, 1, 32);
++      sk += __shfl_xor(sk, 1, 32);
++      const float qs = __frsqrt_rn(sq + 1e-6f) * scale, ks = __frsqrt_rn(sk + 1e-6f);
++#pragma unroll
++      for (int j = 0; j < FU_HK; ++j) { qq[j] *= qs; kk[j] *= ks; }
++
++      const float g  = -alog * fu_softplus(
++          fu_ab<ABF16>(av, (size_t)tok * ab_stride + hv) + dtb, sp_thr);
++      const float bt = 1.0f / (1.0f + __expf(-fu_ab<ABF16>(bv, (size_t)tok * ab_stride + hv)));
++      const float eg = __expf(g);
++
++      float dot = 0.0f;
++#pragma unroll
++      for (int j = 0; j < FU_HK; ++j) { h[j] *= eg; dot += h[j] * kk[j]; }
++      dot += __shfl_xor(dot, 1, 32);
++
++      const float u = (bf2f(v[((size_t)tok * H + hv) * FU_V + row]) - dot) * bt;
++
++      float on = 0.0f;
++#pragma unroll
++      for (int j = 0; j < FU_HK; ++j) { h[j] += u * kk[j]; on += h[j] * qq[j]; }
++      on += __shfl_xor(on, 1, 32);
++
++      if (half == 0) o[((size_t)tok * H + hv) * FU_V + row] = f2bf(on);
++
++      const int so = sidx[(size_t)n * sidx_stride + t];
++      if (so > 0) {
++        float* p = state + (size_t)so * st_slot + (size_t)hv * st_head
++                 + (size_t)row * FU_K + k0;
++#pragma unroll
++        for (int j = 0; j < FU_HK; j += 4) *(float4*)(p + j) = *(const float4*)&h[j];
++      }
++    }
++  }
++}
++
++extern "C" int r4d_gdn_fused_update_w4k128v128_bf16(
++    const void* x, long xpitch, const void* wgt, const void* bias, void* cstate,
++    long cs_seq, long cs_dim, long cs_tok, int state_len_max, const void* cache_idx,
++    long ci_stride, const void* num_accepted, const void* cu, int N, int H, int Hg,
++    int K, int V, int width, int max_query_len, void* q, void* k, void* v,
++    const void* a, const void* b, long ab_stride, int ab_is_bf16,
++    const void* A_log, const void* dt_bias, void* state, long st_slot, long st_head,
++    void* o, const void* sidx, long sidx_stride, float scale, float softplus_thr,
++    void* barrier_cnt, void* stream)
++{
++  if (K != FU_K || V != FU_V || width != FU_W) return -1;
++  if (H % Hg) return -2;
++  if (!barrier_cnt) return -3;
++  int numWG = N * H;
++  if (numWG > FU_MAXWG) numWG = FU_MAXWG;
++  if (numWG < 1) numWG = 1;
++  dim3 grid(numWG), blk(256);
++#define FU_LAUNCH(AB)                                                                         \
++  hipLaunchKernelGGL((r4d_gdn_fused_update_kernel<AB>), grid, blk, 0, (hipStream_t)stream,    \
++                     (const unsigned short*)x, xpitch, (const unsigned short*)wgt,            \
++                     (const unsigned short*)bias, (unsigned short*)cstate, cs_seq, cs_dim,    \
++                     cs_tok, state_len_max, (const int*)cache_idx, ci_stride,                 \
++                     (const int*)num_accepted, (const int*)cu, N, H, Hg, max_query_len,       \
++                     (unsigned short*)q, (unsigned short*)k, (unsigned short*)v,              \
++                     a, b, ab_stride, (const float*)A_log, (const float*)dt_bias,             \
++                     (float*)state, st_slot, st_head, (unsigned short*)o,                     \
++                     (const int*)sidx, sidx_stride, scale, softplus_thr,                      \
++                     (int*)barrier_cnt, numWG)
++  if (ab_is_bf16) FU_LAUNCH(1); else FU_LAUNCH(0);
++#undef FU_LAUNCH
++  return (int)hipGetLastError();
++}
+diff --git a/r4d_module.hip b/r4d_module.hip
+index e8913dd..5c4d6c7 100644
+--- a/r4d_module.hip
++++ b/r4d_module.hip
+@@ -206,6 +206,34 @@ static void gdn_conv_update(int64_t x, int64_t xpitch, int64_t wgt, int64_t bias
+                              std::to_string(rc) + ")");
+ }
+ 
++static void gdn_fused_update(int64_t x, int64_t xpitch, int64_t wgt, int64_t bias,
++                             int64_t cstate, int64_t cs_seq, int64_t cs_dim, int64_t cs_tok,
++                             int state_len_max, int64_t cache_idx, int64_t ci_stride,
++                             int64_t num_accepted, int64_t cu, int num_seqs, int num_v_heads,
++                             int num_k_heads, int head_k, int head_v, int width,
++                             int max_query_len, int64_t q, int64_t k, int64_t v, int64_t a,
++                             int64_t b, int64_t ab_stride, int ab_is_bf16, int64_t A_log,
++                             int64_t dt_bias, int64_t state, int64_t st_slot, int64_t st_head,
++                             int64_t o, int64_t sidx, int64_t sidx_stride, double scale,
++                             double softplus_thr, int64_t barrier_cnt, int64_t stream) {
++  int rc = r4d_gdn_fused_update_w4k128v128_bf16(
++      (const void*)x, xpitch, (const void*)wgt, (const void*)bias, (void*)cstate, cs_seq,
++      cs_dim, cs_tok, state_len_max, (const void*)cache_idx, ci_stride,
++      (const void*)num_accepted, (const void*)cu, num_seqs, num_v_heads, num_k_heads, head_k,
++      head_v, width, max_query_len, (void*)q, (void*)k, (void*)v, (const void*)a,
++      (const void*)b, ab_stride, ab_is_bf16, (const void*)A_log, (const void*)dt_bias,
++      (void*)state, st_slot, st_head, (void*)o, (const void*)sidx, sidx_stride, (float)scale,
++      (float)softplus_thr, (void*)barrier_cnt, (void*)stream);
++  if (rc == -1)
++    throw std::runtime_error("r4d gdn_fused_update: this build is compiled for head dim 128 "
++                             "and conv width 4");
++  if (rc == -3)
++    throw std::runtime_error("r4d gdn_fused_update: needs a zeroed barrier counter");
++  if (rc != 0)
++    throw std::runtime_error("r4d gdn_fused_update: hip launch error (code " +
++                             std::to_string(rc) + ")");
++}
++
+ static void gdn_gated_rmsnorm(int64_t x, int64_t z, int64_t w, int64_t o, int64_t rows,
+                               int64_t xrow, int64_t zrow, int64_t orow, int width, double eps,
+                               int act, int64_t stream) {
+@@ -592,6 +620,7 @@ PYBIND11_MODULE(r4d, m) {
+   m.def("gdn_kkt_solve_k128_c64_bf16", &gdn_kkt_solve);
+   m.def("gdn_conv_prep_w4_h128_bf16", &gdn_conv_prep);
+   m.def("gdn_conv_update_w4_h128_bf16", &gdn_conv_update);
++  m.def("gdn_fused_update_w4k128v128_bf16", &gdn_fused_update);
+   m.def("gdn_recurrent_update_k128_v128_bf16_fp32state", &gdn_recurrent_update);
+   m.def("gdn_gated_rmsnorm_h128_bf16", &gdn_gated_rmsnorm);
+   {
+diff --git a/r4d_registry.hip b/r4d_registry.hip
+index 6eae085..a164478 100644
+--- a/r4d_registry.hip
++++ b/r4d_registry.hip
+@@ -67,6 +67,9 @@ static const R4DConstraint cGdnKktSolve[] = {
+ static const R4DConstraint cGdnRecurrentUpdate[] = {
+     C_EQ("head_k", 128), C_EQ("head_v", 128),
+ };
++static const R4DConstraint cGdnFusedUpdate[] = {
++    C_EQ("conv_width", 4), C_EQ("head_k", 128), C_EQ("head_v", 128),
++};
+ static const R4DConstraint cGdnGatedRmsNorm[] = {
+     C_EQ("channels", 128),
+ };
+@@ -135,6 +138,11 @@ static const R4DKernelInfo kKernels[] = {
+      "head_k 128, chunk 64, varlen; one gram per k head, applied to every v head of the group",
+      "bf16 k and A out, fp32 beta / gate / gram / inverse",
+      ROW(cGdnKktSolve)},
++    {"gdn_fused_update_w4k128v128_bf16", "gdn", "gdn_fused_update",
++     "gdn decode step as ONE launch: conv update -> grid barrier -> recurrent update",
++     "conv width 4, head_k/head_v 128, no fused row norm; needs a zeroed barrier counter",
++     "bf16 x / conv state / q,k,v; fp32 recurrent state",
++     ROW(cGdnFusedUpdate)},
+     {"gdn_recurrent_update_k128_v128_bf16_fp32state", "gdn", "gdn_recurrent_update",
+      "gdn decode recurrent update: gating, qk l2norm, delta-rule state update, gated rms norm "
+      "and output",
