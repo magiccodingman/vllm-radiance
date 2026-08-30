@@ -71,7 +71,13 @@ FAST = os.environ.get("RADIANCE_FAST_DRAFT", "0") == "1"
 GROUP = 128        # weight-quantisation group along K; also the kernel's BLOCK_K
 BLOCK_N = 64       # do_bench optimum, and the width of one block-max entry
 BITS = 2
-RERANK = 32        # candidates scored exactly per row; swept, and KCAND is the recall lever
+# Candidates scored exactly per row. For an ARGMAX caller (mtp) this only caps how many of the
+# coarse pass's candidates get rescored, and KCAND is the recall lever -- see the docstring. For a
+# TOP-K caller (DFlash2, which asks for selector_top_k=16 candidates per position) it is a HARD
+# CEILING instead: _radiance_topk_only blanks every entry the rerank did not touch, so a top-16
+# request draws from exactly R tokens. Measured on Qwen3.8-27B + DFlash2-FP8 at ctx 0, R=32:
+# acc/draft 1.904 -> 1.804 against the bf16 head, i.e. 2R is too tight a pool for K=16.
+RERANK = int(os.environ.get("RADIANCE_DRAFT_RERANK", "32"))
 KCAND = 8          # candidates emitted per block; R caps the final count, K feeds it
 # Launch geometry, per M band. The head changes regime across the batch sizes one serve produces:
 # at M=16 it is memory-bound (427 GB/s, 68% of the DRAM roofline on its 152 MiB of int2) and at
@@ -278,11 +284,29 @@ def _quantize_draft_head(mtp, lp_attr="logits_processor"):
     return _quantize_head_now(lp, lm_head)
 
 
+# int2 buffers keyed by the bf16 weight they were derived from. DFlash2 shares ONE lm_head between
+# the drafter's candidate_logits_processor and the target's logits_processor, so when both are armed
+# the second one must reuse the first's packing rather than spend another 0.167 GiB/rank -- at
+# GPU_UTIL 0.98 that second copy comes straight out of the KV cache. Keyed by data_ptr because the
+# two LogitsProcessors hold the same tensor object anyway; a weight that moved would get a new
+# pointer and be repacked, which is the safe direction.
+_HEAD_CACHE: dict = {}
+
+
 def _quantize_head_now(lp, lm_head):
     w = lm_head.weight
     n, k = w.shape
     if k % (2 * GROUP):
         return f"hidden size {k} not a multiple of {2 * GROUP}"
+
+    cached = _HEAD_CACHE.get((w.data_ptr(), n, k))
+    if cached is not None:
+        (lp._radiance_wq, lp._radiance_scale, lp._radiance_zs,
+         lp._radiance_n, lp._radiance_nblk) = cached
+        lp._radiance_warned = False
+        lp._apply_head = types.MethodType(_apply_head_int2, lp)
+        return (f"draft head ({n}, {k}) reusing the int{BITS} packing already built for this "
+                f"lm_head, {KCAND} cand/block, rerank top-{RERANK} exact")
 
     # Asymmetric min/max at BITS, quarter-split packing (see the module docstring).
     # Quantise in row chunks: a whole-tensor fp32 intermediate is 2.5 GiB here, and the caching
@@ -325,6 +349,7 @@ def _quantize_head_now(lp, lm_head):
     lp._radiance_nblk = (n + BLOCK_N - 1) // BLOCK_N
     lp._radiance_warned = False
     lp._apply_head = types.MethodType(_apply_head_int2, lp)
+    _HEAD_CACHE[(w.data_ptr(), n, k)] = (packed, scale, zs, n, lp._radiance_nblk)
     torch.cuda.empty_cache()
 
     stored = (lp._radiance_wq.numel()

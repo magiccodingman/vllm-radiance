@@ -45,8 +45,13 @@ ARG TRANSFORMERS_VERSION
 ARG XGRAMMAR_VERSION
 ARG R4D_VERSION
 ARG R4D_COMMIT
-ARG RADIANCE_VERSION=0.9.3-dev.vllm0.28.0-r4d0.5.0-mxfp4.dflash2.xgrammar
-ENV RADIANCE_VERSION=${RADIANCE_VERSION}
+ARG RADIANCE_VERSION=0.9.3-dev.vllm0.28.0-r4d0.5.0-mxfp4.rx3.dflash2.xgrammar
+ENV RADIANCE_VERSION=${RADIANCE_VERSION} \
+    RADIANCE_GDN_MERGE_INPROJ=1 RADIANCE_GDN_FUSED_UPDATE=1 \
+    RADIANCE_MXFP4_EPIFAST=1 RADIANCE_MXFP4_WPERM=0 \
+    RADIANCE_KV_GROUP_OPT=1 RADIANCE_AR_QNT=1024 RADIANCE_AR_QNB=96 \
+    RADIANCE_DYNAMIC_WIDTH=1 RADIANCE_DYNW_MIN_BATCH=5 \
+    RADIANCE_DRAFT_RERANK=64 RADIANCE_VERIFY_HEAD=1 R4D_ATTN_FP8=0
 
 COPY --from=vllm-builder /wheels/vllm-*.whl /tmp/wheels/
 RUN pip install --no-cache-dir /tmp/wheels/vllm-*.whl \
@@ -57,7 +62,8 @@ ENV SP=/opt/vllm/lib/python3.12/site-packages
 COPY radiance_amdsmi.py radiance_amdsmi.pth \
      radiance_kernels.py radiance_vit_attn.py radiance_allreduce.py \
      radiance_draft.py radiance_draft_gpu.py radiance_drafthead.py radiance_gemm.py radiance_w4.py \
-     radiance_r4d_attn.py radiance_gdn.py radiance_mxfp4.py ${SP}/
+     radiance_r4d_attn.py radiance_gdn.py radiance_gdnmerge.py radiance_mxfp4.py \
+     radiance_verifyhead.py ${SP}/
 COPY fp8-configs/ ${SP}/vllm/model_executor/layers/quantization/utils/configs/
 COPY moe-configs/ ${SP}/vllm/model_executor/layers/fused_moe/configs/
 COPY mxfp4-configs/ ${SP}/aiter/ops/triton/configs/gemm/
@@ -69,20 +75,30 @@ RUN set -eu; cd /opt/patches; \
              patch_dynamo_metrics patch_conv1d_blockn patch_r4d patch_dflash_base \
              patch_dflash_fused_kv_fp8 patch_dflash_logits_cache_stride patch_dflash_w4 \
              patch_gdn_metadata patch_topk_triton_rows patch_rocm_cudagraph_current_stream \
-             patch_quark_mxfp4 patch_quark_bf16_mtp patch_ar_maxbytes patch_xgrammar_spec_termination \
+             patch_quark_mxfp4 patch_quark_bf16_mtp patch_ar_maxbytes patch_ar_geometry \
+             patch_kv_group_size patch_gdn_merge_inproj patch_dynwidth patch_verify_head \
+             patch_xgrammar_spec_termination \
              patch_xgrammar_spec_reasoning patch_parser_shared_engine; do \
       echo "== applying $p =="; python "$p.py"; \
     done; \
     python -c "import ast,glob; [ast.parse(open(f).read()) for f in glob.glob('${SP}/radiance_*.py')]"
 
-RUN mkdir -p /tmp/libr4d \
+COPY r4d_radiance_extras.patch /opt/patches/
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends patch \
+ && mkdir -p /tmp/libr4d \
  && curl -fsSL "https://codeberg.org/StillDeadcode/libr4d/archive/${R4D_COMMIT}.tar.gz" \
       | tar -xzf - -C /tmp/libr4d --strip-components=1 \
  && cd /tmp/libr4d \
+ && patch --dry-run -p1 < /opt/patches/r4d_radiance_extras.patch \
+ && patch -p1 < /opt/patches/r4d_radiance_extras.patch \
  && GFX_ARCH=gfx1201 OUT=${SP}/r4d.so ./build.sh \
  && WANT=$(echo "${R4D_VERSION}" | sed 's/^v//') \
  && python -c "import sys, torch, r4d; assert r4d.__version__ == sys.argv[1]" "$WANT" \
- && rm -rf /tmp/libr4d
+ && cd / \
+ && rm -rf /tmp/libr4d \
+ && apt-get purge -y patch \
+ && rm -rf /var/lib/apt/lists/*
 
 COPY radiance_mxfp4_fp8.hip /opt/patches/
 RUN INC=$(python -m pybind11 --includes); \

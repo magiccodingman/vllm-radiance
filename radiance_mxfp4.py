@@ -28,6 +28,93 @@ ENABLED = os.environ.get("RADIANCE_MXFP4_W4A8", "0") == "1"
 MIN_M = int(os.environ.get("RADIANCE_MXFP4_W4A8_MIN_M", "0"))
 # Decode band for the small-M kernel. 0 = dark. Also gates the scratch preallocation.
 DECODE_MAX_M = int(os.environ.get("RADIANCE_MXFP4_DECODE_MAX_M", "64"))
+# Store the weight in WMMA fragment order rather than the checkpoint's [N, K/2]. A B fragment maps
+# lane l onto N row l&15, so in checkpoint order a half-wave reads sixteen rows K/2 bytes apart --
+# fully strided, on the operand that dominates decode traffic. Reordering once here makes a wave's
+# weight read 128 contiguous bytes. Same total bytes; this is a permutation, not a re-quantisation,
+# so it cannot move numerics. It is what libr4d's r4d_gemm_mxfp4a8_nt_m64 reads, and the HIP
+# kernels take it via RADIANCE_MXFP4_WPERM, which must agree with this flag or the weight is read
+# as garbage -- one env var drives both.
+CHECK_MAX_M = int(os.environ.get("RADIANCE_MXFP4_CHECK_MAX_M", "128"))
+WPERM = os.environ.get("RADIANCE_MXFP4_WPERM", "0") == "1"
+if WPERM:
+    # Announce it: this launcher only forwards env vars it declares with -e, and a silently
+    # unforwarded flag reads as "the change did nothing" rather than as a mistake. A whole
+    # WPERM A/B was measured twice at 0 before this line existed.
+    sys.stderr.write("[radiance.mxfp4] weight layout: FRAGMENT ORDER (RADIANCE_MXFP4_WPERM=1)\n")
+# Route the decode band to libr4d's r4d_gemm_mxfp4a8_nt_m64 instead of our own decode kernel.
+# Requires WPERM: that kernel reads fragment order and has no LDS staging to hide a strided read
+# behind, which is exactly why it needs the permute and why it is faster once it has it.
+R4D_DECODE_MAX_M = int(os.environ.get("RADIANCE_MXFP4_R4D_DECODE_MAX_M", "0"))
+_r4d = None
+if R4D_DECODE_MAX_M > 0:
+    if not WPERM:
+        raise RuntimeError("[radiance.mxfp4] RADIANCE_MXFP4_R4D_DECODE_MAX_M needs "
+                           "RADIANCE_MXFP4_WPERM=1: the r4d kernel only reads fragment order")
+    try:
+        import r4d as _r4d
+        if _r4d.select("gemm_nt", M=8, K=5120, N=5120, dtype="mxfp4a8") is None:
+            sys.stderr.write("[radiance.mxfp4] r4d has no mxfp4a8 gemm_nt; decode stays on ours\n")
+            _r4d = None
+        else:
+            sys.stderr.write(f"[radiance.mxfp4] r4d decode kernel ON (M<={R4D_DECODE_MAX_M})\n")
+    except Exception as _e:                     # noqa: BLE001
+        sys.stderr.write(f"[radiance.mxfp4] r4d import failed, decode stays on ours: {_e!r}\n")
+        _r4d = None
+
+
+def _r4d_cfg(M, K):
+    """(WV, SK, MB, NPW) for the r4d decode GEMM.
+
+    Close to the per-shape optima measured in libr4d's bench_mxfp4_gemm.py: deeper split-K pays at
+    small M where there is not enough N to fill the part, and less so once MB widens. SK is capped
+    so K stays divisible by SK*32 and so WV*SK*32 threads and (WV*NPW)*SK*1024 bytes of LDS both
+    stay in range.
+    """
+    mb = max(1, min(4, (M + 15) // 16))
+    sk = 8 if M <= 16 else 4
+    while sk > 1 and K % (sk * 32):
+        sk //= 2
+    return 2, sk, mb, 2
+
+
+def permute_w(packed: "torch.Tensor", N: int, K: int) -> "torch.Tensor":
+    """[N, K/2] uint8 -> fragment order: one 32-lane uint32 slot per (n-tile, k-step).
+
+    Slot l of tile (nt, ks) is W[nt][l&15][ks][4*(l>>4) .. +4], i.e. lane l's eight elements:
+    row 16*nt + (l&15), k starting at 16*ks + 8*(l>>4). Lane index is (l>>4)*16 + (l&15), so the
+    half selector is the OUTER of the two permuted axes.
+
+    Returned with the ORIGINAL [N, K/2] shape. It is a byte permutation, not a reshape, and
+    everything downstream -- layer_is_supported, the N and K the op derives, aiter's own fallback
+    path -- reads that shape. Returning it flat routed every layer into aiter with a 1-D weight and
+    died there with "IndexError: tuple index out of range".
+    """
+    nt, ks = N // 16, K // 16
+    return (packed.view(nt, 16, ks, 2, 4)      # [n-tile][row][k-step][half][4 bytes]
+                  .permute(0, 2, 3, 1, 4)      # [n-tile][k-step][half][row][4 bytes]
+                  .contiguous()
+                  .view(N, K // 2))
+
+
+def unpermute_w(packed: "torch.Tensor", N: int, K: int) -> "torch.Tensor":
+    """Inverse of permute_w: fragment order -> the checkpoint's [N, K/2].
+
+    Only the exact-reference path needs it. _exact_ref dequantises `weight` assuming checkpoint
+    order, so under WPERM it was decoding permuted bytes and reporting the KERNEL as wrong at
+    rel~1.4 while the served output was perfectly coherent -- the reference was the wrong one.
+    """
+    nt, ks = N // 16, K // 16
+    return (packed.view(nt, ks, 2, 16, 4)      # [n-tile][k-step][half][row][4 bytes]
+                  .permute(0, 3, 1, 2, 4)      # [n-tile][row][k-step][half][4 bytes]
+                  .contiguous()
+                  .view(N, K // 2))
+# Hoist the activation quant into the traced graph so the rms+quant fusion can match it.
+# Needs MIN_M <= 0 (see apply_weights); refuses rather than producing wrong results.
+HOIST_QUANT = os.environ.get("RADIANCE_MXFP4_HOIST_QUANT", "0") == "1"
+if HOIST_QUANT and MIN_M > 0:
+    raise RuntimeError("RADIANCE_MXFP4_HOIST_QUANT=1 needs RADIANCE_MXFP4_W4A8_MIN_M=0: "
+                       "the aiter fallback quantizes to mxfp4, not fp8.")
 _decode_scratch_ready = [False]
 _decode_scratch = [None, None]   # [partials, block counter] — kept alive for the process
 
@@ -131,6 +218,9 @@ PERBLOCK_NK = {tuple(int(x) for x in pair.split(":")) for pair in _pb.split(",")
 # situ" from "something outside this op is wrong": if the model is coherent with this on, the op's
 # wiring is fine and only the kernel output differs; if it is still garbage, the fault is elsewhere.
 REF_LINEAR = os.environ.get("RADIANCE_MXFP4_REFLINEAR", "0") == "1"
+# Report every distinct (N, K, M) once, to see which M the production decode path actually
+# issues. Diagnostic only; off by default and free when off.
+MHIST = os.environ.get("RADIANCE_MXFP4_MHIST", "0") == "1"
 _E2M1 = None
 _dbg_seen = set()
 
@@ -145,6 +235,8 @@ def _exact_ref(x_fp8, x_scale, weight, weight_scale, N, K, chunk=2048):
     if _E2M1 is None:
         _E2M1 = torch.tensor([0., .5, 1., 1.5, 2., 3., 4., 6.,
                               -0., -.5, -1., -1.5, -2., -3., -4., -6.], device=weight.device)
+    if WPERM:
+        weight = unpermute_w(weight, N, K)      # the reference speaks checkpoint order only
     xr = x_fp8.float() * x_scale.view(-1, 1).float()
     outs = []
     for a in range(0, N, chunk):
@@ -303,11 +395,34 @@ def mxfp4_linear(x: torch.Tensor, weight: torch.Tensor, weight_scale: torch.Tens
         out = _slab[PAD_OUT:PAD_OUT + M * N].view(M, N)   # view keeps the slab alive
     else:
         out = torch.empty((M, N), device=x.device, dtype=torch.bfloat16)
-    _ext.launch(x_fp8.data_ptr(), weight.data_ptr(), weight_scale.data_ptr(),
-                weight_ref.data_ptr() if folded else 0,
-                x_scale.data_ptr(), out.data_ptr(), M, N, K,
-                torch.cuda.current_stream().cuda_stream)
-    if CHECK_ALL is not None and (N, K) in CHECK_ALL and x.shape[0] <= 128:
+    if (_r4d is not None and folded and M <= R4D_DECODE_MAX_M
+            and N % 16 == 0 and K % 32 == 0):
+        _wv, _sk, _mb, _npw = _r4d_cfg(M, K)
+        _r4d.gemm_mxfp4a8_nt_m64(x_fp8.data_ptr(), x_scale.data_ptr(), weight.data_ptr(),
+                                 weight_scale.data_ptr(), weight_ref.data_ptr(), out.data_ptr(),
+                                 M, K, N, _wv, _sk, _mb, _npw,
+                                 torch.cuda.current_stream().cuda_stream)
+    else:
+        _ext.launch(x_fp8.data_ptr(), weight.data_ptr(), weight_scale.data_ptr(),
+                    weight_ref.data_ptr() if folded else 0,
+                    x_scale.data_ptr(), out.data_ptr(), M, N, K,
+                    torch.cuda.current_stream().cuda_stream)
+    # Diagnostic: report each (N, K, M) the dispatcher sees, once. The decode kernel is capped at
+    # M<=64 and a dflash drafter at SPEC=7 is supposed to reach exactly 8 x 8 = 64, so whether any
+    # production call lands ABOVE that cap decides whether the decode kernel runs at all at full
+    # batch. CHECK_ALL's own reporting cannot answer this: it prints per SHAPE, at call 1 and 64,
+    # so whichever M those two calls happened to carry is all you see.
+    if MHIST:
+        _mk = ("m", N, K, M)
+        if _mk not in _dbg_seen:
+            _dbg_seen.add(_mk)
+            sys.stderr.write(f"[radiance.mxfp4.mhist] N={N} K={K} M={M} "
+                             f"decode_kernel={'yes' if 0 < M <= DECODE_MAX_M else 'NO'}\n")
+    # CHECK_MAX_M narrows the gate to a band. Without it the profile run's large-M calls use
+    # up the per-shape reporting budget and the decode band is never checked at all, which
+    # is exactly the band a decode kernel has to be right in.
+    if (CHECK_ALL is not None and (N, K) in CHECK_ALL
+            and x.shape[0] <= CHECK_MAX_M):
         _ref = _exact_ref(x_fp8, x_scale, weight, weight_scale, N, K)
         _rel = ((out.float() - _ref).norm() / _ref.norm().clamp_min(1e-9)).item()
         STATS["checked"] = STATS.get("checked", 0) + 1
@@ -491,10 +606,15 @@ def _make_kernel_class():
                     # torch owns it: allocating from the .so put a hipMalloc inside CUDA-graph
                     # capture, and any C++ exception escaping our pybind module gets relabelled by
                     # quark's TileLang exception translator into a bogus "libamdhip64.so not found".
+                    # Rows must cover the decode band: DEC_KS x DECODE_MAX_M x max N. Sized
+                    # from the env so the default (64) allocates exactly what it always has;
+                    # a 16-concurrent serve sets RADIANCE_MXFP4_DECODE_MAX_M=128 and pays the
+                    # extra 32 MiB only then.
                     _decode_scratch[0] = torch.empty(
-                        4 * 64 * 32768, dtype=torch.float32, device=layer.weight.device)
-                    # One counter per output block for the fused split-K reduction. The
-                    # last arriving block resets its counter, so this is zeroed once.
+                        4 * max(64, DECODE_MAX_M) * 32768, dtype=torch.float32,
+                        device=layer.weight.device)
+                    # Block counter for the fused reduction, one int per n-block. MUST start
+                    # zeroed; the kernel's last-arriving block resets it, so it stays that way.
                     _decode_scratch[1] = torch.zeros(
                         32768 // 128 + 8, dtype=torch.int32, device=layer.weight.device)
                     _ext.set_decode_scratch(_decode_scratch[0].data_ptr(),
@@ -542,6 +662,16 @@ def _make_kernel_class():
                                   dtype=layer.weight_scale.dtype,
                                   device=layer.weight_scale.device)
             layer.radiance_wref = torch.nn.Parameter(ref, requires_grad=False)
+            # Fragment order, in place of the checkpoint layout. Only for layers our kernel
+            # actually serves: an aiter fallback layer must keep the layout aiter expects.
+            if WPERM and ok:
+                N_ = int(layer.weight.shape[0])
+                if N_ % 16 or K % 16:
+                    raise RuntimeError(
+                        f"[radiance.mxfp4] RADIANCE_MXFP4_WPERM needs N and K divisible by 16, "
+                        f"got N={N_} K={K}")
+                layer.weight = torch.nn.Parameter(
+                    permute_w(layer.weight.data, N_, K), requires_grad=False)
             layer.radiance_w4a8_ok = bool(ok)   # record only; never read in the forward
 
         def apply_weights(self, layer: torch.nn.Module, x: torch.Tensor,

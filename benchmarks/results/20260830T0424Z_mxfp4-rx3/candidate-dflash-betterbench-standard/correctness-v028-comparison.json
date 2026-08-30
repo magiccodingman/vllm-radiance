@@ -1,0 +1,195 @@
+{
+  "baseline_repeatability": {
+    "compared_repetitions": 0,
+    "mismatches": [],
+    "status": "passed"
+  },
+  "candidate_repeatability": {
+    "compared_repetitions": 0,
+    "mismatches": [],
+    "status": "passed"
+  },
+  "common_prompts": 8,
+  "divergences": [
+    {
+      "baseline_logprob_margin": 0.0,
+      "baseline_text_context": "and oxygen. These molecules scatter the light in all directions, but they scatter shorter wavelengths (blue and violet) ",
+      "baseline_token_context": [
+        " molecules",
+        " scatter",
+        " the",
+        " light",
+        " in",
+        " all",
+        " directions"
+      ],
+      "candidate_logprob_margin": 0.125,
+      "candidate_text_context": "and oxygen. These molecules scatter the shorter wavelengths of light (blue and violet) more effectively than the longer ",
+      "candidate_token_context": [
+        " molecules",
+        " scatter",
+        " the",
+        " shorter",
+        " wavelengths",
+        " of",
+        " light"
+      ],
+      "common_prefix_characters": 237,
+      "first_divergence_token": 42,
+      "prompt_index": 0
+    },
+    {
+      "baseline_logprob_margin": 0.24999994039535522,
+      "baseline_text_context": "ed binary search function. I'll consider both iterative and recursive approaches, but I'll go with the iterative one as ",
+      "baseline_token_context": [
+        " I",
+        "'ll",
+        " consider",
+        " both",
+        " iterative",
+        " and",
+        " recursive"
+      ],
+      "candidate_logprob_margin": 0.0,
+      "candidate_text_context": "ed binary search function. I'll consider:\n- Iterative vs recursive: I'll go with iterative as it's more practical (no st",
+      "candidate_token_context": [
+        " I",
+        "'ll",
+        " consider",
+        ":",
+        "\n",
+        "-",
+        " Iter"
+      ],
+      "common_prefix_characters": 220,
+      "first_divergence_token": 49,
+      "prompt_index": 1
+    },
+    {
+      "baseline_logprob_margin": 0.375,
+      "baseline_text_context": "fs.\n\n**FP8 (8-bit floating point)**\n- **Structure:** 1 sign bit, 4 exponent bits, 3 mantissa bits (e.g., E4M3 or E5M2 va",
+      "baseline_token_context": [
+        "\n",
+        "-",
+        " **",
+        "Structure",
+        ":**",
+        " ",
+        "1"
+      ],
+      "candidate_logprob_margin": 0.0,
+      "candidate_text_context": "fs.\n\n**FP8 (8-bit floating point)**\n- **Layout:** 1 sign bit, 4 exponent bits, 3 mantissa bits (e.g., E4M3 or E5M2 varia",
+      "candidate_token_context": [
+        "\n",
+        "-",
+        " **",
+        "Layout",
+        ":**",
+        " ",
+        "1"
+      ],
+      "common_prefix_characters": 158,
+      "first_divergence_token": 41,
+      "prompt_index": 2
+    },
+    {
+      "baseline_logprob_margin": 0.0,
+      "baseline_text_context": "\n\nWhen a Docker container exits immediately, it usually means the main process (",
+      "baseline_token_context": [
+        "\n\n",
+        "When",
+        " a",
+        " Docker"
+      ],
+      "candidate_logprob_margin": 0.125,
+      "candidate_text_context": "Here is a systematic five-step debugging checklist for a Docker container that e",
+      "candidate_token_context": [
+        "Here",
+        " is",
+        " a",
+        " systematic"
+      ],
+      "common_prefix_characters": 0,
+      "first_divergence_token": 0,
+      "prompt_index": 3
+    },
+    {
+      "baseline_logprob_margin": 0.0,
+      "baseline_text_context": "on\n- The specific technical detail that makes it clear (wrong model name, wrong architecture, etc.)\n- The emotional arc:",
+      "baseline_token_context": [
+        " technical",
+        " detail",
+        " that",
+        " makes",
+        " it",
+        " clear",
+        " ("
+      ],
+      "candidate_logprob_margin": 0.25,
+      "candidate_text_context": "on\n- The specific technical detail that reveals the mistake (maybe a model name, a config file, a log line)\n- The emotio",
+      "candidate_token_context": [
+        " technical",
+        " detail",
+        " that",
+        " reveals",
+        " the",
+        " mistake",
+        " ("
+      ],
+      "common_prefix_characters": 315,
+      "first_divergence_token": 61,
+      "prompt_index": 5
+    },
+    {
+      "baseline_logprob_margin": 0.0,
+      "baseline_text_context": ",\n\nThe original text is not valid JSON because it lacks the required structure: ",
+      "baseline_token_context": [
+        ",",
+        "\n\n",
+        "The",
+        " original"
+      ],
+      "candidate_logprob_margin": 0.125,
+      "candidate_text_context": "\n\nHere is the corrected JSON and an explanation of the changes made.\n\n### Correc",
+      "candidate_token_context": [
+        "\n\n",
+        "Here",
+        " is",
+        " the"
+      ],
+      "common_prefix_characters": 0,
+      "first_divergence_token": 0,
+      "prompt_index": 6
+    },
+    {
+      "baseline_logprob_margin": 0.2500000596046448,
+      "baseline_text_context": "d conditions\" into Spanish\n2. Translate \"Reliable measurements require controlled conditions\" into Japanese\n3. Define \"c",
+      "baseline_token_context": [
+        "2",
+        ".",
+        " Translate",
+        " \"",
+        "Rel",
+        "iable",
+        " measurements"
+      ],
+      "candidate_logprob_margin": 0.125,
+      "candidate_text_context": "d conditions\" into Spanish\n2. Translate it into Japanese\n3. Define \"controlled conditions\"\n\nLet me work through each:\n\n*",
+      "candidate_token_context": [
+        "2",
+        ".",
+        " Translate",
+        " it",
+        " into",
+        " Japanese",
+        "\n"
+      ],
+      "common_prefix_characters": 125,
+      "first_divergence_token": 27,
+      "prompt_index": 7
+    }
+  ],
+  "exact_matches": 1,
+  "fixture_match": true,
+  "status": "failed"
+}

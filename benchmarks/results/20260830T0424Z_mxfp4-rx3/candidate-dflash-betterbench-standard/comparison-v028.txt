@@ -1,0 +1,14 @@
+# BetterBench compare (offline, per-category decode t/s)
+
+| category | A med | B med | Δ% | 95% CI | verdict |
+|---|--:|--:|--:|---|---|
+| chat | 101.9 | 131.7 | +23.93% | [+17.0%,+30.8%] | SIG |
+| code | 158.1 | 176.9 | +10.42% | [+5.2%,+15.7%] | SIG |
+| file_edit | 173.1 | 203.3 | +13.94% | [+6.1%,+21.8%] | SIG |
+| json | 198.5 | 232.9 | +16.67% | [+13.2%,+20.2%] | SIG |
+| math | 193.7 | 227.5 | +15.05% | [+11.8%,+18.3%] | SIG |
+| prose | 118.1 | 110.1 | +5.28% | [-8.2%,+18.8%] | noise |
+| reasoning | 118.9 | 125.8 | +10.23% | [-1.7%,+22.2%] | noise |
+| summarization | 169.6 | 196.3 | +16.80% | [+14.0%,+19.6%] | SIG |
+
+*Cross-file compares are unpaired in time; prefer `betterbench ab` for interleaved, drift-cancelled comparisons.*

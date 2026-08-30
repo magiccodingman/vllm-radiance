@@ -1,0 +1,95 @@
+{
+  "baseline_repeatability": {
+    "compared_repetitions": 8,
+    "mismatches": [],
+    "status": "passed"
+  },
+  "candidate_repeatability": {
+    "compared_repetitions": 8,
+    "mismatches": [],
+    "status": "passed"
+  },
+  "common_prompts": 8,
+  "divergences": [
+    {
+      "baseline_logprob_margin": null,
+      "baseline_text_context": "osphere, it interacts with gas molecules, particularly nitrogen and oxygen. These molecules scatter the shorter waveleng",
+      "baseline_token_context": null,
+      "candidate_logprob_margin": null,
+      "candidate_text_context": "osphere, it interacts with gas molecules like nitrogen and oxygen. Because blue light has a shorter wavelength than othe",
+      "candidate_token_context": null,
+      "common_prefix_characters": 173,
+      "first_divergence_token": null,
+      "prompt_index": 0
+    },
+    {
+      "baseline_logprob_margin": null,
+      "baseline_text_context": "documented binary search function. I'll consider both iterative and recursive approaches, but I'll go with iterative as ",
+      "baseline_token_context": null,
+      "candidate_logprob_margin": null,
+      "candidate_text_context": "documented binary search function. I'll include both iterative and maybe mention recursive, but I'll focus on the iterat",
+      "candidate_token_context": null,
+      "common_prefix_characters": 212,
+      "first_divergence_token": null,
+      "prompt_index": 1
+    },
+    {
+      "baseline_logprob_margin": null,
+      "baseline_text_context": " enabling larger batch sizes and faster token generation.\n- **Risk:** Limited dynamic range and precision can cause noti",
+      "baseline_token_context": null,
+      "candidate_logprob_margin": null,
+      "candidate_text_context": " enabling larger batch sizes and faster inference.\n- **Risk:** Limited dynamic range and precision can cause numerical i",
+      "candidate_token_context": null,
+      "common_prefix_characters": 388,
+      "first_divergence_token": null,
+      "prompt_index": 2
+    },
+    {
+      "baseline_logprob_margin": null,
+      "baseline_text_context": "Here is a systematic five-step debugging checklist for a Docker container that e",
+      "baseline_token_context": null,
+      "candidate_logprob_margin": null,
+      "candidate_text_context": "\n\nWhen a Docker container exits immediately, it usually means the main process (",
+      "candidate_token_context": null,
+      "common_prefix_characters": 0,
+      "first_divergence_token": null,
+      "prompt_index": 3
+    },
+    {
+      "baseline_logprob_margin": null,
+      "baseline_text_context": "t means\n- The social/professional stakes: maybe a presentation is coming, or a decision was made based on this\n- Keep it",
+      "baseline_token_context": null,
+      "candidate_logprob_margin": null,
+      "candidate_text_context": "t means\n- The social/professional stakes (presentations, papers, decisions made based on this data)\n- Keep it short - ma",
+      "candidate_token_context": null,
+      "common_prefix_characters": 506,
+      "first_divergence_token": null,
+      "prompt_index": 5
+    },
+    {
+      "baseline_logprob_margin": null,
+      "baseline_text_context": "\n\nHere is the valid JSON transformation of the provided data, followed by an exp",
+      "baseline_token_context": null,
+      "candidate_logprob_margin": null,
+      "candidate_text_context": ",\n\n<think>\nThe user wants me to transform a string into valid JSON and explain t",
+      "candidate_token_context": null,
+      "common_prefix_characters": 0,
+      "first_divergence_token": null,
+      "prompt_index": 6
+    },
+    {
+      "baseline_logprob_margin": null,
+      "baseline_text_context": "areta kankyou jōken ga hitsuyō desu.)*\n\n---\n\n### Definition: Controlled Conditions\n\n**Controlled conditions** refer to a",
+      "baseline_token_context": null,
+      "candidate_logprob_margin": null,
+      "candidate_text_context": "areta kankyou jōken ga hitsuyō desu.)*\n\n***\n\n### Definition: Controlled Conditions\n\n**Controlled conditions** refer to a",
+      "candidate_token_context": null,
+      "common_prefix_characters": 282,
+      "first_divergence_token": null,
+      "prompt_index": 7
+    }
+  ],
+  "exact_matches": 1,
+  "fixture_match": true,
+  "status": "failed"
+}
