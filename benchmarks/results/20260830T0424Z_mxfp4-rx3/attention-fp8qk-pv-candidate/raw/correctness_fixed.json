@@ -1,0 +1,180 @@
+{
+  "workload": "correctness_fixed",
+  "temperature": "0",
+  "seed": "per-prompt:20260822+index",
+  "prompts": [
+    "Explain why the daytime sky appears blue in three concise paragraphs.",
+    "Write a Python function that performs binary search on a sorted list, then explain its time complexity.",
+    "Compare FP8 and BF16 inference, including one benefit and one risk of each format.",
+    "A Docker container exits immediately after startup. Give a systematic five-step debugging checklist.",
+    "Show that the sum of the first n odd positive integers is n squared using induction.",
+    "Write a short scene in which an engineer discovers that a benchmark was measuring the wrong model.",
+    "Transform this into valid JSON and explain the correction: name: radiance, gpus: 2, kv_cache: fp8",
+    "Translate 'Reliable measurements require controlled conditions' into Spanish and Japanese, then define controlled conditions."
+  ],
+  "prompts_sha256": "f242b99c63c5362c2c11cf19c7e3c6093b70d7bf9e5c70bf31a33955c42ece82",
+  "input_lens": [
+    13,
+    19,
+    19,
+    16,
+    17,
+    18,
+    26,
+    19
+  ],
+  "output_lens": [
+    128,
+    128,
+    128,
+    128,
+    128,
+    128,
+    128,
+    128
+  ],
+  "generated_texts": [
+    "\n\nThe blue color of the daytime sky is primarily due to a phenomenon called Rayleigh scattering. When sunlight enters the Earth's atmosphere, it interacts with gas molecules like nitrogen and oxygen. Because blue light has a shorter wavelength than other colors, it scatters more strongly in all directions, making the sky appear blue to our eyes.\n\nThis scattering effect is more pronounced for shorter wavelengths, which is why blue light dominates the sky's color. The intensity of the scattered light is inversely proportional to the fourth power of the wavelength, meaning that blue light scatters much more than red or orange light. This is why the sky appears blue rather",
+    "\n\n<think>\nThe user wants two things:\n1. A Python function that performs binary search on a sorted list\n2. An explanation of its time complexity\n\nLet me write a clean, well-documented binary search function. I'll include both iterative and maybe mention recursive, but I'll focus on the iterative version as the primary one since it's more practical (no stack overflow risk). I'll add docstring, type hints, and a clear explanation of time complexity.\n\nLet me think about the structure:\n- The function should take a sorted list and a target value\n- Return the index if found, or -1",
+    "\n\nFP8 and BF16 are both low-precision formats used to accelerate inference, but they differ in bit layout and trade-offs.\n\n**FP8 (8-bit floating point)**\n- **Structure:** 1 sign bit, 4 exponent bits, 3 mantissa bits (e.g., E4M3 or E5M2 variants).\n- **Benefit:** Very small memory footprint and high throughput on modern hardware (e.g., H100/MI300), enabling larger batch sizes and faster inference.\n- **Risk:** Limited dynamic range and precision can cause numerical instability, especially in",
+    "\n\nWhen a Docker container exits immediately, it usually means the main process (PID 1) has finished or crashed. Here is a systematic five-step debugging checklist to identify the root cause:\n\n### 1. Check the Exit Code and Logs\nThe first step is to determine *why* the process stopped.\n*   **Command:** `docker ps -a` (to find the container ID) and `docker logs <container_id>`.\n*   **What to look for:**\n    *   **Exit Code 0:** The process ran successfully and finished. This is common for one-off scripts (e.g.,",
+    "\n\nTo prove that the sum of the first n odd positive integers is \\( n^2 \\) using mathematical induction, we will follow these steps:\n\n1. **Base Case**: Verify the statement for \\( n = 1 \\).\n   - The first odd positive integer is 1.\n   - The sum of the first 1 odd positive integer is \\( 1 \\).\n   - According to the formula, \\( 1^2 = 1 \\).\n   - Therefore, the base case holds true.\n\n2. **Inductive Step**: Assume the statement is true for some arbitrary positive integer \\( k",
+    "\n\n<think>\nThe user wants a short creative writing scene about an engineer discovering a benchmark was measuring the wrong model. Let me think about what makes this scenario compelling and realistic.\n\nKey elements to include:\n- The moment of discovery - that \"oh no\" realization\n- The specific technical detail that reveals the mistake (maybe a model name, a config file, a log line)\n- The emotional arc: confidence → confusion → dawning horror → the weight of what it means\n- The social/professional stakes (presentations, papers, decisions made based on this data)\n- Keep it short - maybe 4",
+    ",\n\n<think>\nThe user wants me to transform a string into valid JSON and explain the correction. Let me analyze the input:\n\n`name: radiance, gpus: 2, kv_cache: fp8,`\n\nIssues with this as JSON:\n1. It's not wrapped in curly braces `{}`\n2. Keys are not quoted (e.g., `name` should be `\"name\"`)\n3. String values are not quoted (e.g., `radiance` should be `\"radiance\"`, `fp8` should be `\"fp8\"`)\n4. There's a trailing comma at",
+    "\n\nHere are the translations and the definition you requested:\n\n### Translations\n\n**Spanish:**\n> \"Las mediciones fiables requieren condiciones controladas.\"\n\n**Japanese:**\n> 「信頼できる測定には、管理された環境条件が必要です。」\n> *(Shinrai dekiru sokutei ni wa, kanri sareta kankyou jōken ga hitsuyō desu.)*\n\n***\n\n### Definition: Controlled Conditions\n\n**Controlled conditions** refer to a specific environment or set of parameters that are deliberately regulated, monitored, and maintained to minimize or eliminate external variables (noise) that could interfere with"
+  ],
+  "repetitions": 2,
+  "logprobs": 0,
+  "samples": [
+    {
+      "prompt_index": 0,
+      "repetition": 0,
+      "seed": 20260822,
+      "input_len": 13,
+      "output_len": 128,
+      "generated_text": "\n\nThe blue color of the daytime sky is primarily due to a phenomenon called Rayleigh scattering. When sunlight enters the Earth's atmosphere, it interacts with gas molecules like nitrogen and oxygen. Because blue light has a shorter wavelength than other colors, it scatters more strongly in all directions, making the sky appear blue to our eyes.\n\nThis scattering effect is more pronounced for shorter wavelengths, which is why blue light dominates the sky's color. The intensity of the scattered light is inversely proportional to the fourth power of the wavelength, meaning that blue light scatters much more than red or orange light. This is why the sky appears blue rather"
+    },
+    {
+      "prompt_index": 0,
+      "repetition": 1,
+      "seed": 20260822,
+      "input_len": 13,
+      "output_len": 128,
+      "generated_text": "\n\nThe blue color of the daytime sky is primarily due to a phenomenon called Rayleigh scattering. When sunlight enters the Earth's atmosphere, it interacts with gas molecules like nitrogen and oxygen. Because blue light has a shorter wavelength than other colors, it scatters more strongly in all directions, making the sky appear blue to our eyes.\n\nThis scattering effect is more pronounced for shorter wavelengths, which is why blue light dominates the sky's color. The intensity of the scattered light is inversely proportional to the fourth power of the wavelength, meaning that blue light scatters much more than red or orange light. This is why the sky appears blue rather"
+    },
+    {
+      "prompt_index": 1,
+      "repetition": 0,
+      "seed": 20260823,
+      "input_len": 19,
+      "output_len": 128,
+      "generated_text": "\n\n<think>\nThe user wants two things:\n1. A Python function that performs binary search on a sorted list\n2. An explanation of its time complexity\n\nLet me write a clean, well-documented binary search function. I'll include both iterative and maybe mention recursive, but I'll focus on the iterative version as the primary one since it's more practical (no stack overflow risk). I'll add docstring, type hints, and a clear explanation of time complexity.\n\nLet me think about the structure:\n- The function should take a sorted list and a target value\n- Return the index if found, or -1"
+    },
+    {
+      "prompt_index": 1,
+      "repetition": 1,
+      "seed": 20260823,
+      "input_len": 19,
+      "output_len": 128,
+      "generated_text": "\n\n<think>\nThe user wants two things:\n1. A Python function that performs binary search on a sorted list\n2. An explanation of its time complexity\n\nLet me write a clean, well-documented binary search function. I'll include both iterative and maybe mention recursive, but I'll focus on the iterative version as the primary one since it's more practical (no stack overflow risk). I'll add docstring, type hints, and a clear explanation of time complexity.\n\nLet me think about the structure:\n- The function should take a sorted list and a target value\n- Return the index if found, or -1"
+    },
+    {
+      "prompt_index": 2,
+      "repetition": 0,
+      "seed": 20260824,
+      "input_len": 19,
+      "output_len": 128,
+      "generated_text": "\n\nFP8 and BF16 are both low-precision formats used to accelerate inference, but they differ in bit layout and trade-offs.\n\n**FP8 (8-bit floating point)**\n- **Structure:** 1 sign bit, 4 exponent bits, 3 mantissa bits (e.g., E4M3 or E5M2 variants).\n- **Benefit:** Very small memory footprint and high throughput on modern hardware (e.g., H100/MI300), enabling larger batch sizes and faster inference.\n- **Risk:** Limited dynamic range and precision can cause numerical instability, especially in"
+    },
+    {
+      "prompt_index": 2,
+      "repetition": 1,
+      "seed": 20260824,
+      "input_len": 19,
+      "output_len": 128,
+      "generated_text": "\n\nFP8 and BF16 are both low-precision formats used to accelerate inference, but they differ in bit layout and trade-offs.\n\n**FP8 (8-bit floating point)**\n- **Structure:** 1 sign bit, 4 exponent bits, 3 mantissa bits (e.g., E4M3 or E5M2 variants).\n- **Benefit:** Very small memory footprint and high throughput on modern hardware (e.g., H100/MI300), enabling larger batch sizes and faster inference.\n- **Risk:** Limited dynamic range and precision can cause numerical instability, especially in"
+    },
+    {
+      "prompt_index": 3,
+      "repetition": 0,
+      "seed": 20260825,
+      "input_len": 16,
+      "output_len": 128,
+      "generated_text": "\n\nWhen a Docker container exits immediately, it usually means the main process (PID 1) has finished or crashed. Here is a systematic five-step debugging checklist to identify the root cause:\n\n### 1. Check the Exit Code and Logs\nThe first step is to determine *why* the process stopped.\n*   **Command:** `docker ps -a` (to find the container ID) and `docker logs <container_id>`.\n*   **What to look for:**\n    *   **Exit Code 0:** The process ran successfully and finished. This is common for one-off scripts (e.g.,"
+    },
+    {
+      "prompt_index": 3,
+      "repetition": 1,
+      "seed": 20260825,
+      "input_len": 16,
+      "output_len": 128,
+      "generated_text": "\n\nWhen a Docker container exits immediately, it usually means the main process (PID 1) has finished or crashed. Here is a systematic five-step debugging checklist to identify the root cause:\n\n### 1. Check the Exit Code and Logs\nThe first step is to determine *why* the process stopped.\n*   **Command:** `docker ps -a` (to find the container ID) and `docker logs <container_id>`.\n*   **What to look for:**\n    *   **Exit Code 0:** The process ran successfully and finished. This is common for one-off scripts (e.g.,"
+    },
+    {
+      "prompt_index": 4,
+      "repetition": 0,
+      "seed": 20260826,
+      "input_len": 17,
+      "output_len": 128,
+      "generated_text": "\n\nTo prove that the sum of the first n odd positive integers is \\( n^2 \\) using mathematical induction, we will follow these steps:\n\n1. **Base Case**: Verify the statement for \\( n = 1 \\).\n   - The first odd positive integer is 1.\n   - The sum of the first 1 odd positive integer is \\( 1 \\).\n   - According to the formula, \\( 1^2 = 1 \\).\n   - Therefore, the base case holds true.\n\n2. **Inductive Step**: Assume the statement is true for some arbitrary positive integer \\( k"
+    },
+    {
+      "prompt_index": 4,
+      "repetition": 1,
+      "seed": 20260826,
+      "input_len": 17,
+      "output_len": 128,
+      "generated_text": "\n\nTo prove that the sum of the first n odd positive integers is \\( n^2 \\) using mathematical induction, we will follow these steps:\n\n1. **Base Case**: Verify the statement for \\( n = 1 \\).\n   - The first odd positive integer is 1.\n   - The sum of the first 1 odd positive integer is \\( 1 \\).\n   - According to the formula, \\( 1^2 = 1 \\).\n   - Therefore, the base case holds true.\n\n2. **Inductive Step**: Assume the statement is true for some arbitrary positive integer \\( k"
+    },
+    {
+      "prompt_index": 5,
+      "repetition": 0,
+      "seed": 20260827,
+      "input_len": 18,
+      "output_len": 128,
+      "generated_text": "\n\n<think>\nThe user wants a short creative writing scene about an engineer discovering a benchmark was measuring the wrong model. Let me think about what makes this scenario compelling and realistic.\n\nKey elements to include:\n- The moment of discovery - that \"oh no\" realization\n- The specific technical detail that reveals the mistake (maybe a model name, a config file, a log line)\n- The emotional arc: confidence → confusion → dawning horror → the weight of what it means\n- The social/professional stakes (presentations, papers, decisions made based on this data)\n- Keep it short - maybe 4"
+    },
+    {
+      "prompt_index": 5,
+      "repetition": 1,
+      "seed": 20260827,
+      "input_len": 18,
+      "output_len": 128,
+      "generated_text": "\n\n<think>\nThe user wants a short creative writing scene about an engineer discovering a benchmark was measuring the wrong model. Let me think about what makes this scenario compelling and realistic.\n\nKey elements to include:\n- The moment of discovery - that \"oh no\" realization\n- The specific technical detail that reveals the mistake (maybe a model name, a config file, a log line)\n- The emotional arc: confidence → confusion → dawning horror → the weight of what it means\n- The social/professional stakes (presentations, papers, decisions made based on this data)\n- Keep it short - maybe 4"
+    },
+    {
+      "prompt_index": 6,
+      "repetition": 0,
+      "seed": 20260828,
+      "input_len": 26,
+      "output_len": 128,
+      "generated_text": ",\n\n<think>\nThe user wants me to transform a string into valid JSON and explain the correction. Let me analyze the input:\n\n`name: radiance, gpus: 2, kv_cache: fp8,`\n\nIssues with this as JSON:\n1. It's not wrapped in curly braces `{}`\n2. Keys are not quoted (e.g., `name` should be `\"name\"`)\n3. String values are not quoted (e.g., `radiance` should be `\"radiance\"`, `fp8` should be `\"fp8\"`)\n4. There's a trailing comma at"
+    },
+    {
+      "prompt_index": 6,
+      "repetition": 1,
+      "seed": 20260828,
+      "input_len": 26,
+      "output_len": 128,
+      "generated_text": ",\n\n<think>\nThe user wants me to transform a string into valid JSON and explain the correction. Let me analyze the input:\n\n`name: radiance, gpus: 2, kv_cache: fp8,`\n\nIssues with this as JSON:\n1. It's not wrapped in curly braces `{}`\n2. Keys are not quoted (e.g., `name` should be `\"name\"`)\n3. String values are not quoted (e.g., `radiance` should be `\"radiance\"`, `fp8` should be `\"fp8\"`)\n4. There's a trailing comma at"
+    },
+    {
+      "prompt_index": 7,
+      "repetition": 0,
+      "seed": 20260829,
+      "input_len": 19,
+      "output_len": 128,
+      "generated_text": "\n\nHere are the translations and the definition you requested:\n\n### Translations\n\n**Spanish:**\n> \"Las mediciones fiables requieren condiciones controladas.\"\n\n**Japanese:**\n> 「信頼できる測定には、管理された環境条件が必要です。」\n> *(Shinrai dekiru sokutei ni wa, kanri sareta kankyou jōken ga hitsuyō desu.)*\n\n***\n\n### Definition: Controlled Conditions\n\n**Controlled conditions** refer to a specific environment or set of parameters that are deliberately regulated, monitored, and maintained to minimize or eliminate external variables (noise) that could interfere with"
+    },
+    {
+      "prompt_index": 7,
+      "repetition": 1,
+      "seed": 20260829,
+      "input_len": 19,
+      "output_len": 128,
+      "generated_text": "\n\nHere are the translations and the definition you requested:\n\n### Translations\n\n**Spanish:**\n> \"Las mediciones fiables requieren condiciones controladas.\"\n\n**Japanese:**\n> 「信頼できる測定には、管理された環境条件が必要です。」\n> *(Shinrai dekiru sokutei ni wa, kanri sareta kankyou jōken ga hitsuyō desu.)*\n\n***\n\n### Definition: Controlled Conditions\n\n**Controlled conditions** refer to a specific environment or set of parameters that are deliberately regulated, monitored, and maintained to minimize or eliminate external variables (noise) that could interfere with"
+    }
+  ],
+  "completed": 8,
+  "failed": 0
+}

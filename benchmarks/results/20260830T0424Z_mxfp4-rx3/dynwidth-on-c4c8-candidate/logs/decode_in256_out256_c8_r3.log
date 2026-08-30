@@ -1,0 +1,67 @@
+INFO 08-30 05:06:43 [importing.py:45] Triton is installed but 0 active driver(s) found (expected 1). Disabling Triton to prevent runtime errors.
+INFO 08-30 05:06:43 [importing.py:69] Triton not installed or not compatible; certain GPU-related functions will not be available.
+WARNING 08-30 05:06:43 [interface.py:247] Failed to import from vllm._C: ImportError('libcuda.so.1: cannot open shared object file: No such file or directory')
+Namespace(trust_remote_code=False, seed=20276945, num_prompts=16, dataset_name='random', no_stream=False, dataset_path=None, no_oversample=False, skip_chat_template=False, enable_multimodal_chat=False, disable_shuffle=False, custom_output_len=256, spec_bench_output_len=256, spec_bench_category=None, sonnet_input_len=550, sonnet_output_len=150, sonnet_prefix_len=200, sharegpt_output_len=None, blazedit_min_distance=0.0, blazedit_max_distance=1.0, asr_max_audio_len_sec=inf, asr_min_audio_len_sec=0.0, random_input_len=1024, random_output_len=128, random_range_ratio='0.0', random_prefix_len=0, random_batch_size=1, no_reranker=False, random_mm_base_items_per_request=1, random_mm_num_mm_items_range_ratio=0.0, random_mm_limit_mm_per_prompt={'image': 255, 'video': 1}, random_mm_bucket_config={(256, 256, 1): 0.5, (720, 1280, 1): 0.5, (720, 1280, 16): 0.0}, hf_subset=None, hf_split=None, hf_name=None, hf_output_len=None, prefix_repetition_prefix_len=256, prefix_repetition_suffix_len=256, prefix_repetition_num_prefixes=10, prefix_repetition_output_len=128, speed_bench_dataset_subset='qualitative', speed_bench_output_len=4096, speed_bench_category=None, label=None, backend='openai', base_url='http://127.0.0.1:11435', host='127.0.0.1', port=8000, endpoint='/v1/completions', header=None, max_concurrency=8, model='Qwen3.8-27B-Quark-AWQ-MXFP4', input_len=256, output_len=256, tokenizer='/nvme/lexar-2/ai/models/Qwen3.8-27B-Quark-AWQ-MXFP4-amd', tokenizer_mode='auto', use_beam_search=False, logprobs=None, request_rate=inf, burstiness=1.0, disable_tqdm=True, num_warmups=0, profile=False, save_result=True, save_detailed=True, append_result=False, metadata=['config=dynwidth-on-c4c8-candidate', 'workload=decode', 'input_tokens=256', 'output_tokens=256', 'repetition=3', 'tp=2', 'spec=on', 'cpu_offload_gb=0', 'seed=20276945', 'temperature=0'], result_dir=None, result_filename='benchmarks/results/20260830T0424Z_mxfp4-rx3/dynwidth-on-c4c8-candidate/raw/decode_in256_out256_c8_r3.json', ignore_eos=True, percentile_metrics='ttft,tpot,itl,e2el', metric_percentiles='50,90,95,99', goodput=None, request_id_prefix='bench-c5207e9b-', top_p=None, top_k=None, min_p=None, temperature=0.0, frequency_penalty=None, presence_penalty=None, repetition_penalty=None, served_model_name=None, lora_modules=None, lora_assignment='random', ramp_up_strategy=None, ramp_up_start_rps=None, ramp_up_end_rps=None, ready_check_timeout_sec=0, extra_body=None, skip_tokenizer_init=False, insecure=False, plot_timeline=False, timeline_itl_thresholds='25,50', plot_dataset_stats=False)
+INFO 08-30 05:06:44 [utils.py:90] Sampling input_len from [256, 256] and output_len from [256, 256]
+Starting initial single prompt test run...
+Skipping endpoint ready check.
+Starting main benchmark run...
+Traffic request rate: inf
+Burstiness factor: 1.0 (Poisson process)
+Maximum request concurrency: 8
+tip: install termplotlib and gnuplot to plot the metrics
+============ Serving Benchmark Result ============
+Successful requests:                     16        
+Failed requests:                         0         
+Maximum request concurrency:             8         
+Benchmark duration (s):                  8.15      
+Total input tokens:                      4096      
+Total generated tokens:                  4096      
+Request throughput (req/s):              1.96      
+Output token throughput (tok/s):         502.30    
+Peak output token throughput (tok/s):    176.00    
+Peak concurrent requests:                14.00     
+Total token throughput (tok/s):          1004.59   
+---------------Time to First Token----------------
+Mean TTFT (ms):                          340.26    
+Median TTFT (ms):                        251.17    
+P50 TTFT (ms):                           251.17    
+P90 TTFT (ms):                           534.35    
+P95 TTFT (ms):                           534.47    
+P99 TTFT (ms):                           534.61    
+-----Time per Output Token (excl. 1st token)------
+Mean TPOT (ms):                          11.74     
+Median TPOT (ms):                        10.09     
+P50 TPOT (ms):                           10.09     
+P90 TPOT (ms):                           15.99     
+P95 TPOT (ms):                           19.59     
+P99 TPOT (ms):                           26.69     
+---------------Inter-token Latency----------------
+Mean ITL (ms):                           44.53     
+Median ITL (ms):                         40.59     
+P50 ITL (ms):                            40.59     
+P90 ITL (ms):                            48.10     
+P95 ITL (ms):                            48.98     
+P99 ITL (ms):                            131.25    
+----------------End-to-end Latency----------------
+Mean E2EL (ms):                          3334.62   
+Median E2EL (ms):                        2856.11   
+P50 E2EL (ms):                           2856.11   
+P90 E2EL (ms):                           4426.02   
+P95 E2EL (ms):                           5288.12   
+P99 E2EL (ms):                           7293.03   
+---------------Speculative Decoding---------------
+Acceptance rate (%):                     59.92     
+Acceptance length:                       3.82      
+Drafts:                                  1076      
+Draft tokens:                            5060      
+Accepted tokens:                         3032      
+Per-position acceptance (%):
+  Position 0:                            72.58     
+  Position 1:                            49.44     
+  Position 2:                            42.94     
+  Position 3:                            34.57     
+  Position 4:                            30.30     
+  Position 5:                            27.04     
+  Position 6:                            24.91     
+==================================================

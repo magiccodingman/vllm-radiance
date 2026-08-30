@@ -93,6 +93,10 @@ services:
       # the v0.5 BF16/DFlash GEMMs. Unsupported geometries fall back per operator.
       RADIANCE_USE_R4D: "${RADIANCE_USE_R4D:-1}"
       RADIANCE_USE_R4D_GDN: "${RADIANCE_USE_R4D_GDN:-1}"
+      # Experimental FP8 QK/PV prefill legs. They improve long-context
+      # prefill but change attention numerics, so public Compose keeps the
+      # qualified BF16 legs unless explicitly enabled with value 3.
+      R4D_ATTN_FP8: "${R4D_ATTN_FP8:-0}"
       RADIANCE_R4D_REPORT: "${RADIANCE_R4D_REPORT:-1}"
       RADIANCE_USE_R4D_AR: "${RADIANCE_USE_R4D_AR:-1}"
       # WHT6 payload for large TP2 reductions. Quantized, so set 0 for the
@@ -104,6 +108,8 @@ services:
       # can alter speculative acceptance, so it is never the generic default.
       RADIANCE_SKINNY_GEMM: "${RADIANCE_SKINNY_GEMM:-1}"
       RADIANCE_GDN_META: "${RADIANCE_GDN_META:-1}"
+      RADIANCE_GDN_MERGE_INPROJ: "${RADIANCE_GDN_MERGE_INPROJ:-1}"
+      RADIANCE_GDN_FUSED_UPDATE: "${RADIANCE_GDN_FUSED_UPDATE:-1}"
       RADIANCE_TOPK_TRITON_MIN_ROWS: "${RADIANCE_TOPK_TRITON_MIN_ROWS:-1}"
       # Weight format is appended by the entrypoint. `auto` omits the CLI flag
       # and lets Quark/MXFP4 checkpoints select their config.json method.
@@ -115,6 +121,8 @@ services:
       RADIANCE_MXFP4_W4A8_MIN_M: "${RADIANCE_MXFP4_W4A8_MIN_M:-0}"
       RADIANCE_MXFP4_DECODE_MAX_M: "${RADIANCE_MXFP4_DECODE_MAX_M:-64}"
       RADIANCE_MXFP4_TN4_MIN_M: "${RADIANCE_MXFP4_TN4_MIN_M:-2048}"
+      RADIANCE_MXFP4_EPIFAST: "${RADIANCE_MXFP4_EPIFAST:-1}"
+      RADIANCE_MXFP4_WPERM: "${RADIANCE_MXFP4_WPERM:-0}"
       # AMD's current Qwen3.8 Quark checkpoint stores its embedded MTP head in
       # BF16 despite the global FP4 recipe. Enable only for that verified layout.
       RADIANCE_QUARK_BF16_MTP: "${RADIANCE_QUARK_BF16_MTP:-0}"
@@ -122,6 +130,9 @@ services:
       # prefill messages silently fall back to RCCL. 48 MiB covers 4096x5120.
       RADIANCE_AR_MAX_KB: "${RADIANCE_AR_MAX_KB:-49152}"
       RADIANCE_AR_QUANT_MIN_KB: "${RADIANCE_AR_QUANT_MIN_KB:-128}"
+      RADIANCE_AR_QNT: "${RADIANCE_AR_QNT:-1024}"
+      RADIANCE_AR_QNB: "${RADIANCE_AR_QNB:-96}"
+      RADIANCE_KV_GROUP_OPT: "${RADIANCE_KV_GROUP_OPT:-1}"
       # radiance rms+group-fp8-quant fusion coverage (also baked default 1).
       RADIANCE_FUSE_RMS_QUANT: "1"
       # optional NUMA pinning of the vLLM fleet to the GPU-local node(s). Off by default (no-op on
@@ -139,6 +150,10 @@ services:
       # under DFlash it also enables the runtime W4 drafter. Keep opt-in until
       # the target/drafter pair passes its acceptance and correctness gates.
       RADIANCE_FAST_DRAFT: "${RADIANCE_FAST_DRAFT:-0}"
+      RADIANCE_DRAFT_RERANK: "${RADIANCE_DRAFT_RERANK:-64}"
+      RADIANCE_VERIFY_HEAD: "${RADIANCE_VERIFY_HEAD:-1}"
+      RADIANCE_DYNAMIC_WIDTH: "${RADIANCE_DYNAMIC_WIDTH:-1}"
+      RADIANCE_DYNW_MIN_BATCH: "${RADIANCE_DYNW_MIN_BATCH:-5}"
       # Optional raw vLLM speculative-config JSON. The entrypoint appends it as
       # one CLI argument unless an explicit --speculative-config is already present.
       # Qwen fast-MTP example is provided (commented) in .env.example.

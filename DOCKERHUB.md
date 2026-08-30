@@ -16,7 +16,7 @@ sequences; it deliberately leaves VRAM headroom instead of finding the largest
 batch that fits. Earlier 0.5.8 performance numbers below remain useful history,
 but are not claims about the new compiler stack.
 
-## Current fork stack (`0.9.3-dev.vllm0.28.0-r4d0.5.0-mxfp4.dflash2.xgrammar`)
+## Current fork stack (`0.9.3-dev.vllm0.28.0-r4d0.5.0-mxfp4.rx3.dflash2.xgrammar`)
 
 | Component | Exact version/pin |
 |---|---|
@@ -53,14 +53,25 @@ defaults. Do not substitute an unpinned `main` checkout or generic PyTorch
 | `RADIANCE_DRAFT_TAU` | `0.28` | confidence-product stop threshold |
 | `RADIANCE_SKINNY_GEMM` | `1` | exact selected BF16 skinny-GEMM route; `all` also enables ULP-different shapes |
 | `RADIANCE_GDN_META` | `1` | byte-identical GPU GDN metadata construction |
+| `RADIANCE_GDN_MERGE_INPROJ` | `1` | merge paired Qwen GDN input projections at load time |
+| `RADIANCE_GDN_FUSED_UPDATE` | `1` | libr4d fused GDN speculative update where the shape is supported |
 | `RADIANCE_TOPK_TRITON_MIN_ROWS` | `1` | Triton top-k/top-p at small row counts |
 | `RADIANCE_FAST_DRAFT` | `0` | opt-in INT2 exact-rerank head for MTP/DFlash plus DFlash runtime W4 linears |
+| `RADIANCE_DRAFT_RERANK` | `64` | exact candidate rerank width for the INT2 draft head |
+| `RADIANCE_VERIFY_HEAD` | `1` | sampling-aware INT2 target verification head; exact fallback for unsafe requests |
+| `RADIANCE_DYNAMIC_WIDTH` | `1` | acceptance-adaptive DFlash verify width, active only at the configured batch floor |
+| `RADIANCE_DYNW_MIN_BATCH` | `5` | leave c1-c4 DFlash at full K7 verification |
 | `RADIANCE_FAST_DRAFT_CACHE_NAMESPACE` | `1` | isolate persistent vLLM/Inductor graph caches for packed fast-draft weights |
 | `RADIANCE_MXFP4` | `0` | allow native Quark/OCP MXFP4 routing on gfx1201 |
 | `RADIANCE_MXFP4_W4A8` | `0` | packed MXFP4 weights with dynamic FP8 activations on RDNA4 WMMA |
 | `RADIANCE_MXFP4_W4A8_MIN_M` | `0` | first M routed to W4A8; keep 0 for the qualified AMD checkpoint |
 | `RADIANCE_MXFP4_DECODE_MAX_M` | `64` | upper bound for the fused small-M split-K decode kernel |
 | `RADIANCE_MXFP4_TN4_MIN_M` | `2048` | switch the prefill kernel to its wider N tile |
+| `RADIANCE_MXFP4_EPIFAST` | `1` | branch-free full-tile MXFP4 output epilogue |
+| `RADIANCE_MXFP4_WPERM` | `0` | optional decode-priority fragment-order weights; costs some prefill speed |
+| `RADIANCE_KV_GROUP_OPT` | `1` | capacity-aware hybrid KV grouping for target plus DFlash buckets |
+| `RADIANCE_AR_QNB` | `96` | tuned compressed TP2 all-reduce block cap (`48` restores the old geometry) |
+| `R4D_ATTN_FP8` | `0` | experimental FP8 QK/PV prefill legs; remain off by default |
 | `RADIANCE_QUARK_BF16_MTP` | `0` | load AMD's embedded BF16 MTP head outside the global Quark recipe |
 | `RADIANCE_SPECULATIVE_CONFIG` | unset | raw vLLM speculative-config JSON appended by the entrypoint; explicit CLI config wins |
 | `RADIANCE_COMPILATION_CONFIG` | unset | raw vLLM compilation-config JSON appended by the entrypoint; explicit CLI config wins |
@@ -81,7 +92,7 @@ RADIANCE_FAST_DRAFT=1
 ```
 
 The first enables R4D MTP with dynamic K8-as-a-ceiling drafting; the second
-enables the INT2-g128 draft-head copy with exact top-32 reranking. An explicit
+enables the INT2-g128 draft-head copy with exact top-64 reranking. An explicit
 `--speculative-config` command argument overrides the environment value. Gemma-4
 is the head-512 exception and must use the AITER backend shown below.
 
@@ -127,19 +138,20 @@ Untested (may or may not work): any other model/quantization recipe, more than
 two GPUs, or non-R9700 hardware. Treat the defaults below as a starting point
 for these measured setups, not a general recommendation.
 
-**Qwen3.8 Quark MXFP4/W4A8.** The Radiance 0.9.3/libr4d 0.5.0
-10-pass/category BetterBench result was 43.6 weighted non-spec TPS, 102.3 with
-fast MTP K4, 136.2 with fast DFlash K5, and 145.4 with fast DFlash K7. K7 reached
-132.4/234.6/343.3/416.9 aggregate TPS at c1/c2/c4/c8; K5 reached
-123.0/216.4/343.0/435.7 and MTP reached 97.8/173.1/284.5/372.1. K5 remains
-the C8 DFlash option. The M<=64 kernel boundary
-improved a direct C8 control by 10.4%. K7 passed 30/30 required multi-tool
-schema requests but only 1/8 strict non-spec equivalence prompts. All category
-rows, prefill, telemetry, negative results, pins, and run IDs are in
-`docs/RADIANCE_093_R4D050_MXFP4.md` in the source repository.
+**Qwen3.8 Quark MXFP4/W4A8.** The current RX3 K7 DFlash profile measured 171.0
+weighted BetterBench TPS and 152.5/269.5/432.6/570.4 aggregate TPS at
+c1/c2/c4/c8. Against the merged v0.28 baseline that is +12.1% weighted and
++13.0%/+21.2%/+24.0%/+20.3% by concurrency. The eight category medians are
+131.1 chat, 176.4 code, 204.5 file edit, 233.2 JSON, 227.4 math, 110.1 prose,
+125.8 reasoning, and 196.2 summarization TPS. Three standard runs passed 90/90
+required multi-tool requests with zero XGrammar FSM errors and repeated the
+same fixed greedy outputs across restarts. Strict DFlash/non-spec equivalence
+still fails, so DFlash remains opt-in. Full current evidence is in
+`docs/MXFP4_RX3_CONTINUATION.md`; the earlier non-spec/MTP/K5/K7 scoreboard is
+retained in `docs/RADIANCE_093_R4D050_MXFP4.md`.
 
 The recommended long-context MXFP4 profile is 128K/C4 at 90% GPU allocation,
-FP8 KV, DFlash K5, `PIECEWISE` graphs, prefix caching, and GDN `align` state. It
+FP8 KV, DFlash K7, `PIECEWISE` graphs, prefix caching, and GDN `align` state. It
 reported 576,001 KV tokens / 4.39x full-request capacity and completed four
 disjoint full-context requests with zero OOM or preemption and 5.17 GiB minimum
 headroom per GPU. A 32K repeated prefix reduced TTFT from 9.04 seconds cold to
