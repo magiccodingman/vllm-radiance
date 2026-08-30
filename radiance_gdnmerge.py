@@ -53,15 +53,37 @@ def _merged_forward_hip(self, hidden_states):
     """
     import torch
 
-    num_tokens = hidden_states.size(0)
-    merged = torch.ops.radiance.mxfp4_linear(
-        hidden_states, self._rad_w, self._rad_ws, self._rad_wref)
+    if isinstance(hidden_states, tuple):
+        # fp8-stream contract (radiance_arnq): pre-quantized (q, scale) from the AR epilogue.
+        _q, _qs = hidden_states
+        num_tokens = _q.size(0)
+        merged = torch.ops.radiance.mxfp4_linear_pq(
+            _q, _qs, self._rad_w, self._rad_ws, self._rad_wref)
+    elif self._rad_quant:
+        num_tokens = hidden_states.size(0)
+        import radiance_mxfp4 as _rm
+        if _rm.HOIST_QUANT and _rm.TRACED_QUANT:
+            # Same traced-quant route as apply_weights: the plain-torch quant lowers into the
+            # producing input_layernorm's inductor kernels. Calling the opaque mxfp4_linear here
+            # instead was exactly the 48 standalone per-step quant launches the 2026-08-30
+            # census left behind.
+            if _rm.SANITIZE_X:
+                hidden_states = torch.nan_to_num(hidden_states, nan=0.0, posinf=0.0, neginf=0.0)
+            x_fp8, x_scale = _rm._traced_quant(hidden_states)
+            merged = torch.ops.radiance.mxfp4_linear_pq(
+                x_fp8, x_scale.view(-1).float(), self._rad_w, self._rad_ws, self._rad_wref)
+        else:
+            merged = torch.ops.radiance.mxfp4_linear(
+                hidden_states, self._rad_w, self._rad_ws, self._rad_wref)
+    else:
+        num_tokens = hidden_states.size(0)
+        merged = torch.nn.functional.linear(hidden_states, self._rad_w)
     projected_states_qkvz = merged[:, : self._rad_n1].view(num_tokens, -1)
     projected_states_ba = merged[:, self._rad_n1 :].view(num_tokens, -1)
 
     core_attn_out = torch.empty(
         (num_tokens, self.num_v_heads // self.tp_size, self.head_v_dim),
-        dtype=hidden_states.dtype, device=hidden_states.device)
+        dtype=merged.dtype, device=merged.device)
     z = torch.empty(
         (num_tokens, self.num_v_heads // self.tp_size, self.head_v_dim),
         dtype=projected_states_qkvz.dtype, device=projected_states_qkvz.device)
@@ -97,6 +119,7 @@ def _merge_one(mod) -> bool:
         torch.cat([qkvz.weight_scale.data, ba.weight_scale.data], dim=1), requires_grad=False)
     mod._rad_wref = torch.nn.Parameter(
         torch.cat([qkvz.radiance_wref.data, ba.radiance_wref.data], dim=0), requires_grad=False)
+    mod._rad_quant = True
     mod._rad_n1 = n1
     # The stock forward re-encodes the layer name on every step; it is constant, so resolve once.
     from vllm.model_executor.layers.mamba.gdn import qwen_gdn_linear_attn as _m
@@ -112,6 +135,7 @@ def _merge_one(mod) -> bool:
     import types
     mod.forward_hip = types.MethodType(_merged_forward_hip, mod)
     mod._forward_method = mod.forward_hip
+    mod._rad_merged = True         # radiance_arnq keys its consumer check on this
     return True
 
 
@@ -124,6 +148,9 @@ def merge_model(model) -> None:
         radiance_gdn.init_fused_counter()           # before any CUDA-graph capture
     except Exception as e:                          # noqa: BLE001
         _log(f"gdn fused counter init failed: {e!r}")
+    # fp8-stream epilogue contract (env-gated inside). AFTER _merge_one has run on every GDN
+    # module would be ideal, but install only reads _rad_merged which _merge_one sets -- so it
+    # must run at the END of merge_model; see the deferred call below.
     if not ENABLED:
         return
     # Fragment order (RADIANCE_MXFP4_WPERM=1) is fine to merge: permute_w is tile-local along N
@@ -151,3 +178,11 @@ def merge_model(model) -> None:
             skipped += 1
             _log(f"merge failed on {getattr(m, 'prefix', '?')}, left unmerged: {e!r}")
     _log(f"merged {n} GDN layers ({2 * n} launches/forward removed), {skipped} left unmerged")
+    # fp8-stream epilogue contract (radiance_arnq, env-gated inside). Runs only down here, after
+    # every GDN module carries its _rad_merged marker: the installer's consumer check reads it.
+    # Consequence: RADIANCE_FP8_STREAM needs RADIANCE_GDN_MERGE_INPROJ=1, which is the default.
+    try:
+        import radiance_arnq
+        radiance_arnq.install(model)
+    except Exception as e:                              # noqa: BLE001
+        _log(f"fp8-stream install failed, serving without it: {e!r}")

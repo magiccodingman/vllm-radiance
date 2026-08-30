@@ -924,8 +924,194 @@ static void launch(uintptr_t a, uintptr_t w, uintptr_t ws, uintptr_t wref, uintp
                        (const unsigned char *)ws, (const float *)as, (__bf16 *)c, M, N, K);
 }
 
+
+// ---- fused residual-add + Gemma RMSNorm + per-token fp8 quant -------------------------------
+//
+// The decode-step epilogue of every RowParallel linear: after the all-reduce, the traced graph
+// runs (add+rms_norm) and the traced per-token quant -- 2-3 inductor kernels per site whose
+// tiling inductor chooses for the M=8192 compile hint and replays at M=8 (XBLOCK=1, one row per
+// workgroup, ~4.4 us of kernels + 2 dispatch gaps per site). This kernel does the whole epilogue
+// in ONE launch. Semantics mirror vllm.ir.ops.fused_add_rms_norm with the GemmaRMSNorm weight
+// convention plus the radiance traced quant, in exactly its precision:
+//   s      = f32(y) + f32(residual)         (fp32 sum feeds BOTH residual_out and the variance)
+//   res_o  = bf16(s)
+//   n      = bf16( s * rsqrt(mean(s^2)+eps) * (f32(w)+1) )   <- Gemma: weight is (1+w), fp32
+//   scale  = max(amax|f32(n)|/448, 1/(448*512))               <- amax over the BF16-ROUNDED n
+//   q      = e4m3_rne(clamp(f32(n)/scale, +-448))
+// One workgroup per row; latency-bound at decode M<=8 like everything else in the step, and at
+// prefill M=chunk there are thousands of rows so occupancy takes care of itself.
+#define ARNQ_T 256
+typedef unsigned int uint32_tt;
+union ArnqVec8 { uint4 u4; __bf16 h[8]; };
+__global__ __launch_bounds__(ARNQ_T) void radiance_add_rms_quant(
+    const __bf16 *__restrict__ y, const __bf16 *__restrict__ res, const __bf16 *__restrict__ w,
+    unsigned char *__restrict__ q, float *__restrict__ scale, __bf16 *__restrict__ res_out,
+    int K, float eps) {
+  const int row = blockIdx.x;
+  const int tid = threadIdx.x;
+  y += (long)row * K; res += (long)row * K; q += (long)row * K; res_out += (long)row * K;
+  // 16-byte vectorized: thread t owns 8-element groups t, t+T, t+2T, ... The scalar version of
+  // this kernel measured 12.5 us at M=8 under graph replay -- 20 independent 2-byte loads per
+  // thread per tensor is pure latency serialization at 8 workgroups. Vectorized it is one
+  // uint4 load per tensor per group. K must be a multiple of 8 (5120/8704/2048 all are).
+  constexpr int MAXG = 5;                       // 8704 / (256*8) rounds up to 5
+  const int KV = K >> 3;                        // groups of 8
+  float sv[MAXG][8];
+  int ng = 0;
+  float ssq = 0.f;
+  for (int g = tid; g < KV; g += ARNQ_T, ++ng) {
+    ArnqVec8 vy, vr;
+    vy.u4 = ((const uint4 *)y)[g];
+    vr.u4 = ((const uint4 *)res)[g];
+    ArnqVec8 vo;
+#pragma unroll
+    for (int j = 0; j < 8; ++j) {
+      float v = (float)vy.h[j] + (float)vr.h[j];
+      sv[ng][j] = v;
+      vo.h[j] = (__bf16)v;
+      ssq += v * v;
+    }
+    ((uint4 *)res_out)[g] = vo.u4;
+  }
+  __shared__ float lds[ARNQ_T / 32];
+  for (int o = 16; o; o >>= 1) ssq += __shfl_down(ssq, o);
+  if ((tid & 31) == 0) lds[tid >> 5] = ssq;
+  __syncthreads();
+  if (tid < ARNQ_T / 32) {
+    float v = lds[tid];
+    for (int o = ARNQ_T / 64; o; o >>= 1) v += __shfl_down(v, o);
+    if (tid == 0) lds[0] = v;
+  }
+  __syncthreads();
+  const float inv = rsqrtf(lds[0] / (float)K + eps);
+  __syncthreads();                       // lds[0] is reused for the amax reduction below
+  float amax = 0.f;
+  int mg = 0;
+  for (int g = tid; g < KV; g += ARNQ_T, ++mg) {
+    ArnqVec8 vw;
+    vw.u4 = ((const uint4 *)w)[g];
+#pragma unroll
+    for (int j = 0; j < 8; ++j) {
+      float nv = (float)(__bf16)(sv[mg][j] * inv * ((float)vw.h[j] + 1.f));
+      sv[mg][j] = nv;
+      amax = fmaxf(amax, fabsf(nv));
+    }
+  }
+  for (int o = 16; o; o >>= 1) amax = fmaxf(amax, __shfl_down(amax, o));
+  if ((tid & 31) == 0) lds[tid >> 5] = amax;
+  __syncthreads();
+  if (tid < ARNQ_T / 32) {
+    float v = lds[tid];
+    for (int o = ARNQ_T / 64; o; o >>= 1) v = fmaxf(v, __shfl_down(v, o));
+    if (tid == 0) lds[0] = v;
+  }
+  __syncthreads();
+  const float sc = fmaxf(lds[0] * (1.f / 448.f), 1.f / (448.f * 512.f));
+  const float rs = 1.f / sc;
+  if (tid == 0) scale[row] = sc;
+  mg = 0;
+  for (int g = tid; g < KV; g += ARNQ_T, ++mg) {
+    uint32_tt lo = 0, hi = 0;
+#pragma unroll
+    for (int j = 0; j < 4; j += 2) {
+      float a = fminf(fmaxf(sv[mg][j] * rs, -448.f), 448.f);
+      float b = fminf(fmaxf(sv[mg][j + 1] * rs, -448.f), 448.f);
+      lo |= (__builtin_amdgcn_cvt_pk_fp8_f32(a, b, 0u, false) & 0xffffu) << (j * 8);
+    }
+#pragma unroll
+    for (int j = 4; j < 8; j += 2) {
+      float a = fminf(fmaxf(sv[mg][j] * rs, -448.f), 448.f);
+      float b = fminf(fmaxf(sv[mg][j + 1] * rs, -448.f), 448.f);
+      hi |= (__builtin_amdgcn_cvt_pk_fp8_f32(a, b, 0u, false) & 0xffffu) << ((j - 4) * 8);
+    }
+    ((uint2 *)q)[g] = make_uint2(lo, hi);
+  }
+}
+
+// ---- fused SiLU-mul + per-token fp8 quant ----------------------------------------------------
+// The MLP's activation epilogue: gate_up output [M, 2N] -> silu(gate) * up -> per-token e4m3.
+// Same skeleton and precision contract as radiance_add_rms_quant: every intermediate is rounded
+// exactly where the traced path rounds (silu to bf16, product to bf16, amax over the rounded
+// product). One workgroup per row.
+__global__ __launch_bounds__(ARNQ_T) void radiance_silu_mul_quant(
+    const __bf16 *__restrict__ gu, unsigned char *__restrict__ q, float *__restrict__ scale,
+    int N) {
+  const int row = blockIdx.x;
+  const int tid = threadIdx.x;
+  gu += (long)row * 2 * N; q += (long)row * N;
+  constexpr int MAXG = 5;                  // N <= 10240 (8704 in this model)
+  const int NV = N >> 3;
+  float pv[MAXG][8];
+  int ng = 0;
+  float amax = 0.f;
+  for (int g = tid; g < NV; g += ARNQ_T, ++ng) {
+    ArnqVec8 vg, vu;
+    vg.u4 = ((const uint4 *)gu)[g];
+    vu.u4 = ((const uint4 *)(gu + N))[g];
+#pragma unroll
+    for (int j = 0; j < 8; ++j) {
+      float x = (float)vg.h[j];
+      float t = (float)(__bf16)(x / (1.f + expf(-x)));       // silu, rounded to bf16
+      float p = (float)(__bf16)(t * (float)vu.h[j]);         // product, rounded to bf16
+      pv[ng][j] = p;
+      amax = fmaxf(amax, fabsf(p));
+    }
+  }
+  __shared__ float lds[ARNQ_T / 32];
+  for (int o = 16; o; o >>= 1) amax = fmaxf(amax, __shfl_down(amax, o));
+  if ((tid & 31) == 0) lds[tid >> 5] = amax;
+  __syncthreads();
+  if (tid < ARNQ_T / 32) {
+    float v = lds[tid];
+    for (int o = ARNQ_T / 64; o; o >>= 1) v = fmaxf(v, __shfl_down(v, o));
+    if (tid == 0) lds[0] = v;
+  }
+  __syncthreads();
+  const float sc = fmaxf(lds[0] * (1.f / 448.f), 1.f / (448.f * 512.f));
+  const float rs = 1.f / sc;
+  if (tid == 0) scale[row] = sc;
+  int mg = 0;
+  for (int g = tid; g < NV; g += ARNQ_T, ++mg) {
+    uint32_tt lo = 0, hi = 0;
+#pragma unroll
+    for (int j = 0; j < 4; j += 2) {
+      float a = fminf(fmaxf(pv[mg][j] * rs, -448.f), 448.f);
+      float b = fminf(fmaxf(pv[mg][j + 1] * rs, -448.f), 448.f);
+      lo |= (__builtin_amdgcn_cvt_pk_fp8_f32(a, b, 0u, false) & 0xffffu) << (j * 8);
+    }
+#pragma unroll
+    for (int j = 4; j < 8; j += 2) {
+      float a = fminf(fmaxf(pv[mg][j] * rs, -448.f), 448.f);
+      float b = fminf(fmaxf(pv[mg][j + 1] * rs, -448.f), 448.f);
+      hi |= (__builtin_amdgcn_cvt_pk_fp8_f32(a, b, 0u, false) & 0xffffu) << ((j - 4) * 8);
+    }
+    ((uint2 *)q)[g] = make_uint2(lo, hi);
+  }
+}
+
+static void launch_silu_mul_quant(uintptr_t gu, uintptr_t q, uintptr_t scale, int M, int N,
+                                  uintptr_t stream) {
+  if (N > 40 * ARNQ_T || (N & 7))
+    throw std::runtime_error("radiance_silu_mul_quant: N must be 8-aligned and <= 10240");
+  hipLaunchKernelGGL(radiance_silu_mul_quant, dim3(M), dim3(ARNQ_T), 0, (hipStream_t)stream,
+                     (const __bf16 *)gu, (unsigned char *)q, (float *)scale, N);
+}
+
+static void launch_add_rms_quant(uintptr_t y, uintptr_t res, uintptr_t w, uintptr_t q,
+                                 uintptr_t scale, uintptr_t res_out, int M, int K, double eps,
+                                 uintptr_t stream) {
+  if (K > 40 * ARNQ_T || (K & 7)) throw std::runtime_error("radiance_add_rms_quant: K must be 8-aligned and <= 10240");
+  hipLaunchKernelGGL(radiance_add_rms_quant, dim3(M), dim3(ARNQ_T), 0, (hipStream_t)stream,
+                     (const __bf16 *)y, (const __bf16 *)res, (const __bf16 *)w,
+                     (unsigned char *)q, (float *)scale, (__bf16 *)res_out, K, (float)eps);
+}
+
 PYBIND11_MODULE(radiance_mxfp4_fp8, m) {
   m.def("launch", &launch, "MXFP4 x FP8 WMMA GEMM (gfx1201)");
+  m.def("launch_silu_mul_quant", &launch_silu_mul_quant,
+        "fused silu(gate)*up + per-token e4m3 quant, one WG per row");
+  m.def("launch_add_rms_quant", &launch_add_rms_quant,
+        "fused residual-add + Gemma rmsnorm + per-token e4m3 quant, one WG per row");
   // Hand in a torch-owned fp32 buffer for the decode kernel's split-K partials. Call once per
   // worker at weight-load time; the caller must keep the tensor alive.
   m.def("set_decode_scratch", &set_decode_scratch,
