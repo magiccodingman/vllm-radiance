@@ -1,0 +1,17 @@
+{
+  "baseline_repeatability": {
+    "compared_repetitions": 0,
+    "mismatches": [],
+    "status": "passed"
+  },
+  "candidate_repeatability": {
+    "compared_repetitions": 0,
+    "mismatches": [],
+    "status": "passed"
+  },
+  "common_prompts": 8,
+  "divergences": [],
+  "exact_matches": 8,
+  "fixture_match": true,
+  "status": "passed"
+}

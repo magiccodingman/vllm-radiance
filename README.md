@@ -122,7 +122,7 @@ RADIANCE_FAST_DRAFT=1
 ```
 
 K8 is a ceiling. Radiance's dynamic controller may select a shallower depth based on confidence and active
-batch size. Fast draft uses an INT2-g128 LM-head copy with exact top-32 reranking; target verification remains
+batch size. Fast draft uses an INT2-g128 LM-head copy with exact top-64 reranking; target verification remains
 in place.
 
 ### DFlash2
@@ -140,7 +140,11 @@ RADIANCE_SPECULATIVE_CONFIG='{"method":"dflash","model":"/models/Qwen3.8-27B-her
 For AMD's Quark MXFP4 target, use the target-matched
 [`tcclaviger/Qwen3.8-27B-DFlash2-FP8`](https://huggingface.co/tcclaviger/Qwen3.8-27B-DFlash2-FP8)
 drafter. `RADIANCE_FAST_DRAFT=1` runtime-quantizes eligible draft linears to W4 and uses the INT2 exact-rerank
-head. The target retains R4D attention while the drafter uses Triton attention.
+head. The target retains R4D attention while the drafter uses Triton attention. The current image also
+merges GDN input projections, uses libr4d's fused speculative GDN update, increases exact-rerank width to
+64, and narrows DFlash verification per request only at c5 and above when observed acceptance says the
+full K7 target verification is wasteful. Every optimization is independently reversible through the
+controls documented in `benchmarks/README.md`.
 
 Prefix caching and `MAMBA_CACHE_MODE=align` remain the deployment defaults. Disable them only for a cold,
 nonce-disjoint benchmark or a deliberate maximum-capacity experiment. Recreate the container after changing
@@ -218,6 +222,27 @@ It passed 100/100 sampled required multi-tool calls after the focused upstream
 parser fix. Exact provenance, acceptance, telemetry, negative results, and run
 IDs are in the [v0.28 qualification report](https://gitlab.sayou.io/lance-wright/vllm-radiance/-/blob/main/docs/V028_UPGRADE.md).
 
+The subsequent RX3 continuation integrates Brian's latest MXFP4/DFlash/GDN
+work from `ggz14/radiance-vllm-mxfp4`. The final exact-default standard run
+measured **171.0 weighted TPS**:
+
+| | weighted | c1 | c2 | c4 | c8 |
+|---|---:|---:|---:|---:|---:|
+| Merged v0.28 baseline | 152.5 | 135.0 | 222.3 | 348.8 | 474.0 |
+| RX3 continuation | 171.0 | 152.5 | 269.5 | 432.6 | 570.4 |
+| Gain | **+12.1%** | **+13.0%** | **+21.2%** | **+24.0%** | **+20.3%** |
+
+The final single-stream category medians were chat 131.1, code 176.4,
+file-edit 204.5, JSON 233.2, math 227.4, prose 110.1, reasoning 125.8, and
+summarization 196.2 TPS. Six category gains are statistically significant in
+BetterBench's offline comparison; prose and reasoning remain noise-limited.
+Prefill improved 9.7–10.5% across the 2K/4K/7K depths. Three standard runs
+produced the same eight fixed greedy outputs across independent server starts
+and passed 90/90 sampled required multi-tool calls with zero XGrammar FSM errors. DFlash
+still does not pass strict equivalence against non-spec, so it remains clearly
+experimental despite the speedup. Full provenance is in the
+[RX3 continuation report](https://gitlab.sayou.io/lance-wright/vllm-radiance/-/blob/main/docs/MXFP4_RX3_CONTINUATION.md).
+
 Per-category TPS, acceptance, TTFT/TPOT, prefill, telemetry, confidence intervals, negative results, and
 immutable run IDs are in the
 [Radiance 0.9.3 qualification report](https://gitlab.sayou.io/lance-wright/vllm-radiance/-/blob/main/docs/RADIANCE_093_R4D050_MXFP4.md).
@@ -286,3 +311,18 @@ and an earlier mismatched combination caused sustained TP hangs.
 
 The source repository is the canonical location for detailed qualification evidence. This landing page is
 intentionally concise so the same content can be published as the Docker Hub repository overview.
+
+## Upstream and attribution
+
+This fork exists on top of two unusually strong RDNA4 efforts:
+
+- [StillDeadcode/vllm-radiance](https://codeberg.org/StillDeadcode/vllm-radiance) and
+  [StillDeadcode/libr4d](https://codeberg.org/StillDeadcode/libr4d) provide the core Radiance runtime and
+  hand-written gfx1201 kernels.
+- [ggz14/radiance-vllm-mxfp4](https://codeberg.org/ggz14/radiance-vllm-mxfp4), authored by Brian, is the
+  source of the native Quark MXFP4/W4A8 work and the RX3 optimization series adapted here. Its original
+  authorship is preserved in the Git history.
+
+The continuation pins the exact audited ggz14 upstream commit in its qualification report. Changes are
+ported selectively because this fork carries a different vLLM/libr4d base and additional DFlash and
+correctness patches; attractive results from incompatible or failed experiments are not silently copied.

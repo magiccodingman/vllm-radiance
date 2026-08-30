@@ -241,7 +241,8 @@ ENV ROCM_PATH=/opt/rocm HIP_PATH=/opt/rocm HIP_PLATFORM=amd \
 COPY radiance_amdsmi.py radiance_amdsmi.pth \
      radiance_kernels.py radiance_vit_attn.py radiance_allreduce.py \
      radiance_draft.py radiance_draft_gpu.py radiance_drafthead.py radiance_gemm.py radiance_w4.py \
-     radiance_r4d_attn.py radiance_gdn.py radiance_mxfp4.py ${SP}/
+     radiance_r4d_attn.py radiance_gdn.py radiance_gdnmerge.py radiance_mxfp4.py \
+     radiance_verifyhead.py ${SP}/
 COPY fp8-configs/ ${SP}/vllm/model_executor/layers/quantization/utils/configs/
 COPY moe-configs/ ${SP}/vllm/model_executor/layers/fused_moe/configs/
 # AITER has no gfx1201 MXFP4 table. Its gfx1250 table selects an unsupported
@@ -260,7 +261,9 @@ RUN set -eu; cd /opt/patches; \
              patch_dynamo_metrics patch_conv1d_blockn patch_r4d patch_dflash_base \
              patch_dflash_fused_kv_fp8 patch_dflash_logits_cache_stride patch_dflash_w4 \
              patch_gdn_metadata patch_topk_triton_rows patch_rocm_cudagraph_current_stream \
-             patch_quark_mxfp4 patch_quark_bf16_mtp patch_ar_maxbytes patch_xgrammar_spec_termination \
+             patch_quark_mxfp4 patch_quark_bf16_mtp patch_ar_maxbytes patch_ar_geometry \
+             patch_kv_group_size patch_gdn_merge_inproj patch_dynwidth patch_verify_head \
+             patch_xgrammar_spec_termination \
              patch_xgrammar_spec_reasoning patch_parser_shared_engine; do \
       echo "== applying $p =="; python "$p.py"; \
     done; \
@@ -270,10 +273,13 @@ RUN set -eu; cd /opt/patches; \
 ARG R4D_REPO
 ARG R4D_VERSION
 ARG R4D_COMMIT
+COPY r4d_radiance_extras.patch /opt/patches/
 RUN git clone --filter=blob:none --no-checkout ${R4D_REPO} /src/libr4d \
  && cd /src/libr4d \
  && git checkout --detach ${R4D_COMMIT} \
  && test "$(git rev-parse HEAD)" = "${R4D_COMMIT}" \
+ && git apply --check /opt/patches/r4d_radiance_extras.patch \
+ && git apply /opt/patches/r4d_radiance_extras.patch \
  && GFX_ARCH=${GFX_ARCH} OUT=${SP}/r4d.so ./build.sh \
  && WANT=$(echo "${R4D_VERSION}" | sed 's/^v//') \
  && python -c "import sys, torch, r4d; assert r4d.__version__ == sys.argv[1]; print('r4d', r4d.__version__, 'kernels', len(r4d.kernels()))" "$WANT" \
@@ -343,12 +349,16 @@ ENV VIRTUAL_ENV=/opt/vllm \
 # gfx1201 library. The AITER attention/GDN knobs remain available as measured fallbacks. ---
 ENV RADIANCE_USE_R4D=1 RADIANCE_USE_R4D_GDN=1 RADIANCE_R4D_REPORT=1 \
     RADIANCE_USE_R4D_AR=1 RADIANCE_USE_R4D_AR_QUANT=1 \
-    RADIANCE_SKINNY_GEMM=1 RADIANCE_GDN_META=1 RADIANCE_TOPK_TRITON_MIN_ROWS=1 \
+    RADIANCE_SKINNY_GEMM=1 RADIANCE_GDN_META=1 RADIANCE_GDN_MERGE_INPROJ=1 \
+    RADIANCE_GDN_FUSED_UPDATE=1 RADIANCE_TOPK_TRITON_MIN_ROWS=1 \
     RADIANCE_MXFP4=0 RADIANCE_MXFP4_W4A8=0 RADIANCE_MXFP4_W4A8_MIN_M=0 RADIANCE_QUARK_BF16_MTP=0 \
     RADIANCE_MXFP4_DECODE_MAX_M=64 RADIANCE_MXFP4_TN4_MIN_M=2048 \
+    RADIANCE_MXFP4_EPIFAST=1 RADIANCE_MXFP4_WPERM=0 \
+    RADIANCE_KV_GROUP_OPT=1 RADIANCE_AR_QNT=1024 RADIANCE_AR_QNB=96 \
     RADIANCE_PRESHUFFLE=1 RADIANCE_ATTN_TUNE=1 RADIANCE_FUSE_RMS_QUANT=1 \
     RADIANCE_DYNAMIC_DRAFT=1 RADIANCE_DRAFT_SCHEDULE=1:8,2:7,4:6,8:5,16:4 RADIANCE_DRAFT_TAU=0.28 \
-    RADIANCE_FAST_DRAFT=0 RADIANCE_RUN_BWTEST=1
+    RADIANCE_DYNAMIC_WIDTH=1 RADIANCE_DYNW_MIN_BATCH=5 RADIANCE_DRAFT_RERANK=64 \
+    RADIANCE_VERIFY_HEAD=1 R4D_ATTN_FP8=0 RADIANCE_FAST_DRAFT=0 RADIANCE_RUN_BWTEST=1
 
 # Fail the build if the native stack does not import, or if a wheel reports a version that does not
 # match the source it was built from (a silently mis-stamped wheel is how "aiter 0.0.0" shipped).
@@ -395,7 +405,7 @@ RUN printf '%s\n' \
  && rm -f /tmp/_jit_probe.hip /tmp/_jit_probe.so \
  && echo "runtime JIT toolchain OK (hipcc + libstdc++ headers + Python.h + pybind11)"
 
-ARG RADIANCE_VERSION=0.9.3-dev.vllm0.28.0-r4d0.5.0-mxfp4.dflash2.xgrammar
+ARG RADIANCE_VERSION=0.9.3-dev.vllm0.28.0-r4d0.5.0-mxfp4.rx3.dflash2.xgrammar
 ENV RADIANCE_VERSION=${RADIANCE_VERSION}
 COPY VERSION /opt/radiance_version
 COPY radiance_preamble.py /opt/radiance_preamble.py

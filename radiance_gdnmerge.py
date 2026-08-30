@@ -24,11 +24,10 @@ layer would have produced -- this changes which kernel launches happen, not what
 per-row masking of a partial N tile is already exercised (in_proj_ba is the N=48 shape
 layer_is_supported's docstring calls out), and N1+N2 stays a multiple of 16.
 
-REQUIRES RADIANCE_MXFP4_WPERM=0 (the default). Under WPERM the stored layout is fragment order,
-whose outermost axis is the n-tile; concatenation is still valid there because both N are multiples
-of 16, but it has not been measured, so this refuses rather than guessing.
+Both the default row-major layout and optional WPERM fragment layout are valid: WPERM is tile-local
+along N, and both source widths are multiples of a complete 16-row output tile.
 
-Gated by RADIANCE_GDN_MERGE_INPROJ (default 0) so it A/Bs against the same binary.
+Gated by RADIANCE_GDN_MERGE_INPROJ (default 1 in the image, disable for an A/B control).
 Called once from GPUModelRunner.load_model, right after the main model is loaded and its
 process_weights_after_loading has run (so weight_scale is already [K/32, N] and
 radiance_wref is folded) and before the drafter loads or any graph is captured.

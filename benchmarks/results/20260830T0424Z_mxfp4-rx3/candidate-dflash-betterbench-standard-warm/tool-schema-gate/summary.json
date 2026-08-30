@@ -1,0 +1,8 @@
+{
+  "run_id": "candidate-dflash-betterbench-standard-warm-tool-schema",
+  "completed_utc": "2026-08-30T04:49:02Z",
+  "attempts": 30,
+  "passes": 30,
+  "failures": 0,
+  "pass": true
+}

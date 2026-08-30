@@ -1,5 +1,5 @@
 diff --git a/build.sh b/build.sh
-index e0ee6a1..1e111cb 100755
+index 78ea749..64d1490 100755
 --- a/build.sh
 +++ b/build.sh
 @@ -42,6 +42,7 @@ UNITS=(
@@ -10,20 +10,11 @@ index e0ee6a1..1e111cb 100755
    "r4d_gdn_gated_rmsnorm_h128_bf16:"
    "r4d_ar_oneshot_2rank_exact:"
    "r4d_ar_oneshot_2rank_wht6:"
-@@ -66,7 +67,7 @@ echo "[hipcc] ${OUT} (link)"
- # hipcc emits a fatbin per object; no -fgpu-rdc is needed, because no device function is called
- # across translation units.
- $HIPCC -shared --offload-arch="${GFX_ARCH}" r4d_attn_paged_h256_gqa6.o r4d_attn_vit_h72_bf16.o r4d_gdn_chunk_scan_k128_v128_c64_bf16.o r4d_gdn_conv_w4_h128_bf16.o \
--  r4d_gdn_kkt_solve_k128_c64_bf16.o r4d_gdn_recurrent_update_k128_v128_bf16_fp32state.o r4d_gdn_gated_rmsnorm_h128_bf16.o \
-+  r4d_gdn_kkt_solve_k128_c64_bf16.o r4d_gdn_recurrent_update_k128_v128_bf16_fp32state.o r4d_gdn_fused_update_w4k128v128.o r4d_gdn_gated_rmsnorm_h128_bf16.o \
-   r4d_ar_oneshot_2rank_exact.o r4d_ar_oneshot_2rank_wht6.o \
-   r4d_gemm_bf16_nt_m16.o r4d_registry.o r4d_module.o -o "${OUT}"
- echo "[build.sh] $(ls -la "${OUT}")"
 diff --git a/r4d.h b/r4d.h
-index c8c28c9..c223cb7 100644
+index 3be4032..7c798ed 100644
 --- a/r4d.h
 +++ b/r4d.h
-@@ -147,6 +147,15 @@ int r4d_gdn_gated_rmsnorm_h128_bf16(const void* x, const void* z, const void* w,
+@@ -155,6 +155,15 @@ int r4d_gdn_gated_rmsnorm_h128_bf16(const void* x, const void* z, const void* w,
  // l2 norm, the state update and the output, against the paged state cache. The state is fp32
  // (this model's config asks for it) and one is written per candidate token, which is the whole
  // cost of the kernel. Replaces fused_sigmoid_gating_delta_rule_update.
@@ -585,10 +576,10 @@ index 0000000..82c99c9
 +  return (int)hipGetLastError();
 +}
 diff --git a/r4d_module.hip b/r4d_module.hip
-index e8913dd..5c4d6c7 100644
+index ef84cb5..108d2a2 100644
 --- a/r4d_module.hip
 +++ b/r4d_module.hip
-@@ -206,6 +206,34 @@ static void gdn_conv_update(int64_t x, int64_t xpitch, int64_t wgt, int64_t bias
+@@ -221,6 +221,34 @@ static void gdn_conv_update(int64_t x, int64_t xpitch, int64_t wgt, int64_t bias
                               std::to_string(rc) + ")");
  }
  
@@ -623,8 +614,8 @@ index e8913dd..5c4d6c7 100644
  static void gdn_gated_rmsnorm(int64_t x, int64_t z, int64_t w, int64_t o, int64_t rows,
                                int64_t xrow, int64_t zrow, int64_t orow, int width, double eps,
                                int act, int64_t stream) {
-@@ -592,6 +620,7 @@ PYBIND11_MODULE(r4d, m) {
-   m.def("gdn_kkt_solve_k128_c64_bf16", &gdn_kkt_solve);
+@@ -608,6 +636,7 @@ PYBIND11_MODULE(r4d, m) {
+   m.def("dflash_conv_t2_g16_bf16", &dflash_conv);
    m.def("gdn_conv_prep_w4_h128_bf16", &gdn_conv_prep);
    m.def("gdn_conv_update_w4_h128_bf16", &gdn_conv_update);
 +  m.def("gdn_fused_update_w4k128v128_bf16", &gdn_fused_update);
@@ -632,7 +623,7 @@ index e8913dd..5c4d6c7 100644
    m.def("gdn_gated_rmsnorm_h128_bf16", &gdn_gated_rmsnorm);
    {
 diff --git a/r4d_registry.hip b/r4d_registry.hip
-index 6eae085..a164478 100644
+index 0bd04ac..17ec780 100644
 --- a/r4d_registry.hip
 +++ b/r4d_registry.hip
 @@ -67,6 +67,9 @@ static const R4DConstraint cGdnKktSolve[] = {
@@ -645,7 +636,7 @@ index 6eae085..a164478 100644
  static const R4DConstraint cGdnGatedRmsNorm[] = {
      C_EQ("channels", 128),
  };
-@@ -135,6 +138,11 @@ static const R4DKernelInfo kKernels[] = {
+@@ -156,6 +159,11 @@ static const R4DKernelInfo kKernels[] = {
       "head_k 128, chunk 64, varlen; one gram per k head, applied to every v head of the group",
       "bf16 k and A out, fp32 beta / gate / gram / inverse",
       ROW(cGdnKktSolve)},
