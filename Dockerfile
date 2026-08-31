@@ -242,7 +242,7 @@ COPY radiance_amdsmi.py radiance_amdsmi.pth \
      radiance_kernels.py radiance_vit_attn.py radiance_allreduce.py \
      radiance_draft.py radiance_draft_gpu.py radiance_drafthead.py radiance_gemm.py radiance_w4.py \
      radiance_r4d_attn.py radiance_gdn.py radiance_gdnmerge.py radiance_mxfp4.py \
-     radiance_verifyhead.py ${SP}/
+     radiance_arnq.py radiance_topk.py radiance_verifyhead.py ${SP}/
 COPY fp8-configs/ ${SP}/vllm/model_executor/layers/quantization/utils/configs/
 COPY moe-configs/ ${SP}/vllm/model_executor/layers/fused_moe/configs/
 # AITER has no gfx1201 MXFP4 table. Its gfx1250 table selects an unsupported
@@ -260,7 +260,8 @@ RUN set -eu; cd /opt/patches; \
              patch_unpad patch_mtp_mm_mask patch_mtp_loopbreak patch_qwen3_toolparse patch_from_json_filter \
              patch_dynamo_metrics patch_conv1d_blockn patch_r4d patch_dflash_base \
              patch_dflash_fused_kv_fp8 patch_dflash_logits_cache_stride patch_dflash_w4 \
-             patch_gdn_metadata patch_topk_triton_rows patch_rocm_cudagraph_current_stream \
+             patch_dflash_selector_topk patch_gdn_metadata patch_gdn_shared_build \
+             patch_topk_triton_rows patch_topk_composite patch_rocm_cudagraph_current_stream \
              patch_quark_mxfp4 patch_quark_bf16_mtp patch_ar_maxbytes patch_ar_geometry \
              patch_kv_group_size patch_gdn_merge_inproj patch_dynwidth patch_verify_head \
              patch_xgrammar_spec_termination \
@@ -282,7 +283,7 @@ RUN git clone --filter=blob:none --no-checkout ${R4D_REPO} /src/libr4d \
  && git apply /opt/patches/r4d_radiance_extras.patch \
  && GFX_ARCH=${GFX_ARCH} OUT=${SP}/r4d.so ./build.sh \
  && WANT=$(echo "${R4D_VERSION}" | sed 's/^v//') \
- && python -c "import sys, torch, r4d; assert r4d.__version__ == sys.argv[1]; print('r4d', r4d.__version__, 'kernels', len(r4d.kernels()))" "$WANT" \
+ && python -c "import sys, torch, r4d; assert r4d.__version__ == sys.argv[1]; assert hasattr(r4d, 'ar_oneshot_2rank_exact_nq'); print('r4d RX4', r4d.__version__, 'kernels', len(r4d.kernels()))" "$WANT" \
  && rm -rf /src/libr4d
 
 # Native gfx1201 W4A8: packed MXFP4 weights, dynamic per-token FP8
@@ -292,7 +293,7 @@ COPY radiance_mxfp4_fp8.hip /opt/patches/
 RUN INC=$(python -m pybind11 --includes); \
     hipcc -O3 -std=c++17 -fPIC -shared --offload-arch=${GFX_ARCH} -Wno-unused-result \
       $INC /opt/patches/radiance_mxfp4_fp8.hip -o ${SP}/radiance_mxfp4_fp8.so \
- && python -c "import torch, radiance_mxfp4_fp8 as m; assert hasattr(m, 'launch'); assert hasattr(m, 'set_decode_scratch'); print('radiance MXFP4 W4A8 extension OK')"
+ && python -c "import torch, radiance_mxfp4_fp8 as m; assert all(hasattr(m, n) for n in ('launch', 'set_decode_scratch', 'launch_add_rms_quant', 'launch_silu_mul_quant')); print('radiance MXFP4 W4A8 RX4 extension OK')"
 
 # --- strip debug symbols from the installed extensions (worth ~1 GB) ---
 # These are release builds, but they still carry .debug_* sections that nothing reads at runtime.
@@ -350,10 +351,13 @@ ENV VIRTUAL_ENV=/opt/vllm \
 ENV RADIANCE_USE_R4D=1 RADIANCE_USE_R4D_GDN=1 RADIANCE_R4D_REPORT=1 \
     RADIANCE_USE_R4D_AR=1 RADIANCE_USE_R4D_AR_QUANT=1 \
     RADIANCE_SKINNY_GEMM=1 RADIANCE_GDN_META=1 RADIANCE_GDN_MERGE_INPROJ=1 \
-    RADIANCE_GDN_FUSED_UPDATE=1 RADIANCE_TOPK_TRITON_MIN_ROWS=1 \
+    RADIANCE_GDN_FUSED_UPDATE=1 RADIANCE_GDN_SHARED_BUILD=1 \
+    RADIANCE_TOPK_TRITON_MIN_ROWS=1 RADIANCE_TOPK_COMPOSITE=1 \
+    RADIANCE_TOPK_COMPOSITE_KCAP=64 \
     RADIANCE_MXFP4=0 RADIANCE_MXFP4_W4A8=0 RADIANCE_MXFP4_W4A8_MIN_M=0 RADIANCE_QUARK_BF16_MTP=0 \
     RADIANCE_MXFP4_DECODE_MAX_M=64 RADIANCE_MXFP4_TN4_MIN_M=2048 \
-    RADIANCE_MXFP4_EPIFAST=1 RADIANCE_MXFP4_WPERM=0 \
+    RADIANCE_MXFP4_EPIFAST=1 RADIANCE_MXFP4_WPERM=0 RADIANCE_NORMQUANT_FUSION=0 \
+    RADIANCE_MXFP4_HOIST_QUANT=0 RADIANCE_MXFP4_TRACED_QUANT=0 RADIANCE_FP8_STREAM=0 \
     RADIANCE_KV_GROUP_OPT=1 RADIANCE_AR_QNT=1024 RADIANCE_AR_QNB=96 \
     RADIANCE_PRESHUFFLE=1 RADIANCE_ATTN_TUNE=1 RADIANCE_FUSE_RMS_QUANT=1 \
     RADIANCE_DYNAMIC_DRAFT=1 RADIANCE_DRAFT_SCHEDULE=1:8,2:7,4:6,8:5,16:4 RADIANCE_DRAFT_TAU=0.28 \
@@ -374,7 +378,7 @@ ARG TORCHVISION_VERSION
 RUN WANT_VLLM=${VLLM_VERSION} WANT_AITER=${AITER_VERSION} WANT_TORCH=${TORCH_VERSION} \
     WANT_TRITON=${TRITON_VERSION} WANT_VISION=${TORCHVISION_VERSION} \
     python -c 'import os, torch, vllm._C, amdsmi, importlib.metadata as m; import r4d, radiance_mxfp4_fp8; \
-assert hasattr(radiance_mxfp4_fp8, "launch") and hasattr(radiance_mxfp4_fp8, "set_decode_scratch"); \
+assert all(hasattr(radiance_mxfp4_fp8, n) for n in ("launch", "set_decode_scratch", "launch_add_rms_quant", "launch_silu_mul_quant")); assert hasattr(r4d, "ar_oneshot_2rank_exact_nq"); \
 v, a, t, r, tv = m.version("vllm"), m.version("amd-aiter"), m.version("torch"), m.version("triton"), m.version("torchvision"); \
 assert v.startswith(os.environ["WANT_VLLM"]), "vllm wheel reports " + v + ", built tag is " + os.environ["WANT_VLLM"]; \
 assert a.startswith(os.environ["WANT_AITER"]), "aiter wheel reports " + a + ", built tag is " + os.environ["WANT_AITER"]; \
@@ -405,7 +409,7 @@ RUN printf '%s\n' \
  && rm -f /tmp/_jit_probe.hip /tmp/_jit_probe.so \
  && echo "runtime JIT toolchain OK (hipcc + libstdc++ headers + Python.h + pybind11)"
 
-ARG RADIANCE_VERSION=0.9.3-dev.vllm0.28.0-r4d0.5.0-mxfp4.rx3.dflash2.xgrammar
+ARG RADIANCE_VERSION=0.9.3-dev.vllm0.28.0-r4d0.5.0-mxfp4.rx4.dflash2.xgrammar
 ENV RADIANCE_VERSION=${RADIANCE_VERSION}
 COPY VERSION /opt/radiance_version
 COPY radiance_preamble.py /opt/radiance_preamble.py
