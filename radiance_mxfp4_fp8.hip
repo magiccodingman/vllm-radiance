@@ -943,7 +943,8 @@ static void launch(uintptr_t a, uintptr_t w, uintptr_t ws, uintptr_t wref, uintp
 #define ARNQ_T 256
 typedef unsigned int uint32_tt;
 union ArnqVec8 { uint4 u4; __bf16 h[8]; };
-__global__ __launch_bounds__(ARNQ_T) void radiance_add_rms_quant(
+template <int ART>
+__global__ __launch_bounds__(ART) void radiance_add_rms_quant(
     const __bf16 *__restrict__ y, const __bf16 *__restrict__ res, const __bf16 *__restrict__ w,
     unsigned char *__restrict__ q, float *__restrict__ scale, __bf16 *__restrict__ res_out,
     int K, float eps) {
@@ -957,38 +958,29 @@ __global__ __launch_bounds__(ARNQ_T) void radiance_add_rms_quant(
   constexpr int MAXG = 5;                       // 8704 / (256*8) rounds up to 5
   const int KV = K >> 3;                        // groups of 8
   float sv[MAXG][8];
+  int ng = 0;
   float ssq = 0.f;
-  // Prefetch every group's loads before the arithmetic pass: all reads in flight at once
-  // instead of load->8 FLOPs->load. Same summation order, so bit-identical to the previous
-  // form (verified, 0 q-byte diffs); measured +10% at large M.
-  {
-    ArnqVec8 vy[MAXG], vr[MAXG];
-    int ng = 0;
-    for (int g = tid; g < KV; g += ARNQ_T, ++ng) {
-      vy[ng].u4 = ((const uint4 *)y)[g];
-      vr[ng].u4 = ((const uint4 *)res)[g];
-    }
-    ng = 0;
-    for (int g = tid; g < KV; g += ARNQ_T, ++ng) {
-      ArnqVec8 vo;
+  for (int g = tid; g < KV; g += ART, ++ng) {
+    ArnqVec8 vy, vr;
+    vy.u4 = ((const uint4 *)y)[g];
+    vr.u4 = ((const uint4 *)res)[g];
+    ArnqVec8 vo;
 #pragma unroll
-      for (int j = 0; j < 8; ++j) {
-        float v = (float)vy[ng].h[j] + (float)vr[ng].h[j];
-        sv[ng][j] = v;
-        vo.h[j] = (__bf16)v;
-        ssq += v * v;
-      }
-      ((uint4 *)res_out)[g] = vo.u4;
+    for (int j = 0; j < 8; ++j) {
+      float v = (float)vy.h[j] + (float)vr.h[j];
+      sv[ng][j] = v;
+      vo.h[j] = (__bf16)v;
+      ssq += v * v;
     }
+    ((uint4 *)res_out)[g] = vo.u4;
   }
-  int ng = 0; (void)ng;
-  __shared__ float lds[ARNQ_T / 32];
+  __shared__ float lds[ART / 32];
   for (int o = 16; o; o >>= 1) ssq += __shfl_down(ssq, o);
   if ((tid & 31) == 0) lds[tid >> 5] = ssq;
   __syncthreads();
-  if (tid < ARNQ_T / 32) {
+  if (tid < ART / 32) {
     float v = lds[tid];
-    for (int o = ARNQ_T / 64; o; o >>= 1) v += __shfl_down(v, o);
+    for (int o = ART / 64; o; o >>= 1) v += __shfl_down(v, o);
     if (tid == 0) lds[0] = v;
   }
   __syncthreads();
@@ -996,7 +988,7 @@ __global__ __launch_bounds__(ARNQ_T) void radiance_add_rms_quant(
   __syncthreads();                       // lds[0] is reused for the amax reduction below
   float amax = 0.f;
   int mg = 0;
-  for (int g = tid; g < KV; g += ARNQ_T, ++mg) {
+  for (int g = tid; g < KV; g += ART, ++mg) {
     ArnqVec8 vw;
     vw.u4 = ((const uint4 *)w)[g];
 #pragma unroll
@@ -1009,9 +1001,9 @@ __global__ __launch_bounds__(ARNQ_T) void radiance_add_rms_quant(
   for (int o = 16; o; o >>= 1) amax = fmaxf(amax, __shfl_down(amax, o));
   if ((tid & 31) == 0) lds[tid >> 5] = amax;
   __syncthreads();
-  if (tid < ARNQ_T / 32) {
+  if (tid < ART / 32) {
     float v = lds[tid];
-    for (int o = ARNQ_T / 64; o; o >>= 1) v = fmaxf(v, __shfl_down(v, o));
+    for (int o = ART / 64; o; o >>= 1) v = fmaxf(v, __shfl_down(v, o));
     if (tid == 0) lds[0] = v;
   }
   __syncthreads();
@@ -1019,7 +1011,7 @@ __global__ __launch_bounds__(ARNQ_T) void radiance_add_rms_quant(
   const float rs = 1.f / sc;
   if (tid == 0) scale[row] = sc;
   mg = 0;
-  for (int g = tid; g < KV; g += ARNQ_T, ++mg) {
+  for (int g = tid; g < KV; g += ART, ++mg) {
     uint32_tt lo = 0, hi = 0;
 #pragma unroll
     for (int j = 0; j < 4; j += 2) {
@@ -1042,7 +1034,8 @@ __global__ __launch_bounds__(ARNQ_T) void radiance_add_rms_quant(
 // Same skeleton and precision contract as radiance_add_rms_quant: every intermediate is rounded
 // exactly where the traced path rounds (silu to bf16, product to bf16, amax over the rounded
 // product). One workgroup per row.
-__global__ __launch_bounds__(ARNQ_T) void radiance_silu_mul_quant(
+template <int ART>
+__global__ __launch_bounds__(ART) void radiance_silu_mul_quant(
     const __bf16 *__restrict__ gu, unsigned char *__restrict__ q, float *__restrict__ scale,
     int N) {
   const int row = blockIdx.x;
@@ -1051,34 +1044,28 @@ __global__ __launch_bounds__(ARNQ_T) void radiance_silu_mul_quant(
   constexpr int MAXG = 5;                  // N <= 10240 (8704 in this model)
   const int NV = N >> 3;
   float pv[MAXG][8];
+  int ng = 0;
   float amax = 0.f;
-  {
-    // Prefetch (see add_rms_quant): +10%-class win at large M, bit-identical.
-    ArnqVec8 vg[MAXG], vu[MAXG];
-    int ng = 0;
-    for (int g = tid; g < NV; g += ARNQ_T, ++ng) {
-      vg[ng].u4 = ((const uint4 *)gu)[g];
-      vu[ng].u4 = ((const uint4 *)(gu + N))[g];
-    }
-    ng = 0;
-    for (int g = tid; g < NV; g += ARNQ_T, ++ng) {
+  for (int g = tid; g < NV; g += ART, ++ng) {
+    ArnqVec8 vg, vu;
+    vg.u4 = ((const uint4 *)gu)[g];
+    vu.u4 = ((const uint4 *)(gu + N))[g];
 #pragma unroll
-      for (int j = 0; j < 8; ++j) {
-        float x = (float)vg[ng].h[j];
-        float t = (float)(__bf16)(x / (1.f + expf(-x)));     // silu, rounded to bf16
-        float p = (float)(__bf16)(t * (float)vu[ng].h[j]);   // product, rounded to bf16
-        pv[ng][j] = p;
-        amax = fmaxf(amax, fabsf(p));
-      }
+    for (int j = 0; j < 8; ++j) {
+      float x = (float)vg.h[j];
+      float t = (float)(__bf16)(x / (1.f + expf(-x)));       // silu, rounded to bf16
+      float p = (float)(__bf16)(t * (float)vu.h[j]);         // product, rounded to bf16
+      pv[ng][j] = p;
+      amax = fmaxf(amax, fabsf(p));
     }
   }
-  __shared__ float lds[ARNQ_T / 32];
+  __shared__ float lds[ART / 32];
   for (int o = 16; o; o >>= 1) amax = fmaxf(amax, __shfl_down(amax, o));
   if ((tid & 31) == 0) lds[tid >> 5] = amax;
   __syncthreads();
-  if (tid < ARNQ_T / 32) {
+  if (tid < ART / 32) {
     float v = lds[tid];
-    for (int o = ARNQ_T / 64; o; o >>= 1) v = fmaxf(v, __shfl_down(v, o));
+    for (int o = ART / 64; o; o >>= 1) v = fmaxf(v, __shfl_down(v, o));
     if (tid == 0) lds[0] = v;
   }
   __syncthreads();
@@ -1086,7 +1073,7 @@ __global__ __launch_bounds__(ARNQ_T) void radiance_silu_mul_quant(
   const float rs = 1.f / sc;
   if (tid == 0) scale[row] = sc;
   int mg = 0;
-  for (int g = tid; g < NV; g += ARNQ_T, ++mg) {
+  for (int g = tid; g < NV; g += ART, ++mg) {
     uint32_tt lo = 0, hi = 0;
 #pragma unroll
     for (int j = 0; j < 4; j += 2) {
@@ -1108,17 +1095,34 @@ static void launch_silu_mul_quant(uintptr_t gu, uintptr_t q, uintptr_t scale, in
                                   uintptr_t stream) {
   if (N > 40 * ARNQ_T || (N & 7))
     throw std::runtime_error("radiance_silu_mul_quant: N must be 8-aligned and <= 10240");
-  hipLaunchKernelGGL(radiance_silu_mul_quant, dim3(M), dim3(ARNQ_T), 0, (hipStream_t)stream,
-                     (const __bf16 *)gu, (unsigned char *)q, (float *)scale, N);
+  if (M >= 2048)
+    hipLaunchKernelGGL((radiance_silu_mul_quant<512>), dim3(M), dim3(512), 0, (hipStream_t)stream,
+                       (const __bf16 *)gu, (unsigned char *)q, (float *)scale, N);
+  else
+    hipLaunchKernelGGL((radiance_silu_mul_quant<ARNQ_T>), dim3(M), dim3(ARNQ_T), 0,
+                       (hipStream_t)stream, (const __bf16 *)gu, (unsigned char *)q,
+                       (float *)scale, N);
 }
 
 static void launch_add_rms_quant(uintptr_t y, uintptr_t res, uintptr_t w, uintptr_t q,
                                  uintptr_t scale, uintptr_t res_out, int M, int K, double eps,
                                  uintptr_t stream) {
   if (K > 40 * ARNQ_T || (K & 7)) throw std::runtime_error("radiance_add_rms_quant: K must be 8-aligned and <= 10240");
-  hipLaunchKernelGGL(radiance_add_rms_quant, dim3(M), dim3(ARNQ_T), 0, (hipStream_t)stream,
-                     (const __bf16 *)y, (const __bf16 *)res, (const __bf16 *)w,
-                     (unsigned char *)q, (float *)scale, (__bf16 *)res_out, K, (float)eps);
+  // T=512 at prefill-class M: measured 726 -> 685 us (405 -> 429 GB/s) at M=8192 on a clean
+  // GPU. Changes the per-row summation order (512-way vs 256-way striding) => gated by GSM8K,
+  // not byte-compare. Decode-class M keeps T=256 (T=512 measured worse at small M in the nq
+  // sweep). The PREFETCH variant this replaces measured 828 us at M=8192 -- 14% WORSE than the
+  // original -- its +40 VGPRs/thread costs occupancy exactly when 8192 blocks compete; the
+  // M=2048 idle-GPU microbench that justified it was the fill-the-GPU-first trap.
+  if (M >= 2048)
+    hipLaunchKernelGGL((radiance_add_rms_quant<512>), dim3(M), dim3(512), 0, (hipStream_t)stream,
+                       (const __bf16 *)y, (const __bf16 *)res, (const __bf16 *)w,
+                       (unsigned char *)q, (float *)scale, (__bf16 *)res_out, K, (float)eps);
+  else
+    hipLaunchKernelGGL((radiance_add_rms_quant<ARNQ_T>), dim3(M), dim3(ARNQ_T), 0,
+                       (hipStream_t)stream, (const __bf16 *)y, (const __bf16 *)res,
+                       (const __bf16 *)w, (unsigned char *)q, (float *)scale,
+                       (__bf16 *)res_out, K, (float)eps);
 }
 
 PYBIND11_MODULE(radiance_mxfp4_fp8, m) {
