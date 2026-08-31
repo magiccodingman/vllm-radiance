@@ -130,8 +130,9 @@ services:
       RADIANCE_MXFP4_TN4_MIN_M: "${RADIANCE_MXFP4_TN4_MIN_M:-2048}"
       RADIANCE_MXFP4_EPIFAST: "${RADIANCE_MXFP4_EPIFAST:-1}"
       RADIANCE_MXFP4_WPERM: "${RADIANCE_MXFP4_WPERM:-0}"
-      # RX4 traced-quant / FP8 residual-stream tier. These remain opt-in
-      # because they are specific to the qualified Quark MXFP4 W4A8 TP2 path.
+      # Experimental RX4 traced-quant / FP8 residual-stream tier. These remain
+      # off because they failed strict output/tool qualification on the Quark
+      # MXFP4 W4A8 TP2 path.
       # NORMQUANT_FUSION derives HOIST_QUANT and TRACED_QUANT and merges the
       # required vLLM compiler passes. FP8_STREAM additionally fuses TP2 AR,
       # residual add, RMSNorm, and FP8 quantization.

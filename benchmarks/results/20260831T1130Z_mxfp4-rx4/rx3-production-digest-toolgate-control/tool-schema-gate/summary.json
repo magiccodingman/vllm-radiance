@@ -1,0 +1,8 @@
+{
+  "run_id": "rx3-production-digest-toolgate-control-tool-schema",
+  "completed_utc": "2026-08-31T16:25:09Z",
+  "attempts": 30,
+  "passes": 30,
+  "failures": 0,
+  "pass": true
+}

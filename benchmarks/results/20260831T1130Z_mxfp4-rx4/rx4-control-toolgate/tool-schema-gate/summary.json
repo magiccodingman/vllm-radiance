@@ -1,0 +1,8 @@
+{
+  "run_id": "rx4-control-toolgate-tool-schema",
+  "completed_utc": "2026-08-31T16:15:34Z",
+  "attempts": 30,
+  "passes": 29,
+  "failures": 1,
+  "pass": false
+}

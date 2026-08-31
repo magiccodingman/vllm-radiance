@@ -45,6 +45,30 @@ def _log(msg):
 
 
 def _merged_forward_hip(self, hidden_states):
+    """The already-qualified RX3 merged-GDN forward, kept graph-identical when RX4 is dark."""
+    import torch
+
+    num_tokens = hidden_states.size(0)
+    merged = torch.ops.radiance.mxfp4_linear(
+        hidden_states, self._rad_w, self._rad_ws, self._rad_wref)
+    projected_states_qkvz = merged[:, : self._rad_n1].view(num_tokens, -1)
+    projected_states_ba = merged[:, self._rad_n1 :].view(num_tokens, -1)
+
+    core_attn_out = torch.empty(
+        (num_tokens, self.num_v_heads // self.tp_size, self.head_v_dim),
+        dtype=hidden_states.dtype, device=hidden_states.device)
+    z = torch.empty(
+        (num_tokens, self.num_v_heads // self.tp_size, self.head_v_dim),
+        dtype=projected_states_qkvz.dtype, device=projected_states_qkvz.device)
+
+    torch.ops.vllm.qwen_gdn_attention_core(
+        projected_states_qkvz, projected_states_ba, z, core_attn_out,
+        layer_name=self._rad_layer_name, use_aiter=True)
+
+    return self._output_projection(core_attn_out, z)
+
+
+def _merged_forward_rx4(self, hidden_states):
     """forward_hip with one projection GEMM instead of two.
 
     Mirrors the stock body (qwen_gdn_linear_attn.py:798) exactly apart from the projection: the
@@ -119,7 +143,12 @@ def _merge_one(mod) -> bool:
         torch.cat([qkvz.weight_scale.data, ba.weight_scale.data], dim=1), requires_grad=False)
     mod._rad_wref = torch.nn.Parameter(
         torch.cat([qkvz.radiance_wref.data, ba.radiance_wref.data], dim=0), requires_grad=False)
-    mod._rad_quant = True
+    rx4_profile = (
+        os.environ.get("RADIANCE_MXFP4_HOIST_QUANT", "0") == "1"
+        or os.environ.get("RADIANCE_FP8_STREAM", "0") == "1"
+    )
+    if rx4_profile:
+        mod._rad_quant = True
     mod._rad_n1 = n1
     # The stock forward re-encodes the layer name on every step; it is constant, so resolve once.
     from vllm.model_executor.layers.mamba.gdn import qwen_gdn_linear_attn as _m
@@ -133,9 +162,11 @@ def _merge_one(mod) -> bool:
         lin.weight_scale = torch.nn.Parameter(empty.clone(), requires_grad=False)
 
     import types
-    mod.forward_hip = types.MethodType(_merged_forward_hip, mod)
+    mod.forward_hip = types.MethodType(
+        _merged_forward_rx4 if rx4_profile else _merged_forward_hip, mod)
     mod._forward_method = mod.forward_hip
-    mod._rad_merged = True         # radiance_arnq keys its consumer check on this
+    if rx4_profile:
+        mod._rad_merged = True     # radiance_arnq keys its consumer check on this
     return True
 
 
@@ -181,8 +212,9 @@ def merge_model(model) -> None:
     # fp8-stream epilogue contract (radiance_arnq, env-gated inside). Runs only down here, after
     # every GDN module carries its _rad_merged marker: the installer's consumer check reads it.
     # Consequence: RADIANCE_FP8_STREAM needs RADIANCE_GDN_MERGE_INPROJ=1, which is the default.
-    try:
-        import radiance_arnq
-        radiance_arnq.install(model)
-    except Exception as e:                              # noqa: BLE001
-        _log(f"fp8-stream install failed, serving without it: {e!r}")
+    if os.environ.get("RADIANCE_FP8_STREAM", "0") == "1":
+        try:
+            import radiance_arnq
+            radiance_arnq.install(model)
+        except Exception as e:                          # noqa: BLE001
+            _log(f"fp8-stream install failed, serving without it: {e!r}")

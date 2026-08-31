@@ -12,13 +12,13 @@ esac
 
 # Several Radiance flags alter the traced model graph, but vLLM's persistent AOT cache key does
 # not include arbitrary environment variables. Never let incompatible graph populations share a
-# namespace. In particular, FAST_DRAFT changes weight rank, GDN merge frees the original split
-# weights, traced quant moves activation quantization into the graph, and FP8_STREAM changes the
-# inter-layer tensor contract. Advanced users may disable this only when they provide isolated
-# cache roots themselves.
+# namespace. In particular, FAST_DRAFT changes weight rank, disabling the established GDN merge
+# restores the original split weights, traced quant moves activation quantization into the graph,
+# and FP8_STREAM changes the inter-layer tensor contract. Advanced users may disable this only
+# when they provide isolated cache roots themselves.
 _rad_nqf="${RADIANCE_NORMQUANT_FUSION:-0}"
 if [ "$_rad_nqf" = "1" ]; then
-  # This is one qualified profile, not three independently mixable switches.
+  # This is one dependency-complete experimental profile, not three independently mixable switches.
   # Override the image's baked zero defaults together so NORMQUANT_FUSION=1
   # cannot accidentally run the old null experiment with either leg missing.
   export RADIANCE_MXFP4_HOIST_QUANT=1
@@ -33,16 +33,20 @@ if [ "${RADIANCE_FP8_STREAM:-0}" = "1" ]; then
       || [ "${RADIANCE_MXFP4:-0}" != "1" ] \
       || [ "${RADIANCE_MXFP4_W4A8:-0}" != "1" ] \
       || [ "${RADIANCE_MXFP4_W4A8_MIN_M:-0}" != "0" ]; then
-    echo "[radiance] ERROR RADIANCE_FP8_STREAM=1 requires the qualified MXFP4 W4A8 profile: NORMQUANT_FUSION=1, HOIST_QUANT=1, TRACED_QUANT=1, GDN_MERGE_INPROJ=1, MXFP4=1, W4A8=1, and W4A8_MIN_M=0" >&2
+    echo "[radiance] ERROR RADIANCE_FP8_STREAM=1 requires the complete experimental MXFP4 W4A8 profile: NORMQUANT_FUSION=1, HOIST_QUANT=1, TRACED_QUANT=1, GDN_MERGE_INPROJ=1, MXFP4=1, W4A8=1, and W4A8_MIN_M=0" >&2
     exit 64
   fi
 fi
 
 _rad_cache_suffix=""
 if [ "${RADIANCE_GRAPH_CACHE_NAMESPACE:-1}" != "0" ]; then
+  # Preserve the already-qualified RX3 default namespace. GDN merge has been
+  # part of that profile since RX3, so adding a new `-gdnm` suffix forced an
+  # unnecessary AOT recompile and produced measurable near-tied-logit drift.
+  # Only the non-default, unmerged graph needs a separate suffix.
   if [ "${RADIANCE_MXFP4:-0}" = "1" ] \
-      && [ "${RADIANCE_GDN_MERGE_INPROJ:-1}" = "1" ]; then
-    _rad_cache_suffix="${_rad_cache_suffix}-gdnm"
+      && [ "${RADIANCE_GDN_MERGE_INPROJ:-1}" != "1" ]; then
+    _rad_cache_suffix="${_rad_cache_suffix}-nogdnm"
   fi
   if [ "${RADIANCE_MXFP4_HOIST_QUANT:-0}" = "1" ] \
       || [ "${RADIANCE_MXFP4_TRACED_QUANT:-0}" = "1" ]; then

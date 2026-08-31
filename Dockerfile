@@ -293,7 +293,7 @@ COPY radiance_mxfp4_fp8.hip /opt/patches/
 RUN INC=$(python -m pybind11 --includes); \
     hipcc -O3 -std=c++17 -fPIC -shared --offload-arch=${GFX_ARCH} -Wno-unused-result \
       $INC /opt/patches/radiance_mxfp4_fp8.hip -o ${SP}/radiance_mxfp4_fp8.so \
- && python -c "import torch, radiance_mxfp4_fp8 as m; assert all(hasattr(m, n) for n in ('launch', 'set_decode_scratch', 'launch_add_rms_quant', 'launch_silu_mul_quant')); print('radiance MXFP4 W4A8 RX4 extension OK')"
+ && python -c "import torch, radiance_mxfp4_fp8 as m; assert all(hasattr(m, n) for n in ('launch', 'set_decode_scratch', 'launch_add_rms_quant', 'launch_silu_mul_quant')); import radiance_mxfp4; assert hasattr(torch.ops.radiance, 'mxfp4_linear_pq'); print('radiance MXFP4 W4A8 RX4 extension and pre-quantized op OK')"
 
 # --- strip debug symbols from the installed extensions (worth ~1 GB) ---
 # These are release builds, but they still carry .debug_* sections that nothing reads at runtime.

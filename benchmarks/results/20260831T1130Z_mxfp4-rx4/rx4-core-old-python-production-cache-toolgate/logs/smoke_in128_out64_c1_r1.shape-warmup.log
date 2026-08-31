@@ -1,0 +1,26 @@
+Traceback (most recent call last):
+  File "/nvme/ediloca-1/source/Sayou_GitLab/vllm-radiance/benchmarks/bin/vllm_bench_serve.py", line 12, in <module>
+    from vllm.benchmarks.serve import add_cli_args, main
+  File "/nvme/ediloca-1/venv/vllm-bench-env/lib/python3.14/site-packages/vllm/__init__.py", line 14, in <module>
+    import vllm.env_override  # noqa: F401
+    ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nvme/ediloca-1/venv/vllm-bench-env/lib/python3.14/site-packages/vllm/env_override.py", line 567, in <module>
+    from torch._dynamo.convert_frame import GraphCaptureOutput
+  File "/nvme/ediloca-1/venv/vllm-bench-env/lib/python3.14/site-packages/torch/_dynamo/__init__.py", line 13, in <module>
+    from . import (
+    ...<6 lines>...
+    )
+  File "/nvme/ediloca-1/venv/vllm-bench-env/lib/python3.14/site-packages/torch/_dynamo/aot_compile.py", line 17, in <module>
+    from torch._dynamo.package import SystemInfo
+  File "/nvme/ediloca-1/venv/vllm-bench-env/lib/python3.14/site-packages/torch/_dynamo/package.py", line 1173, in <module>
+    DynamoCache = DiskDynamoCache(os.path.join(cache_dir(), "dynamo"))
+                                               ~~~~~~~~~^^
+  File "/nvme/ediloca-1/venv/vllm-bench-env/lib/python3.14/site-packages/torch/_dynamo/package.py", line 1170, in cache_dir
+    return cache_dir()
+  File "/nvme/ediloca-1/venv/vllm-bench-env/lib/python3.14/site-packages/torch/_inductor/runtime/cache_dir_utils.py", line 18, in cache_dir
+    os.makedirs(cache_dir, exist_ok=True)
+    ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen os>", line 226, in makedirs
+  File "<frozen os>", line 226, in makedirs
+  File "<frozen os>", line 236, in makedirs
+PermissionError: [Errno 13] Permission denied: '/cache'

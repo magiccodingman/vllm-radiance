@@ -180,7 +180,8 @@ these in the immutable manifest:
 | `RADIANCE_VERIFY_HEAD` | `1` | Sampling-aware target verification head with exact fallback |
 | `RADIANCE_DFLASH_SELECTOR_TOPK` | unset | Experimental selector truncation override; `0` preserves the checkpoint |
 | `RADIANCE_NORMQUANT_FUSION` | `0` | Atomically enable RX4 hoisted/traced MXFP4 activation quantization and compiler passes |
-| `RADIANCE_FP8_STREAM` | `0` | Fuse TP2 AR, residual add, RMSNorm, and FP8 quantization on the qualified W4A8 path |
+| `RADIANCE_FP8_STREAM` | `0` | Experimental TP2 AR, residual add, RMSNorm, and FP8 quantization on the compatible W4A8 path |
+| `RADIANCE_GRAPH_CACHE_NAMESPACE` | `1` | Isolate graph-changing profiles while preserving the qualified RX3 default cache lineage |
 | `R4D_ATTN_FP8` | `0` | Experimental FP8 prefill QK/PV legs; keep off outside a labeled diagnostic |
 
 Dynamic verification deliberately changes the number of proposed tokens after
@@ -204,6 +205,20 @@ legs and merges `fuse_norm_quant`/`fuse_act_quant` into the single compiler JSON
 `RADIANCE_FP8_STREAM=1` fails closed unless MXFP4 W4A8, `MIN_M=0`, TP2 GDN
 merge prerequisites, and that aggregate profile are present. Graph-changing
 profiles receive separate persistent vLLM/Inductor cache namespaces.
+
+Live RX4 qualification did not justify enabling that profile: versus its
+matched control it measured +2.1% weighted single-stream, but -21.0% ITL
+1%-low, -0.2/-2.0/+2.8/-0.6% at c1/c2/c4/c8, and lower prefill at all three
+depths. It also diverged on all eight strict greedy prompts and passed only
+27/30 sampled multi-tool requests. Keep both switches off outside a labeled
+experiment; the complete report and immutable run IDs are in
+`docs/MXFP4_RX4_CONTINUATION.md`.
+
+For an explicit cache-lineage diagnostic, the benchmark Compose accepts
+`CONTAINER_VLLM_CACHE_ROOT` and `CONTAINER_TORCHINDUCTOR_CACHE_DIR`. These names
+are intentionally container-scoped so the host benchmark client does not try
+to create `/cache` paths. Do not use them to make an otherwise failing
+candidate appear qualified.
 
 When both lanes share one matrix run (for example non-spec versus DFlash2),
 filter and normalize their configuration keys explicitly:
