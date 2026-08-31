@@ -110,7 +110,14 @@ services:
       RADIANCE_GDN_META: "${RADIANCE_GDN_META:-1}"
       RADIANCE_GDN_MERGE_INPROJ: "${RADIANCE_GDN_MERGE_INPROJ:-1}"
       RADIANCE_GDN_FUSED_UPDATE: "${RADIANCE_GDN_FUSED_UPDATE:-1}"
+      # Build identical speculative GDN metadata once per step, then copy only
+      # each KV group's block-table-derived state indices.
+      RADIANCE_GDN_SHARED_BUILD: "${RADIANCE_GDN_SHARED_BUILD:-1}"
       RADIANCE_TOPK_TRITON_MIN_ROWS: "${RADIANCE_TOPK_TRITON_MIN_ROWS:-1}"
+      # Multi-block torch.topk plus a small exact mask replaces the serial
+      # whole-vocabulary Triton scan when every active top-k is <= KCAP.
+      RADIANCE_TOPK_COMPOSITE: "${RADIANCE_TOPK_COMPOSITE:-1}"
+      RADIANCE_TOPK_COMPOSITE_KCAP: "${RADIANCE_TOPK_COMPOSITE_KCAP:-64}"
       # Weight format is appended by the entrypoint. `auto` omits the CLI flag
       # and lets Quark/MXFP4 checkpoints select their config.json method.
       RADIANCE_WEIGHT_QUANTIZATION: "${WEIGHT_QUANTIZATION:-fp8}"
@@ -123,6 +130,14 @@ services:
       RADIANCE_MXFP4_TN4_MIN_M: "${RADIANCE_MXFP4_TN4_MIN_M:-2048}"
       RADIANCE_MXFP4_EPIFAST: "${RADIANCE_MXFP4_EPIFAST:-1}"
       RADIANCE_MXFP4_WPERM: "${RADIANCE_MXFP4_WPERM:-0}"
+      # Experimental RX4 traced-quant / FP8 residual-stream tier. These remain
+      # off because they failed strict output/tool qualification on the Quark
+      # MXFP4 W4A8 TP2 path.
+      # NORMQUANT_FUSION derives HOIST_QUANT and TRACED_QUANT and merges the
+      # required vLLM compiler passes. FP8_STREAM additionally fuses TP2 AR,
+      # residual add, RMSNorm, and FP8 quantization.
+      RADIANCE_NORMQUANT_FUSION: "${RADIANCE_NORMQUANT_FUSION:-0}"
+      RADIANCE_FP8_STREAM: "${RADIANCE_FP8_STREAM:-0}"
       # AMD's current Qwen3.8 Quark checkpoint stores its embedded MTP head in
       # BF16 despite the global FP4 recipe. Enable only for that verified layout.
       RADIANCE_QUARK_BF16_MTP: "${RADIANCE_QUARK_BF16_MTP:-0}"
@@ -151,6 +166,9 @@ services:
       # the target/drafter pair passes its acceptance and correctness gates.
       RADIANCE_FAST_DRAFT: "${RADIANCE_FAST_DRAFT:-0}"
       RADIANCE_DRAFT_RERANK: "${RADIANCE_DRAFT_RERANK:-64}"
+      # Experimental: raise DFlash's trained selector truncation. Unset/0
+      # preserves the checkpoint value and is the qualified default.
+      RADIANCE_DFLASH_SELECTOR_TOPK: "${RADIANCE_DFLASH_SELECTOR_TOPK:-}"
       RADIANCE_VERIFY_HEAD: "${RADIANCE_VERIFY_HEAD:-1}"
       RADIANCE_DYNAMIC_WIDTH: "${RADIANCE_DYNAMIC_WIDTH:-1}"
       RADIANCE_DYNW_MIN_BATCH: "${RADIANCE_DYNW_MIN_BATCH:-5}"

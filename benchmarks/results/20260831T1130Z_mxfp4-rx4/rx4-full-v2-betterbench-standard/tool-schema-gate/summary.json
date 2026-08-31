@@ -1,0 +1,8 @@
+{
+  "run_id": "rx4-full-v2-betterbench-standard-tool-schema",
+  "completed_utc": "2026-08-31T16:11:20Z",
+  "attempts": 30,
+  "passes": 27,
+  "failures": 3,
+  "pass": false
+}

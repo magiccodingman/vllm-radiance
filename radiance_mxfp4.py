@@ -115,6 +115,28 @@ HOIST_QUANT = os.environ.get("RADIANCE_MXFP4_HOIST_QUANT", "0") == "1"
 if HOIST_QUANT and MIN_M > 0:
     raise RuntimeError("RADIANCE_MXFP4_HOIST_QUANT=1 needs RADIANCE_MXFP4_W4A8_MIN_M=0: "
                        "the aiter fallback quantizes to mxfp4, not fp8.")
+
+# Quantize with TRACED TORCH MATH instead of the opaque vllm custom op. This is the piece that
+# actually removes the standalone quant launch: three pattern-matcher attempts (2026-08-28 pass
+# disabled; 2026-08-30 fuse_norm_quant+fuse_act_quant enabled, radiance FUSED_OP armed) all
+# matched ZERO sites on this stack, while the census shows inductor ALREADY fuses the
+# functionalization clones of the quant into the neighbouring norm/silu kernels -- the graph
+# region is right, only the opaque op survives. Written as plain torch, the quant lowers into
+# those same kernels by construction; no matcher involved. Semantics match
+# dynamic_per_token_scaled_fp8_quant: scale = max(rowamax/448, 1/(448*512)), fp32 math,
+# round-to-nearest cast (verified empirically against the kernel for the min-scale clamp).
+# Rounding may differ by 1 ulp of the fp8 code on scale-boundary values -> gate with GSM8K,
+# not byte-compare. Requires HOIST_QUANT=1.
+TRACED_QUANT = os.environ.get("RADIANCE_MXFP4_TRACED_QUANT", "0") == "1"
+_TQ_FP8_MAX = 448.0
+_TQ_MIN_SCALE = 1.0 / (448.0 * 512.0)
+
+
+def _traced_quant(x: "torch.Tensor"):
+    xf = x.to(torch.float32)
+    s = (xf.abs().amax(-1, keepdim=True) * (1.0 / _TQ_FP8_MAX)).clamp_min(_TQ_MIN_SCALE)
+    q = (xf / s).clamp(-_TQ_FP8_MAX, _TQ_FP8_MAX).to(torch.float8_e4m3fn)
+    return q, s
 _decode_scratch_ready = [False]
 _decode_scratch = [None, None]   # [partials, block counter] — kept alive for the process
 
@@ -476,6 +498,32 @@ def mxfp4_linear(x: torch.Tensor, weight: torch.Tensor, weight_scale: torch.Tens
     return out.clone() if CLONE_OUT else out
 
 
+# ---- pre-quantized variant -------------------------------------------------------------------
+# Same kernel dispatch, but the fp8 activation quant happens in apply_weights rather than in here.
+# The point is VISIBILITY: a torch.library.custom_op is opaque to inductor by construction, so with
+# the quant inside, vLLM's rms_norm+quant fusion pattern matches zero times -- measured, the launch
+# count did not move. Hoisting is necessary but not sufficient; it pairs with
+# RADIANCE_NORMQUANT_FUSION, which enables the traced quantization profile on RDNA4.
+@torch.library.custom_op("radiance::mxfp4_linear_pq", mutates_args=())
+def mxfp4_linear_pq(x_fp8: torch.Tensor, x_scale: torch.Tensor, weight: torch.Tensor,
+                    weight_scale: torch.Tensor, weight_ref: torch.Tensor) -> torch.Tensor:
+    if not _stats_reported[0]:
+        report_stats()
+    M, N = x_fp8.shape[0], weight.shape[0]
+    K = weight_scale.shape[0] * 32
+    out = torch.empty((M, N), device=x_fp8.device, dtype=torch.bfloat16)
+    _ext.launch(x_fp8.data_ptr(), weight.data_ptr(), weight_scale.data_ptr(),
+                weight_ref.data_ptr(), x_scale.data_ptr(), out.data_ptr(),
+                M, N, K, torch.cuda.current_stream().cuda_stream)
+    return out
+
+
+@mxfp4_linear_pq.register_fake
+def _(x_fp8, x_scale, weight, weight_scale, weight_ref):
+    return torch.empty((x_fp8.shape[0], weight.shape[0]), device=x_fp8.device,
+                       dtype=torch.bfloat16)
+
+
 @mxfp4_linear.register_fake
 def _(x, weight, weight_scale, weight_ref):
     return torch.empty((x.shape[0], weight.shape[0]), device=x.device, dtype=torch.bfloat16)
@@ -674,13 +722,46 @@ def _make_kernel_class():
                     permute_w(layer.weight.data, N_, K), requires_grad=False)
             layer.radiance_w4a8_ok = bool(ok)   # record only; never read in the forward
 
-        def apply_weights(self, layer: torch.nn.Module, x: torch.Tensor,
-                          bias: torch.Tensor | None = None) -> torch.Tensor:
-            y = torch.ops.radiance.mxfp4_linear(
-                x, layer.weight, layer.weight_scale, layer.radiance_wref)
-            if bias is not None:
-                y = y + bias
-            return y
+        if not HOIST_QUANT and os.environ.get("RADIANCE_FP8_STREAM", "0") != "1":
+            # Keep the already-qualified RX3 graph byte-for-byte simple when the RX4 profile is
+            # dark. Even constant Python branches alter Dynamo's guard/graph population enough to
+            # move sampled outputs at near-tied logits, so the legacy path gets its own method.
+            def apply_weights(self, layer: torch.nn.Module, x: torch.Tensor,
+                              bias: torch.Tensor | None = None) -> torch.Tensor:
+                y = torch.ops.radiance.mxfp4_linear(
+                    x, layer.weight, layer.weight_scale, layer.radiance_wref)
+                if bias is not None:
+                    y = y + bias
+                return y
+        else:
+            def apply_weights(self, layer: torch.nn.Module, x: torch.Tensor,
+                              bias: torch.Tensor | None = None) -> torch.Tensor:
+                if isinstance(x, tuple):
+                    # fp8-stream contract (radiance_arnq): the AR epilogue already produced
+                    # per-token-quantized (q, scale); straight onto the pq kernel.
+                    x_fp8, x_scale = x
+                    y = torch.ops.radiance.mxfp4_linear_pq(
+                        x_fp8, x_scale, layer.weight, layer.weight_scale, layer.radiance_wref)
+                    if bias is not None:
+                        y = y + bias
+                    return y
+                # Quantize in the TRACED region so the rms+quant fusion can see it. Only valid at
+                # MIN_M <= 0: the aiter fallback quantizes activations to mxfp4, not fp8, so it
+                # cannot consume a pre-quantized fp8 input. Asserted at import, not per call.
+                if TRACED_QUANT:
+                    if SANITIZE_X:
+                        x = torch.nan_to_num(x, nan=0.0, posinf=0.0, neginf=0.0)
+                    x_fp8, x_scale = _traced_quant(x)
+                else:
+                    from vllm import _custom_ops as _o
+                    x_fp8, x_scale = _o.scaled_fp8_quant(x, scale=None,
+                                                         use_per_token_if_dynamic=True)
+                y = torch.ops.radiance.mxfp4_linear_pq(
+                    x_fp8, x_scale.view(-1).float(), layer.weight, layer.weight_scale,
+                    layer.radiance_wref)
+                if bias is not None:
+                    y = y + bias
+                return y
 
     return RadianceMxfp4W4A8LinearKernel
 

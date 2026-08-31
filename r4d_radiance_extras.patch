@@ -30,6 +30,182 @@ index 3be4032..7c798ed 100644
  int r4d_gdn_recurrent_update_k128_v128_bf16_fp32state(
          const void* q, const void* k, const void* v, const void* a, const void* b,
          long ab_stride, int ab_is_bf16, const void* A_log, const void* dt_bias, void* state,
+@@ -172,6 +181,14 @@ void r4d_ar_oneshot_2rank_exact(long peer_scratch, long my_scratch, long peer_fl
+                                 long seq_ctrs, long slot_stride16, long inp, long out, long n_elem,
+                                 long dtype, long stream, long nblocks, long nthreads, long drain,
+                                 long acq);
++
++// radiance extras: exact all-reduce with the decoder layer's fused post-AR epilogue
++// (residual add + Gemma rms_norm + per-token e4m3 quant), one block per row. bf16 only.
++void r4d_ar_oneshot_2rank_exact_nq(long peer_scratch, long my_scratch, long peer_flags,
++                                   long my_flags, long seq_ctrs, long slot_stride16,
++                                   long inp, long residual, long norm_w, long q_out,
++                                   long scale_out, long res_out, long m_rows, long k_cols,
++                                   double eps, long stream_i, long drain, long acq);
+ // Same topology, but the wire payload is Walsh-Hadamard rotated and quantised to 6 bits per element
+ // over groups of 64 (plus a bf16 scale per group). Lossy, and bf16 / fp16 payload only. Takes this
+ // rank's own packed copy (loc_pack) as well, so the reduce folds exactly the bytes it sent.
+diff --git a/r4d_ar_oneshot_2rank_exact.hip b/r4d_ar_oneshot_2rank_exact.hip
+index f721bc7..52691a4 100644
+--- a/r4d_ar_oneshot_2rank_exact.hip
++++ b/r4d_ar_oneshot_2rank_exact.hip
+@@ -122,6 +122,156 @@ __global__ void r4d_ar_oneshot_2rank_exact_kernel(
+   }
+ }
+ 
++// ---- radiance extras: all-reduce with a fused decoder-layer epilogue ------------------------
++// r4d_ar_oneshot_2rank_exact_nq: the same push/flag/spin all-reduce, restructured ONE BLOCK PER
++// ROW so the epilogue's per-row reductions stay block-local. After reducing its row (bf16
++// rounded, exactly like the plain exact kernel writes), the block finishes the decoder layer's
++// post-AR epilogue in registers: residual add (fp32), Gemma rms_norm (weight is (1+w), variance
++// over the fp32 sum), bf16 round, per-token e4m3 quant with scale = max(amax/448, 1/(448*512)).
++// Precision contract matches vllm.ir.ops.fused_add_rms_norm + the radiance traced quant; the
++// standalone radiance_add_rms_quant kernel (radiance_mxfp4_fp8.hip) is bit-identical to that
++// reference, and this is the same arithmetic on the same rounded values. The reduced y is NOT
++// written anywhere -- the epilogue is its only consumer, which saves the out-stream entirely.
++// Both ranks compute identical q/scale/res_out (same summation order), so rank parity holds.
++// Shares scratch/flags/seq with the plain exact kernel; per-block seq counters stay in rank
++// lockstep because both ranks issue identical call sequences (SPMD), grid size included.
++#define R4D_ARNQ_T 256
++#define R4D_ARNQ_MAXG 5
++__global__ __launch_bounds__(R4D_ARNQ_T) void r4d_ar_oneshot_2rank_exact_nq_kernel(
++    const int4* __restrict__ in4, int4* peer_base, const int4* my_base,
++    const __hip_bfloat16* __restrict__ res, const __hip_bfloat16* __restrict__ w,
++    unsigned char* __restrict__ q, float* __restrict__ scale,
++    __hip_bfloat16* __restrict__ res_out,
++    unsigned int* peer_flags, unsigned int* my_flags, unsigned int* seq_ctrs,
++    int k16, int slot_stride16, float eps, int drain, int acq) {
++  const int b = blockIdx.x, tid = threadIdx.x;
++  __shared__ unsigned int s_seq;
++  if (tid == 0) s_seq = atomicAdd(&seq_ctrs[b], 1u) + 1u;
++  __syncthreads();
++  const unsigned int sq = s_seq;
++  const int slot = (int)(sq & 1u);
++  int4* ps = peer_base + (size_t)slot * slot_stride16;
++  const int4* ms = my_base + (size_t)slot * slot_stride16;
++  const int start = b * k16, end = start + k16;
++  const int K = k16 * 8;
++  {
++    int k = start + tid;
++    for (; k + 3 * R4D_ARNQ_T < end; k += 4 * R4D_ARNQ_T) {
++      int4 v0 = in4[k], v1 = in4[k + R4D_ARNQ_T], v2 = in4[k + 2 * R4D_ARNQ_T],
++           v3 = in4[k + 3 * R4D_ARNQ_T];
++      ps[k] = v0; ps[k + R4D_ARNQ_T] = v1; ps[k + 2 * R4D_ARNQ_T] = v2;
++      ps[k + 3 * R4D_ARNQ_T] = v3;
++    }
++    for (; k < end; k += R4D_ARNQ_T) ps[k] = in4[k];
++  }
++  if (drain == 1) __threadfence_system();
++  else if (drain == 3) asm volatile("s_wait_storecnt 0x0" ::: "memory");
++  __syncthreads();
++  if (tid == 0) {
++    if (drain == 2) __threadfence_system();
++    store_sys_rel(&peer_flags[b], sq);
++    unsigned long long z = 0;
++    while (load_sys_acq(&my_flags[b]) < sq) { if (++z > R4D_AR_SPIN_MAX) break; }
++  }
++  __syncthreads();
++  if (acq) __threadfence_system();
++  // reduce this row into registers (bf16-rounded like the plain kernel) + start the epilogue
++  res += (size_t)b * K; q += (size_t)b * K; res_out += (size_t)b * K;
++  float sv[R4D_ARNQ_MAXG][8];
++  float ssq = 0.f;
++  int ng = 0;
++  for (int k = start + tid; k < end; k += R4D_ARNQ_T, ++ng) {
++    int4 red = vadd<__hip_bfloat16, 8>(in4[k], ms[k]);
++    const __hip_bfloat16* rh = reinterpret_cast<const __hip_bfloat16*>(&red);
++    const int e0 = (k - start) * 8;
++    int4 rv = ((const int4*)res)[k - start];
++    const __hip_bfloat16* vh = reinterpret_cast<const __hip_bfloat16*>(&rv);
++    int4 ro;
++    __hip_bfloat16* oh = reinterpret_cast<__hip_bfloat16*>(&ro);
++#pragma unroll
++    for (int j = 0; j < 8; ++j) {
++      float v = (float)rh[j] + (float)vh[j];
++      sv[ng][j] = v;
++      oh[j] = (__hip_bfloat16)v;
++      ssq += v * v;
++    }
++    ((int4*)res_out)[k - start] = ro;
++    (void)e0;
++  }
++  __shared__ float lds[R4D_ARNQ_T / 32];
++  for (int o = 16; o; o >>= 1) ssq += __shfl_down(ssq, o);
++  if ((tid & 31) == 0) lds[tid >> 5] = ssq;
++  __syncthreads();
++  if (tid < R4D_ARNQ_T / 32) {
++    float v = lds[tid];
++    for (int o = R4D_ARNQ_T / 64; o; o >>= 1) v += __shfl_down(v, o);
++    if (tid == 0) lds[0] = v;
++  }
++  __syncthreads();
++  const float inv = rsqrtf(lds[0] / (float)K + eps);
++  __syncthreads();
++  float amax = 0.f;
++  int mg = 0;
++  for (int k = start + tid; k < end; k += R4D_ARNQ_T, ++mg) {
++    int4 wv = ((const int4*)w)[k - start + 0] ; // w indexed by column within the row
++    const __hip_bfloat16* wh = reinterpret_cast<const __hip_bfloat16*>(&wv);
++#pragma unroll
++    for (int j = 0; j < 8; ++j) {
++      float nv = (float)(__hip_bfloat16)(sv[mg][j] * inv * ((float)wh[j] + 1.f));
++      sv[mg][j] = nv;
++      amax = fmaxf(amax, fabsf(nv));
++    }
++  }
++  for (int o = 16; o; o >>= 1) amax = fmaxf(amax, __shfl_down(amax, o));
++  if ((tid & 31) == 0) lds[tid >> 5] = amax;
++  __syncthreads();
++  if (tid < R4D_ARNQ_T / 32) {
++    float v = lds[tid];
++    for (int o = R4D_ARNQ_T / 64; o; o >>= 1) v = fmaxf(v, __shfl_down(v, o));
++    if (tid == 0) lds[0] = v;
++  }
++  __syncthreads();
++  const float sc = fmaxf(lds[0] * (1.f / 448.f), 1.f / (448.f * 512.f));
++  const float rs = 1.f / sc;
++  if (tid == 0) scale[b] = sc;
++  mg = 0;
++  for (int k = start + tid; k < end; k += R4D_ARNQ_T, ++mg) {
++    unsigned int lo = 0, hi = 0;
++#pragma unroll
++    for (int j = 0; j < 4; j += 2) {
++      float a = fminf(fmaxf(sv[mg][j] * rs, -448.f), 448.f);
++      float bq = fminf(fmaxf(sv[mg][j + 1] * rs, -448.f), 448.f);
++      lo |= (__builtin_amdgcn_cvt_pk_fp8_f32(a, bq, 0u, false) & 0xffffu) << (j * 8);
++    }
++#pragma unroll
++    for (int j = 4; j < 8; j += 2) {
++      float a = fminf(fmaxf(sv[mg][j] * rs, -448.f), 448.f);
++      float bq = fminf(fmaxf(sv[mg][j + 1] * rs, -448.f), 448.f);
++      hi |= (__builtin_amdgcn_cvt_pk_fp8_f32(a, bq, 0u, false) & 0xffffu) << ((j - 4) * 8);
++    }
++    ((uint2*)q)[k - start] = make_uint2(lo, hi);
++  }
++}
++
++void r4d_ar_oneshot_2rank_exact_nq(long peer_scratch, long my_scratch, long peer_flags,
++                                   long my_flags, long seq_ctrs, long slot_stride16,
++                                   long inp, long residual, long norm_w, long q_out,
++                                   long scale_out, long res_out, long m_rows, long k_cols,
++                                   double eps, long stream_i, long drain, long acq) {
++  hipStream_t st = (hipStream_t)stream_i;
++  if (k_cols % 8 != 0) throw std::runtime_error("ar_exact_nq: K must be a multiple of 8");
++  if (k_cols > 8 * R4D_ARNQ_T * R4D_ARNQ_MAXG)
++    throw std::runtime_error("ar_exact_nq: K too large for the register budget");
++  if (m_rows > R4D_AR_MAX_BLOCKS) throw std::runtime_error("ar_exact_nq: too many rows");
++  const int k16 = (int)(k_cols / 8);
++  r4d_ar_oneshot_2rank_exact_nq_kernel<<<(int)m_rows, R4D_ARNQ_T, 0, st>>>(
++      (const int4*)inp, (int4*)peer_scratch, (const int4*)my_scratch,
++      (const __hip_bfloat16*)residual, (const __hip_bfloat16*)norm_w,
++      (unsigned char*)q_out, (float*)scale_out, (__hip_bfloat16*)res_out,
++      (unsigned*)peer_flags, (unsigned*)my_flags, (unsigned*)seq_ctrs,
++      k16, (int)slot_stride16, (float)eps, (int)drain, (int)acq);
++}
++
+ // The IPC handle is returned through a caller-owned buffer rather than a std::string so this
+ // stays a C ABI; R4D_AR_HANDLE_BYTES is the fixed size the header promises.
+ static_assert(sizeof(hipIpcMemHandle_t) <= R4D_AR_HANDLE_BYTES, "ipc handle larger than the ABI buffer");
 diff --git a/r4d_ar_oneshot_2rank_wht6.h b/r4d_ar_oneshot_2rank_wht6.h
 index a4f359a..846b94a 100644
 --- a/r4d_ar_oneshot_2rank_wht6.h
@@ -622,6 +798,14 @@ index ef84cb5..108d2a2 100644
    m.def("gdn_recurrent_update_k128_v128_bf16_fp32state", &gdn_recurrent_update);
    m.def("gdn_gated_rmsnorm_h128_bf16", &gdn_gated_rmsnorm);
    {
+@@ -609,6 +638,7 @@ PYBIND11_MODULE(r4d, m) {
+   m.def("ar_ipc_memzero", &r4d_ar_ipc_memzero);
+   m.def("ar_ipc_enable_peer", &r4d_ar_ipc_enable_peer);
+   m.def("ar_oneshot_2rank_exact", &r4d_ar_oneshot_2rank_exact);
++  m.def("ar_oneshot_2rank_exact_nq", &r4d_ar_oneshot_2rank_exact_nq);
+   m.def("ar_oneshot_2rank_wht6", &r4d_ar_oneshot_2rank_wht6);
+   {
+     int group = 0, bits = 0, chunk_elems = 0;
 diff --git a/r4d_registry.hip b/r4d_registry.hip
 index 0bd04ac..17ec780 100644
 --- a/r4d_registry.hip

@@ -1,0 +1,8 @@
+{
+  "run_id": "rx4-core-old-r4d-v2-toolgate-tool-schema",
+  "completed_utc": "2026-08-31T16:41:59Z",
+  "attempts": 30,
+  "passes": 29,
+  "failures": 1,
+  "pass": false
+}

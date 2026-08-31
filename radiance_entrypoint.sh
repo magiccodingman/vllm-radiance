@@ -10,17 +10,84 @@ case "${1:-}" in
   -h|--help|--version|--help-all) exec vllm serve "$@" ;;
 esac
 
-# RADIANCE_FAST_DRAFT replaces several ordinary Linear weights with packed tensors at load time.
-# vLLM's persistent AOT cache key does not include this Radiance environment flag, so reusing a
-# graph compiled with FAST_DRAFT=0 can restore shape guards for the unpacked 2-D weights and then
-# fail against the packed representation (for example, "wrong number of dimensions" during the
-# DFlash profile run). Keep the two graph populations in separate namespaces. This preserves both
-# caches across restarts while making toggling the opt-in feature safe. Advanced users can disable
-# the automatic suffix only when they provide already-isolated cache roots themselves.
-if [ "${RADIANCE_FAST_DRAFT:-0}" = "1" ] \
-    && [ "${RADIANCE_FAST_DRAFT_CACHE_NAMESPACE:-1}" != "0" ]; then
-  export VLLM_CACHE_ROOT="${VLLM_CACHE_ROOT:-/root/.cache/vllm}/radiance-fast-draft"
-  export TORCHINDUCTOR_CACHE_DIR="${TORCHINDUCTOR_CACHE_DIR:-/tmp/torchinductor}/radiance-fast-draft"
+# Several Radiance flags alter the traced model graph, but vLLM's persistent AOT cache key does
+# not include arbitrary environment variables. Never let incompatible graph populations share a
+# namespace. In particular, FAST_DRAFT changes weight rank, disabling the established GDN merge
+# restores the original split weights, traced quant moves activation quantization into the graph,
+# and FP8_STREAM changes the inter-layer tensor contract. Advanced users may disable this only
+# when they provide isolated cache roots themselves.
+_rad_nqf="${RADIANCE_NORMQUANT_FUSION:-0}"
+if [ "$_rad_nqf" = "1" ]; then
+  # This is one dependency-complete experimental profile, not three independently mixable switches.
+  # Override the image's baked zero defaults together so NORMQUANT_FUSION=1
+  # cannot accidentally run the old null experiment with either leg missing.
+  export RADIANCE_MXFP4_HOIST_QUANT=1
+  export RADIANCE_MXFP4_TRACED_QUANT=1
+fi
+
+if [ "${RADIANCE_FP8_STREAM:-0}" = "1" ]; then
+  if [ "$_rad_nqf" != "1" ] \
+      || [ "${RADIANCE_MXFP4_HOIST_QUANT:-0}" != "1" ] \
+      || [ "${RADIANCE_MXFP4_TRACED_QUANT:-0}" != "1" ] \
+      || [ "${RADIANCE_GDN_MERGE_INPROJ:-1}" != "1" ] \
+      || [ "${RADIANCE_MXFP4:-0}" != "1" ] \
+      || [ "${RADIANCE_MXFP4_W4A8:-0}" != "1" ] \
+      || [ "${RADIANCE_MXFP4_W4A8_MIN_M:-0}" != "0" ]; then
+    echo "[radiance] ERROR RADIANCE_FP8_STREAM=1 requires the complete experimental MXFP4 W4A8 profile: NORMQUANT_FUSION=1, HOIST_QUANT=1, TRACED_QUANT=1, GDN_MERGE_INPROJ=1, MXFP4=1, W4A8=1, and W4A8_MIN_M=0" >&2
+    exit 64
+  fi
+fi
+
+_rad_cache_suffix=""
+if [ "${RADIANCE_GRAPH_CACHE_NAMESPACE:-1}" != "0" ]; then
+  # Preserve the already-qualified RX3 default namespace. GDN merge has been
+  # part of that profile since RX3, so adding a new `-gdnm` suffix forced an
+  # unnecessary AOT recompile and produced measurable near-tied-logit drift.
+  # Only the non-default, unmerged graph needs a separate suffix.
+  if [ "${RADIANCE_MXFP4:-0}" = "1" ] \
+      && [ "${RADIANCE_GDN_MERGE_INPROJ:-1}" != "1" ]; then
+    _rad_cache_suffix="${_rad_cache_suffix}-nogdnm"
+  fi
+  if [ "${RADIANCE_MXFP4_HOIST_QUANT:-0}" = "1" ] \
+      || [ "${RADIANCE_MXFP4_TRACED_QUANT:-0}" = "1" ]; then
+    _rad_cache_suffix="${_rad_cache_suffix}-nqft"
+  fi
+  [ "${RADIANCE_FP8_STREAM:-0}" = "1" ] && _rad_cache_suffix="${_rad_cache_suffix}-fp8s"
+  if [ "${RADIANCE_FAST_DRAFT:-0}" = "1" ] \
+      && [ "${RADIANCE_FAST_DRAFT_CACHE_NAMESPACE:-1}" != "0" ]; then
+    _rad_cache_suffix="${_rad_cache_suffix}-fast-draft"
+  fi
+fi
+if [ -n "$_rad_cache_suffix" ]; then
+  export VLLM_CACHE_ROOT="${VLLM_CACHE_ROOT:-/root/.cache/vllm}/radiance${_rad_cache_suffix}"
+  export TORCHINDUCTOR_CACHE_DIR="${TORCHINDUCTOR_CACHE_DIR:-/tmp/torchinductor}/radiance${_rad_cache_suffix}"
+fi
+
+# The upstream RX4 launcher couples its traced-quant profile to vLLM's norm/activation fusion
+# pass switches. Merge them into the one compilation-config object (argparse does not merge two
+# --compilation-config flags). Explicit CLI compilation config still wins below and is reported.
+if [ "$_rad_nqf" = "1" ]; then
+  _rad_cc="${RADIANCE_COMPILATION_CONFIG:-}"
+  [ -n "$_rad_cc" ] || _rad_cc="{}"
+  if ! RADIANCE_COMPILATION_CONFIG=$(python - "$_rad_cc" <<'PY'
+import json
+import sys
+
+cfg = json.loads(sys.argv[1])
+if not isinstance(cfg, dict):
+    raise TypeError("RADIANCE_COMPILATION_CONFIG must be a JSON object")
+passes = cfg.setdefault("pass_config", {})
+if not isinstance(passes, dict):
+    raise TypeError("compilation pass_config must be a JSON object")
+passes["fuse_norm_quant"] = True
+passes["fuse_act_quant"] = True
+print(json.dumps(cfg, separators=(",", ":")))
+PY
+  ); then
+    echo "[radiance] ERROR could not merge the RX4 pass configuration" >&2
+    exit 64
+  fi
+  export RADIANCE_COMPILATION_CONFIG
 fi
 
 # ------------------------------------------------------------------ NUMA binding
@@ -89,6 +156,10 @@ if [ -n "${RADIANCE_COMPILATION_CONFIG:-}" ]; then
     esac
   done
   if [ "$_has_compilation_config" -eq 1 ]; then
+    if [ "$_rad_nqf" = "1" ]; then
+      echo "[radiance] ERROR RADIANCE_NORMQUANT_FUSION=1 needs the merged RADIANCE_COMPILATION_CONFIG; remove the explicit --compilation-config argument" >&2
+      exit 64
+    fi
     echo "[radiance] WARN RADIANCE_COMPILATION_CONFIG ignored because --compilation-config was passed explicitly" >&2
   else
     set -- "$@" "--compilation-config=${RADIANCE_COMPILATION_CONFIG}"
