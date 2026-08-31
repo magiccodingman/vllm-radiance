@@ -101,6 +101,13 @@ profile. Non-spec and DFlash do not need that override.
 Implementation, numerical controls, provenance, and immutable runs are documented in
 [MXFP4/W4A8 on dual R9700](https://gitlab.sayou.io/lance-wright/vllm-radiance/-/blob/main/docs/MXFP4_W4A8_R9700.md).
 
+The later ggz14 RX4 traced-quant and FP8 residual-stream kernels are included
+but remain off by default. On this dual-R9700 qualification they produced only
+a mixed +2.1% weighted single-stream signal, regressed ITL 1%-low by 21%, did
+not improve c1/c2/c8 or prefill, and failed strict greedy/tool-call gates. Do
+not enable `RADIANCE_NORMQUANT_FUSION` or `RADIANCE_FP8_STREAM` in production;
+see the [RX4 continuation report](https://gitlab.sayou.io/lance-wright/vllm-radiance/-/blob/main/docs/MXFP4_RX4_CONTINUATION.md).
+
 ## Serving modes
 
 Choose exactly one mode. `RADIANCE_SPECULATIVE_CONFIG` contains either MTP or DFlash; the modes are not
@@ -302,6 +309,7 @@ and an earlier mismatched combination caused sustained TP hangs.
 - [Stable vLLM v0.28 upgrade and qualification](https://gitlab.sayou.io/lance-wright/vllm-radiance/-/blob/main/docs/V028_UPGRADE.md)
 - [Radiance 0.9.3 / libr4d 0.5.0 qualification](https://gitlab.sayou.io/lance-wright/vllm-radiance/-/blob/main/docs/RADIANCE_093_R4D050_MXFP4.md)
 - [MXFP4/W4A8 implementation and validation](https://gitlab.sayou.io/lance-wright/vllm-radiance/-/blob/main/docs/MXFP4_W4A8_R9700.md)
+- [RX4 MXFP4 continuation and qualification](https://gitlab.sayou.io/lance-wright/vllm-radiance/-/blob/main/docs/MXFP4_RX4_CONTINUATION.md)
 - [Compose capacity and prefix-cache qualification](https://gitlab.sayou.io/lance-wright/vllm-radiance/-/blob/main/docs/COMPOSE_CAPACITY.md)
 - [DFlash2 optimization and correctness investigation](https://gitlab.sayou.io/lance-wright/vllm-radiance/-/blob/main/docs/DFLASH2_OPTIMIZATION.md)
 - [XGrammar speculative-decoding backport](https://gitlab.sayou.io/lance-wright/vllm-radiance/-/blob/main/docs/XGRAMMAR_SPECULATIVE_BACKPORT.md)
@@ -320,7 +328,7 @@ This fork exists on top of two unusually strong RDNA4 efforts:
   [StillDeadcode/libr4d](https://codeberg.org/StillDeadcode/libr4d) provide the core Radiance runtime and
   hand-written gfx1201 kernels.
 - [ggz14/radiance-vllm-mxfp4](https://codeberg.org/ggz14/radiance-vllm-mxfp4), authored by Brian, is the
-  source of the native Quark MXFP4/W4A8 work and the RX3 optimization series adapted here. Its original
+  source of the native Quark MXFP4/W4A8 work and the RX3/RX4 optimization series adapted here. Its original
   authorship is preserved in the Git history.
 
 The continuation pins the exact audited ggz14 upstream commit in its qualification report. Changes are

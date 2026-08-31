@@ -1,0 +1,8 @@
+{
+  "run_id": "rx4-core-old-mxfp4-toolgate-tool-schema",
+  "completed_utc": "2026-08-31T16:46:10Z",
+  "attempts": 30,
+  "passes": 29,
+  "failures": 1,
+  "pass": false
+}

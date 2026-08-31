@@ -168,9 +168,20 @@ if ((DISABLE_CUDAGRAPH)); then
     echo "DISABLE_CUDAGRAPH and COMPILATION_CONFIG_JSON are mutually exclusive" >&2
     exit 2
   }
-  server_args+=('--compilation-config={"cudagraph_mode":"NONE"}')
+  if [[ ${RADIANCE_NORMQUANT_FUSION:-0} == 1 ]]; then
+    export RADIANCE_COMPILATION_CONFIG='{"cudagraph_mode":"NONE"}'
+  else
+    server_args+=('--compilation-config={"cudagraph_mode":"NONE"}')
+  fi
 elif [[ -n $COMPILATION_CONFIG_JSON ]]; then
-  server_args+=("--compilation-config=${COMPILATION_CONFIG_JSON}")
+  if [[ ${RADIANCE_NORMQUANT_FUSION:-0} == 1 ]]; then
+    # RX4 must merge its pass_config into the same JSON object. Pass the base
+    # object through the entrypoint instead of adding an explicit CLI flag,
+    # because argparse keeps only one --compilation-config value.
+    export RADIANCE_COMPILATION_CONFIG=$COMPILATION_CONFIG_JSON
+  else
+    server_args+=("--compilation-config=${COMPILATION_CONFIG_JSON}")
+  fi
 fi
 if [[ $CPU_OFFLOAD_GB != 0 && $CPU_OFFLOAD_GB != 0.0 ]]; then
   server_args+=("--cpu-offload-gb=${CPU_OFFLOAD_GB}")

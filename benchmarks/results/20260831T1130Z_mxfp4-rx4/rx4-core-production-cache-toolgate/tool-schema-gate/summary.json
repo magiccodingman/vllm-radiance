@@ -1,0 +1,8 @@
+{
+  "run_id": "rx4-core-production-cache-toolgate-tool-schema",
+  "completed_utc": "2026-08-31T17:01:16Z",
+  "attempts": 30,
+  "passes": 30,
+  "failures": 0,
+  "pass": true
+}

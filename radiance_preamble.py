@@ -147,9 +147,13 @@ def section_opts():
         ("RADIANCE_USE_R4D_AR_QUANT", "1", "compressed all-reduce payload for large messages: rotated 6-bit (on; not RCCL-identical)"),
         ("RADIANCE_SKINNY_GEMM",      "1", "measured BF16 skinny GEMMs; use 'all' only as an explicit experiment"),
         ("RADIANCE_GDN_META",         "1", "byte-identical low-overhead GDN metadata construction"),
+        ("RADIANCE_GDN_SHARED_BUILD", "1", "share speculative GDN metadata work across equivalent KV groups"),
         ("RADIANCE_TOPK_TRITON_MIN_ROWS", "1", "Triton top-k/top-p threshold on gfx1201"),
+        ("RADIANCE_TOPK_COMPOSITE",   "1", "multi-block small-k sampling mask (KCAP-controlled)"),
         ("RADIANCE_MXFP4",            "0", "native gfx1201 Quark/OCP MXFP4 routing (opt-in)"),
         ("RADIANCE_MXFP4_W4A8",       "0", "packed MXFP4 weights x dynamic FP8 activations via RDNA4 WMMA"),
+        ("RADIANCE_NORMQUANT_FUSION", "0", "RX4 traced activation-quant profile (MXFP4 W4A8 only)"),
+        ("RADIANCE_FP8_STREAM",       "0", "RX4 TP2 AR + residual + RMSNorm + FP8 stream fusion"),
         ("RADIANCE_QUARK_BF16_MTP",   "0", "load a verified BF16 MTP submodule outside the global Quark recipe"),
         ("RADIANCE_PRESHUFFLE",       "1", "preshuffled AITER FP8 blockscale GEMM"),
         ("RADIANCE_FUSE_RMS_QUANT",   "1", "fold group-FP8 quant into the RMSNorm epilogue"),
@@ -170,6 +174,13 @@ def section_opts():
             print(f"        {dim('·')} {name} = {c(ACCENT, _val(name, dflt))}  " + dim(desc))
     else:
         print("        " + dim("off (stock MTP)"))
+
+    print("\n  " + dim("RX4 sampling / DFlash controls:"))
+    for name, dflt, desc in [
+        ("RADIANCE_TOPK_COMPOSITE_KCAP", "64", "largest top-k routed to the composite sampler"),
+        ("RADIANCE_DFLASH_SELECTOR_TOPK", "checkpoint", "0/unset preserves the checkpoint selector width"),
+    ]:
+        print(f"        {dim('·')} {name} = {c(ACCENT, _val(name, dflt))}  " + dim(desc))
 
 
     print("\n  " + dim("NUMA binding (RADIANCE_NUMA_BIND / --numa-bind):"))
