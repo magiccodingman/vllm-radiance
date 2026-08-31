@@ -169,12 +169,18 @@ these in the immutable manifest:
 | `RADIANCE_MXFP4_DECODE_MAX_M` | `64` | Extend to `128` only for a qualified 16-sequence profile |
 | `RADIANCE_GDN_MERGE_INPROJ` | `1` | Merge each GDN layer's two input projections at load time |
 | `RADIANCE_GDN_FUSED_UPDATE` | `1` | Select libr4d's fused speculative GDN update |
+| `RADIANCE_GDN_SHARED_BUILD` | `1` | Share speculative GDN metadata construction across equivalent KV groups |
+| `RADIANCE_TOPK_COMPOSITE` | `1` | Use multi-block top-k plus a small exact mask for bounded top-k sampling |
+| `RADIANCE_TOPK_COMPOSITE_KCAP` | `64` | Largest top-k eligible for the composite route |
 | `RADIANCE_KV_GROUP_OPT` | `1` | Capacity-aware hybrid KV group selection |
 | `RADIANCE_AR_QNB` | `96` | Tuned compressed TP2 all-reduce block cap; `48` is the control |
 | `RADIANCE_DYNAMIC_WIDTH` | `1` | Per-request DFlash verify-width cap from observed acceptance |
 | `RADIANCE_DYNW_MIN_BATCH` | `5` | Do not narrow noise-limited c1-c4; local c8 gained 9.0–9.6% |
 | `RADIANCE_DRAFT_RERANK` | `64` | Exact rerank width for the INT2 fast-draft head |
 | `RADIANCE_VERIFY_HEAD` | `1` | Sampling-aware target verification head with exact fallback |
+| `RADIANCE_DFLASH_SELECTOR_TOPK` | unset | Experimental selector truncation override; `0` preserves the checkpoint |
+| `RADIANCE_NORMQUANT_FUSION` | `0` | Atomically enable RX4 hoisted/traced MXFP4 activation quantization and compiler passes |
+| `RADIANCE_FP8_STREAM` | `0` | Fuse TP2 AR, residual add, RMSNorm, and FP8 quantization on the qualified W4A8 path |
 | `R4D_ATTN_FP8` | `0` | Experimental FP8 prefill QK/PV legs; keep off outside a labeled diagnostic |
 
 Dynamic verification deliberately changes the number of proposed tokens after
@@ -182,6 +188,22 @@ the scheduler has observed a request. A higher raw draft-acceptance percentage
 can therefore be a denominator effect rather than a quality improvement. Treat
 end-to-end TPS, TTFT/TPOT, and accepted tokens per target update as the outcome;
 retain the full per-position metrics so the mechanism remains auditable.
+
+Before a live RX4 sampling run, execute the CPU mask-equivalence gate inside
+the exact candidate image:
+
+```bash
+docker run --rm --entrypoint python \
+  -v "$PWD/benchmarks/bin/check_topk_composite.py:/tmp/check.py:ro" \
+  IMAGE /tmp/check.py
+```
+
+The traced-quant and FP8-stream switches are one profile, not unrelated knobs.
+When `RADIANCE_NORMQUANT_FUSION=1`, the entrypoint derives both quantization
+legs and merges `fuse_norm_quant`/`fuse_act_quant` into the single compiler JSON.
+`RADIANCE_FP8_STREAM=1` fails closed unless MXFP4 W4A8, `MIN_M=0`, TP2 GDN
+merge prerequisites, and that aggregate profile are present. Graph-changing
+profiles receive separate persistent vLLM/Inductor cache namespaces.
 
 When both lanes share one matrix run (for example non-spec versus DFlash2),
 filter and normalize their configuration keys explicitly:
