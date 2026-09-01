@@ -264,7 +264,7 @@ RUN set -eu; cd /opt/patches; \
              patch_topk_triton_rows patch_topk_composite patch_rocm_cudagraph_current_stream \
              patch_quark_mxfp4 patch_quark_bf16_mtp patch_ar_maxbytes patch_ar_geometry \
              patch_kv_group_size patch_gdn_merge_inproj patch_dynwidth patch_verify_head \
-             patch_kv_offload_registration \
+             patch_kv_offload_registration patch_kv_offload_lifecycle patch_kv_offload_restore \
              patch_xgrammar_spec_termination \
              patch_xgrammar_spec_reasoning patch_parser_shared_engine \
              patch_qwen_open_object_schema; do \
@@ -411,7 +411,7 @@ RUN printf '%s\n' \
  && rm -f /tmp/_jit_probe.hip /tmp/_jit_probe.so \
  && echo "runtime JIT toolchain OK (hipcc + libstdc++ headers + Python.h + pybind11)"
 
-ARG RADIANCE_VERSION=0.9.3-dev.vllm0.28.0-r4d0.5.0-mxfp4.rx4.dflash2.xgrammar.openobj.kvoffload
+ARG RADIANCE_VERSION=0.9.3-dev.vllm0.28.0-r4d0.5.0-mxfp4.rx4.dflash2.xgrammar.openobj.kvoffload.restore2
 ENV RADIANCE_VERSION=${RADIANCE_VERSION}
 COPY VERSION /opt/radiance_version
 COPY radiance_preamble.py /opt/radiance_preamble.py
