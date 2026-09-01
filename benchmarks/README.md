@@ -78,6 +78,18 @@ and source-overlay check inside the candidate image:
 python benchmarks/bin/check_xgrammar_spec_termination.py
 ```
 
+The mmap KV-offload host-registration failure paths are GPU-free and should be
+checked on every source-overlay change:
+
+```bash
+python benchmarks/bin/check_kv_offload_registration.py
+```
+
+The live ROCm registration matrix is a maintenance-only probe. It refuses to
+run without `--confirm-maintenance` or while local API port 8000 is open. See
+[`docs/ROCM_KV_OFFLOAD_REGISTRATION.md`](../docs/ROCM_KV_OFFLOAD_REGISTRATION.md)
+for its exact command, result schema, and follow-up server qualification.
+
 Then run the sampled gate and inspect the server log over the exact same time
 window. A qualified result requires both 100% valid calls and zero occurrences
 of `Failed to advance FSM`, `matcher has terminated`, or

@@ -166,6 +166,23 @@ if [ -n "${RADIANCE_COMPILATION_CONFIG:-}" ]; then
   fi
 fi
 
+# Compose-friendly vLLM KV offload. Empty means disabled. Registration policy
+# and optional chunking are consumed by the source overlay in each TP worker;
+# an explicit CLI size always wins.
+if [ -n "${RADIANCE_KV_OFFLOADING_SIZE:-}" ]; then
+  _has_kv_offloading_size=0
+  for _arg in "$@"; do
+    case "$_arg" in
+      --kv-offloading-size|--kv-offloading-size=*) _has_kv_offloading_size=1; break ;;
+    esac
+  done
+  if [ "$_has_kv_offloading_size" -eq 1 ]; then
+    echo "[radiance] WARN RADIANCE_KV_OFFLOADING_SIZE ignored because --kv-offloading-size was passed explicitly" >&2
+  else
+    set -- "$@" "--kv-offloading-size=${RADIANCE_KV_OFFLOADING_SIZE}"
+  fi
+fi
+
 # NUMA node ids local to the *visible* AMD GPUs, PCI-bus-ordered to match HIP enumeration.
 _numa_gpu_nodes() {
   local vis n; local -a ordered=() sel=() nodes=()

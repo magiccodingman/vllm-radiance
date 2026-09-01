@@ -242,7 +242,7 @@ COPY radiance_amdsmi.py radiance_amdsmi.pth \
      radiance_kernels.py radiance_vit_attn.py radiance_allreduce.py \
      radiance_draft.py radiance_draft_gpu.py radiance_drafthead.py radiance_gemm.py radiance_w4.py \
      radiance_r4d_attn.py radiance_gdn.py radiance_gdnmerge.py radiance_mxfp4.py \
-     radiance_arnq.py radiance_topk.py radiance_verifyhead.py ${SP}/
+     radiance_arnq.py radiance_topk.py radiance_verifyhead.py radiance_kv_offload.py ${SP}/
 COPY fp8-configs/ ${SP}/vllm/model_executor/layers/quantization/utils/configs/
 COPY moe-configs/ ${SP}/vllm/model_executor/layers/fused_moe/configs/
 # AITER has no gfx1201 MXFP4 table. Its gfx1250 table selects an unsupported
@@ -264,6 +264,7 @@ RUN set -eu; cd /opt/patches; \
              patch_topk_triton_rows patch_topk_composite patch_rocm_cudagraph_current_stream \
              patch_quark_mxfp4 patch_quark_bf16_mtp patch_ar_maxbytes patch_ar_geometry \
              patch_kv_group_size patch_gdn_merge_inproj patch_dynwidth patch_verify_head \
+             patch_kv_offload_registration \
              patch_xgrammar_spec_termination \
              patch_xgrammar_spec_reasoning patch_parser_shared_engine \
              patch_qwen_open_object_schema; do \
@@ -410,7 +411,7 @@ RUN printf '%s\n' \
  && rm -f /tmp/_jit_probe.hip /tmp/_jit_probe.so \
  && echo "runtime JIT toolchain OK (hipcc + libstdc++ headers + Python.h + pybind11)"
 
-ARG RADIANCE_VERSION=0.9.3-dev.vllm0.28.0-r4d0.5.0-mxfp4.rx4.dflash2.xgrammar.openobj
+ARG RADIANCE_VERSION=0.9.3-dev.vllm0.28.0-r4d0.5.0-mxfp4.rx4.dflash2.xgrammar.openobj.kvoffload
 ENV RADIANCE_VERSION=${RADIANCE_VERSION}
 COPY VERSION /opt/radiance_version
 COPY radiance_preamble.py /opt/radiance_preamble.py

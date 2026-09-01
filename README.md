@@ -204,6 +204,22 @@ K5 only for a workload that remains dominated by steady c8 traffic.
 Full methodology and run IDs are in the
 [Compose capacity report](https://gitlab.sayou.io/lance-wright/vllm-radiance/-/blob/main/docs/COMPOSE_CAPACITY.md).
 
+### Optional CPU KV offload
+
+Set `RADIANCE_KV_OFFLOADING_SIZE` (GiB) only when the required long-context
+envelope exceeds the GPU KV tier. Radiance coordinates mmap host registration
+across TP workers and defaults `RADIANCE_KV_OFFLOAD_PIN_POLICY=auto`: every rank
+uses pinned DMA only when all ranks register successfully; otherwise the failed
+HIP error is drained and all ranks coherently use slower pageable DMA. Use
+`required` when silently losing pinned-transfer performance is unacceptable, or
+`disabled` as a diagnostic control.
+
+`RADIANCE_KV_OFFLOAD_REGISTER_CHUNK_GIB=0` is the shipped default and preserves
+one whole-region registration. Positive chunk sizes are experimental until
+qualified on the deployment host. The dual-R9700 32/36 GiB investigation and
+reproducible maintenance probe are documented in
+[ROCm KV-offload registration hardening](docs/ROCM_KV_OFFLOAD_REGISTRATION.md).
+
 ## Measured performance
 
 BetterBench v0.2.2 used its v1 corpus, ten measured passes per category, greedy decoding, cold nonce-prefixed
