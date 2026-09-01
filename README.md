@@ -207,7 +207,40 @@ Full methodology and run IDs are in the
 ## Measured performance
 
 BetterBench v0.2.2 used its v1 corpus, ten measured passes per category, greedy decoding, cold nonce-prefixed
-prompts, and c1/c2/c4/c8 on two R9700s. The current Radiance 0.9.3/libr4d 0.5.0 Quark lane measured:
+prompts, and c1/c2/c4/c8 on two R9700s. The current stable/default RX4-dark lane keeps
+`RADIANCE_NORMQUANT_FUSION=0`, `RADIANCE_FP8_STREAM=0`, and `R4D_ATTN_FP8=0` while retaining the qualified
+RX3 execution path, MXFP4/W4A8 target, fast DFlash K7, TP2, FP8 KV, and PIECEWISE graphs:
+
+| Weighted single-stream | ITL 1%-low | TTFT p50 | c1 | c2 | c4 | c8 |
+|---:|---:|---:|---:|---:|---:|---:|
+| **174.0 TPS** | **133.0 TPS** | **66 ms** | **155.3** | **274.4** | **399.4** | **493.3** |
+
+Single-stream category medians:
+
+| Category | Decode TPS | ITL 1%-low TPS | TTFT p50 |
+|---|---:|---:|---:|
+| Chat | 115.9 | 92.7 | 66.3 ms |
+| Code | 173.6 | 104.6 | 64.2 ms |
+| File edit | 198.0 | 173.2 | 68.3 ms |
+| JSON | 222.1 | 209.8 | 65.5 ms |
+| Math | 224.2 | 181.7 | 64.0 ms |
+| Prose | 124.0 | 99.0 | 64.7 ms |
+| Reasoning | 146.7 | 97.5 | 64.7 ms |
+| Summarization | 204.5 | 173.3 | 69.9 ms |
+
+Cold prefill measured **3,980.1 / 4,547.1 / 4,313.5 TPS** at the 2K/4K/7K target depths. Every concurrency
+arm completed 24/24 requests. These are the standard 8K/C8 laboratory results at 85% GPU allocation with
+prefix caching and CPU offload disabled; the 128K/C4 production profile above intentionally has a different
+capacity/latency contract. Exact category TTFT, ITL, prefill, run metadata, and immutable raw results are in
+the [current RX4-dark BetterBench report](https://gitlab.sayou.io/lance-wright/vllm-radiance/-/blob/main/benchmarks/results/20260831T1130Z_mxfp4-rx4/rx4-control-betterbench-standard/betterbench/report.md)
+and [RX4 qualification report](https://gitlab.sayou.io/lance-wright/vllm-radiance/-/blob/main/docs/MXFP4_RX4_CONTINUATION.md).
+
+DFlash remains experimental and opt-in because strict speculative/non-spec greedy equivalence has not passed,
+even though the stable-default lane passed its meaningful-output and sampled tool-call qualification. The
+newer RX4 traced-quant and FP8 residual-stream profile is not represented by the table above and remains off:
+its small weighted gain came with worse tail latency, mixed concurrency/prefill results, and correctness failures.
+
+For historical mode-to-mode context, the earlier Radiance 0.9.3/libr4d 0.5.0 matched publication measured:
 
 | Mode | Weighted single-stream TPS | c1 | c2 | c4 | c8 |
 |---|---:|---:|---:|---:|---:|
@@ -216,42 +249,9 @@ prompts, and c1/c2/c4/c8 on two R9700s. The current Radiance 0.9.3/libr4d 0.5.0 
 | Fast DFlash K5 | 136.2 | 123.0 | 216.4 | 343.0 | **435.7** |
 | Fast DFlash K7 | **145.4** | **132.4** | **234.6** | **343.3** | 416.9 |
 
-K7 is the general DFlash recommendation and wins weighted decode plus c1–c4. K5 is 4.5% faster for a
-steady C8-heavy deployment. The K7 candidate passed 30/30 required multi-tool schema requests, but strict
-speculative/non-spec greedy equivalence passed only 1/8 fixed prompts; DFlash therefore remains experimental
-and opt-in.
-
-The stable-v0.28 continuation reran this exact K7 lane against a fresh
-merged-main v0.27.1 control. v0.28 measured **152.5 weighted TPS** and
-135.0 / 222.3 / 348.8 / 474.0 TPS at c1/c2/c4/c8: +4.8% weighted and +13.2%
-at c8, with a disclosed -5.2% c2 regression and essentially flat c4/prefill.
-It passed 100/100 sampled required multi-tool calls after the focused upstream
-parser fix. Exact provenance, acceptance, telemetry, negative results, and run
-IDs are in the [v0.28 qualification report](https://gitlab.sayou.io/lance-wright/vllm-radiance/-/blob/main/docs/V028_UPGRADE.md).
-
-The subsequent RX3 continuation integrates Brian's latest MXFP4/DFlash/GDN
-work from `ggz14/radiance-vllm-mxfp4`. The final exact-default standard run
-measured **171.0 weighted TPS**:
-
-| | weighted | c1 | c2 | c4 | c8 |
-|---|---:|---:|---:|---:|---:|
-| Merged v0.28 baseline | 152.5 | 135.0 | 222.3 | 348.8 | 474.0 |
-| RX3 continuation | 171.0 | 152.5 | 269.5 | 432.6 | 570.4 |
-| Gain | **+12.1%** | **+13.0%** | **+21.2%** | **+24.0%** | **+20.3%** |
-
-The final single-stream category medians were chat 131.1, code 176.4,
-file-edit 204.5, JSON 233.2, math 227.4, prose 110.1, reasoning 125.8, and
-summarization 196.2 TPS. Six category gains are statistically significant in
-BetterBench's offline comparison; prose and reasoning remain noise-limited.
-Prefill improved 9.7–10.5% across the 2K/4K/7K depths. Three standard runs
-produced the same eight fixed greedy outputs across independent server starts
-and passed 90/90 sampled required multi-tool calls with zero XGrammar FSM errors. DFlash
-still does not pass strict equivalence against non-spec, so it remains clearly
-experimental despite the speedup. Full provenance is in the
-[RX3 continuation report](https://gitlab.sayou.io/lance-wright/vllm-radiance/-/blob/main/docs/MXFP4_RX3_CONTINUATION.md).
-
-Per-category TPS, acceptance, TTFT/TPOT, prefill, telemetry, confidence intervals, negative results, and
-immutable run IDs are in the
+This older table is retained because non-spec, MTP, K5, and K7 have not all been rerun on the current RX4-dark
+image. Do not treat it as the current K7 performance ceiling. Its per-category TPS, acceptance, TTFT/TPOT,
+prefill, telemetry, confidence intervals, negative results, and immutable run IDs are in the
 [Radiance 0.9.3 qualification report](https://gitlab.sayou.io/lance-wright/vllm-radiance/-/blob/main/docs/RADIANCE_093_R4D050_MXFP4.md).
 
 ## What is included
