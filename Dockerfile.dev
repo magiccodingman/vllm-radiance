@@ -45,7 +45,7 @@ ARG TRANSFORMERS_VERSION
 ARG XGRAMMAR_VERSION
 ARG R4D_VERSION
 ARG R4D_COMMIT
-ARG RADIANCE_VERSION=0.9.3-dev.vllm0.28.0-r4d0.5.0-mxfp4.rx4.dflash2.xgrammar
+ARG RADIANCE_VERSION=0.9.3-dev.vllm0.28.0-r4d0.5.0-mxfp4.rx4.dflash2.xgrammar.openobj
 ENV RADIANCE_VERSION=${RADIANCE_VERSION} \
     RADIANCE_GDN_MERGE_INPROJ=1 RADIANCE_GDN_FUSED_UPDATE=1 RADIANCE_GDN_SHARED_BUILD=1 \
     RADIANCE_TOPK_COMPOSITE=1 RADIANCE_TOPK_COMPOSITE_KCAP=64 \
@@ -81,7 +81,8 @@ RUN set -eu; cd /opt/patches; \
              patch_quark_mxfp4 patch_quark_bf16_mtp patch_ar_maxbytes patch_ar_geometry \
              patch_kv_group_size patch_gdn_merge_inproj patch_dynwidth patch_verify_head \
              patch_xgrammar_spec_termination \
-             patch_xgrammar_spec_reasoning patch_parser_shared_engine; do \
+             patch_xgrammar_spec_reasoning patch_parser_shared_engine \
+             patch_qwen_open_object_schema; do \
       echo "== applying $p =="; python "$p.py"; \
     done; \
     python -c "import ast,glob; [ast.parse(open(f).read()) for f in glob.glob('${SP}/radiance_*.py')]"

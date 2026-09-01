@@ -267,7 +267,8 @@ immutable run IDs are in the
 - **Hybrid-safe prefix caching:** automatic prefix caching with GDN convolution/recurrent-state restoration
   through `--mamba-cache-mode=align`.
 - **Spec-safe structured output:** upstream XGrammar termination and reasoning-boundary fixes prevent
-  speculative draft batches from overrunning or desynchronizing the tool-call grammar.
+  speculative draft batches from overrunning or desynchronizing the tool-call grammar; Qwen structural-tag
+  normalization also preserves open nested objects used by generic deferred-tool wrappers.
 - **Topology qualification:** a background startup sweep reports GPU enumeration, P2P access, NUMA distance,
   and peer-copy bandwidth.
 
@@ -313,6 +314,7 @@ and an earlier mismatched combination caused sustained TP hangs.
 - [Compose capacity and prefix-cache qualification](https://gitlab.sayou.io/lance-wright/vllm-radiance/-/blob/main/docs/COMPOSE_CAPACITY.md)
 - [DFlash2 optimization and correctness investigation](https://gitlab.sayou.io/lance-wright/vllm-radiance/-/blob/main/docs/DFLASH2_OPTIMIZATION.md)
 - [XGrammar speculative-decoding backport](https://gitlab.sayou.io/lance-wright/vllm-radiance/-/blob/main/docs/XGRAMMAR_SPECULATIVE_BACKPORT.md)
+- [Qwen open nested-object tool-call fix](https://gitlab.sayou.io/lance-wright/vllm-radiance/-/blob/main/docs/QWEN_OPEN_OBJECT_TOOL_FIX.md)
 - [BetterBench methodology and earlier mode comparison](https://gitlab.sayou.io/lance-wright/vllm-radiance/-/blob/main/docs/LIBR4D_BETTERBENCH.md)
 - [Benchmark laboratory usage](https://gitlab.sayou.io/lance-wright/vllm-radiance/-/blob/main/benchmarks/README.md)
 - [Complete runtime knob reference](https://gitlab.sayou.io/lance-wright/vllm-radiance/-/blob/main/DOCKERHUB.md)
