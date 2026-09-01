@@ -1,7 +1,9 @@
 # ROCm mmap KV-offload registration hardening
 
-Status: implementation and GPU-free source checks complete; dual-R9700
-qualification is intentionally pending a production maintenance window.
+Status: implementation, standalone dual-R9700 registration matrix, patched-
+image startup, correctness, and bounded long-context pressure gates complete.
+The host-registration failure is fixed. Native-offload prefix restore and
+abrupt-container mmap cleanup remain separately documented limitations.
 
 Development branch: `agent/rocm-kv-offload-registration-fix`, based on merged
 `main` commit `5107c29` and pinned vLLM `2cf0a6915ce544dc493a0990f2ea38d81601128a`
@@ -65,10 +67,9 @@ reported and drained, every successful rank rolls back, and serving continues
 with slower pageable DMA. `required` makes the same condition a startup error.
 `disabled` is a diagnostic control.
 
-Chunking is implemented but remains opt-in. The 32/36 GiB R9700 failure has not
-yet been proven to be a per-call-size ceiling; enabling an arbitrary chunk size
-without measurement could add registrations without improving the effective
-pin limit.
+Chunking is implemented but remains opt-in. The measured 8 GiB registration
+chunks did not raise the effective pin limit on this host, so the shipped
+default remains one whole-region call.
 
 ## GPU-free validation completed
 
@@ -89,11 +90,35 @@ Run the pure regression check with:
 python benchmarks/bin/check_kv_offload_registration.py
 ```
 
-## Maintenance-window qualification plan
+## Dual-R9700 host-registration matrix
 
-Production must be stopped before these steps. The probe refuses to start if
-local port 8000 is accepting connections and also requires an explicit
-maintenance acknowledgement.
+The representative probe was run inside the root ROCm production image with
+host IPC, both GPUs, distributed pre-faulting, and the mmap resident before
+registration. Every case also performed a post-registration HIP allocation and
+exact unregister/rollback cleanup.
+
+| mmap | Whole, sequential | Whole, simultaneous | 8 GiB chunks, sequential | 8 GiB chunks, simultaneous |
+|---:|---|---|---|---|
+| 24 GiB | both pinned | both pinned | both pinned | both pinned |
+| 28 GiB | both pinned | both pinned | both pinned | both pinned |
+| 30 GiB | one failed | one failed | one failed | one failed |
+| 32 GiB | one failed | one failed | one failed | one failed |
+| 36 GiB | one failed | one failed | one failed | both failed |
+
+Every failed registration returned code 1, `hipGetLastError` drained code 1,
+the following HIP allocation succeeded, and cleanup succeeded. Which rank won
+could change under simultaneous registration. The threshold is therefore a
+shared-backing/global pin-accounting ceiling between 28 and 30 GiB, not a
+single-call-size limit; chunking is not a workaround.
+
+The raw matrix is retained on the qualification host as
+`/nvme/ediloca-1/scratch/kv-offload-host-registration-container-matrix-20260901.json`
+with SHA-256
+`7c0598626b0c334c09b5986280601113e575ccd02112a7d2f6263c463d106b21`.
+
+To reproduce it during a maintenance window, run the probe from inside the
+same root ROCm image used for serving. The probe refuses to start if local port
+8000 is accepting connections and requires an explicit acknowledgement.
 
 ```bash
 python benchmarks/bin/probe_rocm_host_registration.py \
@@ -101,22 +126,51 @@ python benchmarks/bin/probe_rocm_host_registration.py \
   --sizes-gib 24 28 30 32 36 \
   --chunk-gib 0 8 \
   --modes sequential simultaneous \
+  --prefault distributed \
   --gpus 0 1 \
   --output benchmarks/results/kv-offload-host-registration/probe.json
 ```
 
-The probe records each rank's registration result, drained error, exact chunks,
-registration time, cleanup result, and a post-failure HIP allocation smoke. The
-follow-up image qualification must then cover:
+## Patched-image qualification
 
-1. 24 GiB control startup, restore correctness, and throughput;
-2. 32 and 36 GiB with whole registration under `auto`;
-3. only chunk sizes that the standalone probe shows can pin both ranks;
-4. forced-failure verification that serving falls back without a subsequent
-   `hipErrorInvalidValue`;
-5. 256K C2/C3/C4 pressure, restore correctness, sustained decode, host-memory
-   headroom, and pageable-versus-pinned performance;
-6. clean shutdown with no leftover `/dev/shm/vllm_offload_*.mmap` file.
+Image `sha256:53de70ab2b56132d41db5e120073f07965f6fb39dd3ac6296ff40e152a170781`
+used vLLM 0.28.0, PyTorch 2.12.0+rocm7.14, Triton 3.7.1, AITER 0.1.20,
+ROCm 7.14, and the normal MXFP4+DFlash K7 production profile.
 
-No 32/36 GiB configuration should be called production-qualified until those
-GPU gates are complete.
+- At 24 GiB, both TP ranks pinned the 25.76 GB shared mmap. The server became
+  healthy and eight fixed prompts were byte-identical across two repetitions.
+- At 36 GiB under `auto`, rank 1 returned code 1 and drained code 1. Rank 0
+  rolled its successful registration back, both workers selected pageable DMA,
+  and startup completed without a later `hipErrorInvalidValue`.
+- At 36 GiB under `required`, both workers failed startup with the explicit
+  `KV mmap registration is required` error.
+- The bounded 256K pressure gates completed 4/4 streams at 24 GiB/C4 and 6/6
+  at 36 GiB/C6, with zero allocation failures and zero preemptions.
+- A matched hot short-decode sweep showed no material pageable penalty because
+  it did not load KV from CPU: 36 GiB versus 24 GiB was -0.28% at C1, +0.54%
+  at C4, and +1.09% at C6.
+
+Full 256K results are capacity/queue measurements, not six simultaneous
+resident decodes. The 24 GiB/C4 wave admitted roughly two full streams at once
+and produced 3.64 aggregate cold-wave output TPS. The 36 GiB/C6 wave likewise
+staged roughly two at a time and produced 3.47 TPS. This makes 36 GiB/C6 useful
+as a safe admission ceiling, not a latency-oriented production recommendation.
+
+## Remaining native-offload limitations
+
+The exact-repeat restore control recorded substantial GPU-to-CPU stores but
+zero CPU-to-GPU loads and zero cached prompt tokens. The earlier 132K "resume"
+fixture was also not a true prefix extension because its suffix moved. Native
+offload restore is therefore **not qualified** by this work; do not interpret
+the capacity results as proof that old agent histories will reload from CPU.
+
+Docker shutdown also left the root-owned mmap file behind even though vLLM's
+region cleanup method can unlink it when called. After the container was fully
+stopped, the exact orphan was removed and `/dev/shm` returned to 48 GiB free.
+This is an upstream worker-lifecycle cleanup gap, not a registration-safety
+failure. Operators changing offload size must verify no vLLM process maps the
+file before removing a stale `/dev/shm/vllm_offload_*.mmap`.
+
+The production recommendation remains 24 GiB/C4 with `auto`: it pins on this
+host and retains the established 256K admission envelope. Values at or above
+30 GiB should be treated as slower pageable capacity experiments.

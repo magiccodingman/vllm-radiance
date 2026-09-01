@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import ctypes
 import ctypes.util
+import glob
 import json
 import mmap
 import multiprocessing as mp
@@ -25,6 +26,8 @@ from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+import numpy as np
 
 
 REPO = Path(__file__).resolve().parents[2]
@@ -45,12 +48,30 @@ class WorkerResult:
     post_register_runtime_ok: bool
     post_register_runtime_code: int
     cleanup_ok: bool
+    stage: str
     exception: str | None = None
 
 
 class HipRuntime:
     def __init__(self) -> None:
-        path = ctypes.util.find_library("amdhip64") or "libamdhip64.so"
+        candidates = [ctypes.util.find_library("amdhip64")]
+        rocm = os.environ.get("ROCM_PATH", "/opt/rocm")
+        candidates.extend(
+            [
+                f"{rocm}/lib/libamdhip64.so",
+                f"{rocm}/lib64/libamdhip64.so",
+                *glob.glob(f"{rocm}/core-*/lib/libamdhip64.so"),
+            ]
+        )
+        path = next(
+            (
+                candidate
+                for candidate in candidates
+                if candidate and Path(candidate).exists()
+            ),
+            None,
+        )
+        path = path or "libamdhip64.so"
         self.lib = ctypes.CDLL(path)
         self.lib.hipSetDevice.argtypes = [ctypes.c_int]
         self.lib.hipSetDevice.restype = ctypes.c_int
@@ -106,16 +127,20 @@ def worker(
     row_stride: int,
     chunk_bytes: int,
     mode: str,
+    prefault: str,
     barrier: Any,
+    barrier_timeout: float,
     result_queue: Any,
 ) -> None:
     mapped: mmap.mmap | None = None
+    stage = "runtime-init"
     try:
         runtime = HipRuntime()
         set_device_result = runtime.set_device(gpu)
         if set_device_result != 0:
             raise RuntimeError(f"hipSetDevice({gpu}) failed: {set_device_result}")
 
+        stage = "mmap"
         fd = os.open(path, os.O_RDWR)
         try:
             mapped = mmap.mmap(
@@ -127,18 +152,31 @@ def worker(
         finally:
             os.close(fd)
 
-        # Match the server's resident shared mmap. One worker pre-faulting the
-        # MAP_SHARED backing is sufficient; all workers then wait for it.
-        if rank == 0:
-            populate = getattr(mmap, "MADV_POPULATE_WRITE", 23)
-            mapped.madvise(populate)
-        barrier.wait()
+        # Match vLLM's distributed pre-fault: each worker makes a disjoint part
+        # of the MAP_SHARED backing resident before either worker registers the
+        # entire virtual mapping.
+        stage = "prefault"
+        if prefault == "distributed":
+            workers = 2
+            start = (total_size * rank // workers // mmap.PAGESIZE) * mmap.PAGESIZE
+            end = (
+                total_size
+                if rank == workers - 1
+                else (total_size * (rank + 1) // workers // mmap.PAGESIZE)
+                * mmap.PAGESIZE
+            )
+            resident = np.frombuffer(mapped, dtype=np.uint8)
+            resident[start:end:mmap.PAGESIZE] |= 0
+            del resident
+        stage = "prefault-barrier"
+        barrier.wait(timeout=barrier_timeout)
 
+        stage = "register"
         base_ptr = ctypes.addressof(ctypes.c_char.from_buffer(mapped))
         start = time.perf_counter()
         registration = None
         if mode == "simultaneous":
-            barrier.wait()
+            barrier.wait(timeout=barrier_timeout)
             registration = register_host_chunks(
                 runtime, base_ptr, total_size, row_stride, chunk_bytes
             )
@@ -148,14 +186,17 @@ def worker(
                     registration = register_host_chunks(
                         runtime, base_ptr, total_size, row_stride, chunk_bytes
                     )
-                barrier.wait()
+                barrier.wait(timeout=barrier_timeout)
         elapsed = time.perf_counter() - start
         assert registration is not None
 
         # All successful registrations remain live until both ranks have
         # completed, reproducing the shared-backing overlap at server startup.
-        barrier.wait()
+        stage = "post-register-barrier"
+        barrier.wait(timeout=barrier_timeout)
+        stage = "runtime-smoke"
         smoke_code = runtime.allocation_smoke()
+        stage = "cleanup"
         cleanup = rollback_host_chunks(runtime, base_ptr, registration.chunks)
         result_queue.put(
             asdict(
@@ -170,6 +211,7 @@ def worker(
                     post_register_runtime_ok=smoke_code == 0,
                     post_register_runtime_code=smoke_code,
                     cleanup_ok=cleanup.ok,
+                    stage="complete",
                 )
             )
         )
@@ -187,6 +229,7 @@ def worker(
                     post_register_runtime_ok=False,
                     post_register_runtime_code=-1,
                     cleanup_ok=False,
+                    stage=stage,
                     exception=repr(error),
                 )
             )
@@ -201,6 +244,7 @@ def run_case(
     size_gib: float,
     chunk_gib: float,
     mode: str,
+    prefault: str,
     gpus: list[int],
     timeout: float,
 ) -> dict[str, Any]:
@@ -228,7 +272,9 @@ def run_case(
                 row_stride,
                 chunk_bytes,
                 mode,
+                prefault,
                 barrier,
+                min(timeout, 120),
                 result_queue,
             ),
         )
@@ -239,8 +285,11 @@ def run_case(
         for process in processes:
             process.start()
         deadline = time.monotonic() + timeout
-        for process in processes:
-            process.join(max(deadline - time.monotonic(), 0))
+        while time.monotonic() < deadline and any(
+            process.is_alive() for process in processes
+        ):
+            for process in processes:
+                process.join(0.1)
         timed_out = [process for process in processes if process.is_alive()]
         for process in timed_out:
             process.terminate()
@@ -257,6 +306,7 @@ def run_case(
             "size_gib": size_gib,
             "chunk_gib": chunk_gib,
             "mode": mode,
+            "prefault": prefault,
             "elapsed_seconds": time.perf_counter() - started,
             "timed_out_ranks": [process.name for process in timed_out],
             "exit_codes": [process.exitcode for process in processes],
@@ -278,6 +328,12 @@ def parse_args() -> argparse.Namespace:
         nargs="+",
         choices=("sequential", "simultaneous"),
         default=["sequential", "simultaneous"],
+    )
+    parser.add_argument(
+        "--prefault",
+        choices=("none", "distributed"),
+        default="none",
+        help="Populate pages before registration; distributed matches vLLM residency",
     )
     parser.add_argument("--gpus", nargs="+", type=int, default=[0, 1])
     parser.add_argument("--shm-dir", type=Path, default=Path("/dev/shm"))
@@ -320,6 +376,7 @@ def main() -> None:
                     size_gib,
                     chunk_gib,
                     mode,
+                    args.prefault,
                     args.gpus,
                     args.timeout,
                 )
@@ -328,7 +385,7 @@ def main() -> None:
                 args.output.write_text(json.dumps(document, indent=2) + "\n")
                 print(
                     f"size={size_gib:g} GiB chunk={chunk_gib:g} GiB "
-                    f"mode={mode}: {case['workers']}"
+                    f"mode={mode} prefault={args.prefault}: {case['workers']}"
                 )
 
 

@@ -12,6 +12,31 @@ rather than searching for maximum throughput.
 - Every script verifies the required mounts before starting a container or run.
 - A run directory is never reused or overwritten.
 
+### ROCm host-registration probe
+
+`bin/probe_rocm_host_registration.py` isolates mmap registration from model
+loading. Run it only during a declared maintenance window and from inside the
+same root ROCm image used for serving. `--prefault distributed` makes both
+workers populate disjoint portions of the shared backing before registration,
+matching the vLLM worker layout. The probe uses bounded barriers, reports the
+stage of any failed worker, drains the HIP error on the same runtime handle,
+performs a post-failure HIP allocation, and rolls back every successful chunk.
+
+```bash
+python benchmarks/bin/probe_rocm_host_registration.py \
+  --confirm-maintenance \
+  --sizes-gib 24 28 30 32 36 \
+  --chunk-gib 0 8 \
+  --modes sequential simultaneous \
+  --prefault distributed \
+  --gpus 0 1 \
+  --output /path/to/new-immutable-run/probe.json
+```
+
+The dual-R9700 qualification and deployment decision are recorded in
+`docs/ROCM_KV_OFFLOAD_REGISTRATION.md`; do not infer a pin ceiling from a
+non-prefaulted host-shell probe.
+
 ## Profiles and matrix
 
 The default `quick` profile is the everyday A/B gate. It uses one server warmup,
