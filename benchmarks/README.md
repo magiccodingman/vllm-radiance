@@ -441,6 +441,43 @@ sampled multi-tool gate on the live DFlash server; source checks do not replace
 generation evidence. Exact v0.28 run IDs and comparison results are in
 `docs/V028_UPGRADE.md`.
 
+Generic deferred-tool wrappers need an additional nested-object gate. Their
+outer function typically declares `arguments` as an open object and carries a
+second tool's payload inside it. Run the GPU-free compiler check first:
+
+```bash
+python benchmarks/bin/check_qwen_open_object_schema.py
+```
+
+Then exercise streaming and non-streaming provider-wire serialization against
+the live candidate. The default is deterministic; `--temperature 1.0` restores
+the historical sampled settings, and `--no-preserve-thinking` qualifies the
+current client profile independently:
+
+```bash
+python benchmarks/bin/run_open_object_tool_gate.py \
+  --base-url http://127.0.0.1:8000/v1 \
+  --model Qwen3.8-27B \
+  --runs 5 \
+  --temperature 1.0 \
+  --capture-root benchmarks/results/qwen-open-object-preserve-thinking
+
+python benchmarks/bin/run_open_object_tool_gate.py \
+  --base-url http://127.0.0.1:8000/v1 \
+  --model Qwen3.8-27B \
+  --runs 5 \
+  --temperature 1.0 \
+  --no-preserve-thinking \
+  --capture-root benchmarks/results/qwen-open-object-no-preserve-thinking
+```
+
+The gate records synthetic requests, response headers/request IDs, raw SSE or
+non-streaming bodies, token IDs, and classifications in a new immutable run
+directory. It rejects missing/changed nested values and any fields flattened
+beside `arguments`. Named tool choices deliberately accept vLLM's `stop`
+finish-reason policy; the two-call fixture uses `required`, where vLLM returns
+`tool_calls`.
+
 When speculative JSON names a local `/models/...` drafter, the manifest now
 records that checkpoint separately from the target, including its Hugging Face
 revision, config SHA-256, weight size, and Hub content OID. This avoids an
