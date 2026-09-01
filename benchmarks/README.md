@@ -523,6 +523,36 @@ rereading multi-gigabyte weight files for every run.
 
 ## Results
 
+### Native CPU-KV restore gate and convoy baseline
+
+The v0.28 ROCm native-offload continuation adds two focused tools. They require
+the development reset endpoint (`VLLM_SERVER_DEV_MODE=1`) and must not enable
+that endpoint in production Compose.
+
+`run_kv_offload_restore_gate.py` performs cold fill, local GPU reuse, a
+local-only reset, and CPU restore with one deterministic meaningful prompt. It
+records exact output equality plus store/load bytes, time, external queries,
+and externally restored tokens. `run_kv_offload_baseline.py` primes a disjoint
+CPU prefix for each C1/C2/C4 case and releases simultaneous identical-prefix
+requests to expose transfer convoys without running a large throughput suite.
+
+```bash
+python benchmarks/bin/check_kv_offload_restore.py
+
+python benchmarks/bin/run_kv_offload_restore_gate.py \
+  --model Qwen3.8-27B \
+  --output benchmarks/results/$(date -u +%Y%m%dT%H%M%SZ)-restore/restore-gate.json
+
+python benchmarks/bin/run_kv_offload_baseline.py \
+  --model Qwen3.8-27B \
+  --output benchmarks/results/$(date -u +%Y%m%dT%H%M%SZ)-baseline/baseline.json
+```
+
+The first immutable baseline is
+`20260901T230544Z-dflash-cpu-kv-baseline-final2`; full configuration,
+correctness status, negative experiments, and results are in
+`docs/ROCM_KV_OFFLOAD_RESTORE_BASELINE.md`.
+
 Each timestamped directory beneath `runs/` includes exact manifests, resolved
 server commands, raw vLLM JSON, logs, two-second GPU/host telemetry, checksums,
 and consolidated CSV/JSON/Markdown summaries. `telemetry-summary.json` and

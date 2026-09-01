@@ -1,0 +1,245 @@
+{
+  "base_url": "http://127.0.0.1:8000",
+  "cases": [
+    {
+      "concurrency": 1,
+      "initial_reset_attempts": 1,
+      "local_reset_attempts": 1,
+      "prime": {
+        "elapsed_seconds": 4.292695814045146,
+        "text": "\n\n**Conclusion:** The provided text consists of a single sentence repeated approximately 300 times, containing no unique data or logical progression; therefore, no meaningful analysis of \"Radiance native KV offload,\" \"deterministic CPU-to-GPU restoration,\" or \"hybrid recurrent state\" can be derived from the",
+        "ttft_seconds": 3.7208556309342384,
+        "usage": {
+          "completion_tokens": 64,
+          "prompt_tokens": 16390,
+          "total_tokens": 16454
+        }
+      },
+      "prime_metrics_delta": {
+        "accepted_tokens": 44.0,
+        "draft_tokens": 147.0,
+        "external_hits": 0.0,
+        "external_queries": 16390.0,
+        "load_bytes": 0.0,
+        "load_ops": 0.0,
+        "load_time": 0.0,
+        "store_bytes": 1281196032.0,
+        "store_ops": 10.0,
+        "store_time": 0.056904287219047556
+      },
+      "prompt_characters": 93727,
+      "prompt_tokens": 16390,
+      "wave": {
+        "acceptance_rate": 0.29931972789115646,
+        "max_request_seconds": 1.384524431079626,
+        "max_ttft_seconds": 0.8136641310993582,
+        "median_request_seconds": 1.384524431079626,
+        "median_ttft_seconds": 0.8136641310993582,
+        "output_tokens": 64,
+        "output_tps": 46.21874822522619,
+        "request_throughput": 0.7221679410191593,
+        "responses": [
+          {
+            "elapsed_seconds": 1.384524431079626,
+            "text": "\n\n**Conclusion:** The provided text consists of a single sentence repeated approximately 300 times, containing no unique data or logical progression; therefore, no meaningful analysis of \"Radiance native KV offload,\" \"deterministic CPU-to-GPU restoration,\" or \"hybrid recurrent state\" can be derived from the",
+            "ttft_seconds": 0.8136641310993582,
+            "usage": {
+              "completion_tokens": 64,
+              "prompt_tokens": 16390,
+              "total_tokens": 16454
+            }
+          }
+        ],
+        "wall_seconds": 1.384719458175823
+      },
+      "wave_metrics_delta": {
+        "accepted_tokens": 44.0,
+        "draft_tokens": 147.0,
+        "external_hits": 13184.0,
+        "external_queries": 16390.0,
+        "load_bytes": 626589696.0,
+        "load_ops": 2.0,
+        "load_time": 0.022074163436889643,
+        "store_bytes": 0.0,
+        "store_ops": 0.0,
+        "store_time": 0.0
+      }
+    },
+    {
+      "concurrency": 2,
+      "initial_reset_attempts": 1,
+      "local_reset_attempts": 1,
+      "prime": {
+        "elapsed_seconds": 4.033047565957531,
+        "text": "\n\n**Conclusion:** Radiance native KV offload baseline c2 maintains deterministic CPU-to-GPU restoration and hybrid recurrent state consistency while effectively managing simultaneous request scheduling.",
+        "ttft_seconds": 3.7559922409709543,
+        "usage": {
+          "completion_tokens": 33,
+          "prompt_tokens": 16390,
+          "total_tokens": 16423
+        }
+      },
+      "prime_metrics_delta": {
+        "accepted_tokens": 22.0,
+        "draft_tokens": 70.0,
+        "external_hits": 0.0,
+        "external_queries": 16390.0,
+        "load_bytes": 0.0,
+        "load_ops": 0.0,
+        "load_time": 0.0,
+        "store_bytes": 1281196032.0,
+        "store_ops": 10.0,
+        "store_time": 0.05724285674095153
+      },
+      "prompt_characters": 93727,
+      "prompt_tokens": 16390,
+      "wave": {
+        "acceptance_rate": 0.4975369458128079,
+        "max_request_seconds": 2.161612687865272,
+        "max_ttft_seconds": 1.7140646239276975,
+        "median_request_seconds": 2.1210824009031057,
+        "median_ttft_seconds": 1.2671503884484991,
+        "output_tokens": 128,
+        "output_tps": 59.21176826880445,
+        "request_throughput": 0.9251838792000695,
+        "responses": [
+          {
+            "elapsed_seconds": 2.0805521139409393,
+            "text": "\n\n<think>\nThe user is asking me to analyze a repeated text block and return one concise conclusion. The text is a single sentence repeated many times: \"Radiance native KV offload baseline c2. Preserve this shared prefix while analyzing deterministic CPU-to-GPU restoration, hybrid recurrent state, and simultaneous request scheduling.\"\n\n",
+            "ttft_seconds": 0.8202361529693007,
+            "usage": {
+              "completion_tokens": 64,
+              "prompt_tokens": 16390,
+              "total_tokens": 16454
+            }
+          },
+          {
+            "elapsed_seconds": 2.161612687865272,
+            "text": "\n\n<think>\nThe user is asking me to analyze a repeated text block and return one concise conclusion. The text is a single sentence repeated hundreds of times: \"Radiance native KV offload baseline c2. Preserve this shared prefix while analyzing deterministic CPU-to-GPU restoration, hybrid recurrent state, and simultaneous request scheduling.\"",
+            "ttft_seconds": 1.7140646239276975,
+            "usage": {
+              "completion_tokens": 64,
+              "prompt_tokens": 16390,
+              "total_tokens": 16454
+            }
+          }
+        ],
+        "wall_seconds": 2.16173243499361
+      },
+      "wave_metrics_delta": {
+        "accepted_tokens": 101.0,
+        "draft_tokens": 203.0,
+        "external_hits": 13184.0,
+        "external_queries": 19596.0,
+        "load_bytes": 626589696.0,
+        "load_ops": 2.0,
+        "load_time": 0.022135523796081552,
+        "store_bytes": 160825344.0,
+        "store_ops": 2.0,
+        "store_time": 0.006482763051986695
+      }
+    },
+    {
+      "concurrency": 4,
+      "initial_reset_attempts": 1,
+      "local_reset_attempts": 1,
+      "prime": {
+        "elapsed_seconds": 4.163014272926375,
+        "text": "\n\n**Conclusion:** Radiance native KV offload baseline c4 achieves deterministic CPU-to-GPU restoration by maintaining a shared prefix that synchronizes hybrid recurrent state, thereby enabling efficient simultaneous request scheduling without state inconsistency.",
+        "ttft_seconds": 3.777383567066863,
+        "usage": {
+          "completion_tokens": 43,
+          "prompt_tokens": 16390,
+          "total_tokens": 16433
+        }
+      },
+      "prime_metrics_delta": {
+        "accepted_tokens": 28.0,
+        "draft_tokens": 98.0,
+        "external_hits": 0.0,
+        "external_queries": 16390.0,
+        "load_bytes": 0.0,
+        "load_ops": 0.0,
+        "load_time": 0.0,
+        "store_bytes": 1281196032.0,
+        "store_ops": 10.0,
+        "store_time": 0.05772594904899603
+      },
+      "prompt_characters": 93727,
+      "prompt_tokens": 16390,
+      "wave": {
+        "acceptance_rate": 0.28061224489795916,
+        "max_request_seconds": 3.9497308519203216,
+        "max_ttft_seconds": 3.3495155880227685,
+        "median_request_seconds": 3.756475021946244,
+        "median_ttft_seconds": 2.446412864490412,
+        "output_tokens": 170,
+        "output_tps": 43.03970814827722,
+        "request_throughput": 1.0126990152535817,
+        "responses": [
+          {
+            "elapsed_seconds": 3.654027421027422,
+            "text": "\n\n**Conclusion:** Radiance native KV offload baseline c4 achieves deterministic CPU-to-GPU restoration by maintaining a stable shared prefix, which enables efficient hybrid recurrent state management and reliable simultaneous request scheduling.",
+            "ttft_seconds": 0.8257114039734006,
+            "usage": {
+              "completion_tokens": 41,
+              "prompt_tokens": 16390,
+              "total_tokens": 16431
+            }
+          },
+          {
+            "elapsed_seconds": 3.787408336997032,
+            "text": "\n\n**Conclusion:** Radiance native KV offload baseline c4 achieves deterministic CPU-to-GPU restoration by maintaining a shared prefix that synchronizes hybrid recurrent state with simultaneous request scheduling, ensuring consistent state recovery and efficient concurrent processing.",
+            "ttft_seconds": 2.446426925016567,
+            "usage": {
+              "completion_tokens": 46,
+              "prompt_tokens": 16390,
+              "total_tokens": 16436
+            }
+          },
+          {
+            "elapsed_seconds": 3.7255417068954557,
+            "text": "\n\n**Conclusion:** Radiance native KV offload baseline c4 maintains deterministic CPU-to-GPU restoration and hybrid recurrent state consistency while supporting simultaneous request scheduling.",
+            "ttft_seconds": 2.4463988039642572,
+            "usage": {
+              "completion_tokens": 32,
+              "prompt_tokens": 16390,
+              "total_tokens": 16422
+            }
+          },
+          {
+            "elapsed_seconds": 3.9497308519203216,
+            "text": "\n\n**Conclusion:** The provided text consists of a single sentence repeated approximately 300 times, containing no unique data or logical progression; therefore, no substantive analysis of KV offload, recurrent state, or scheduling can be derived from the input.",
+            "ttft_seconds": 3.3495155880227685,
+            "usage": {
+              "completion_tokens": 51,
+              "prompt_tokens": 16390,
+              "total_tokens": 16441
+            }
+          }
+        ],
+        "wall_seconds": 3.949840910034254
+      },
+      "wave_metrics_delta": {
+        "accepted_tokens": 110.0,
+        "draft_tokens": 392.0,
+        "external_hits": 13184.0,
+        "external_queries": 26008.0,
+        "load_bytes": 626589696.0,
+        "load_ops": 2.0,
+        "load_time": 0.02212608623504639,
+        "store_bytes": 160825344.0,
+        "store_ops": 2.0,
+        "store_time": 0.006053518056869489
+      }
+    }
+  ],
+  "finished_unix": 1788303966.422114,
+  "max_tokens": 64,
+  "model": "Qwen3.8-27B",
+  "prompt_repetitions": 512,
+  "schema": 1,
+  "seed": 17,
+  "started_unix": 1788303944.8475587,
+  "temperature": 0
+}

@@ -2,8 +2,8 @@
 
 Status: implementation, standalone dual-R9700 registration matrix, patched-
 image startup, correctness, and bounded long-context pressure gates complete.
-The host-registration failure is fixed. Native-offload prefix restore and
-abrupt-container mmap cleanup remain separately documented limitations.
+The host-registration failure is fixed. Native restore and mmap lifecycle work
+continued in `docs/ROCM_KV_OFFLOAD_RESTORE_BASELINE.md`.
 
 Development branch: `agent/rocm-kv-offload-registration-fix`, based on merged
 `main` commit `5107c29` and pinned vLLM `2cf0a6915ce544dc493a0990f2ea38d81601128a`
@@ -156,20 +156,17 @@ and produced 3.64 aggregate cold-wave output TPS. The 36 GiB/C6 wave likewise
 staged roughly two at a time and produced 3.47 TPS. This makes 36 GiB/C6 useful
 as a safe admission ceiling, not a latency-oriented production recommendation.
 
-## Remaining native-offload limitations
+## Superseded native-offload limitations
 
-The exact-repeat restore control recorded substantial GPU-to-CPU stores but
-zero CPU-to-GPU loads and zero cached prompt tokens. The earlier 132K "resume"
-fixture was also not a true prefix extension because its suffix moved. Native
-offload restore is therefore **not qualified** by this work; do not interpret
-the capacity results as proof that old agent histories will reload from CPU.
+This registration checkpoint originally recorded zero CPU hits and a leaked
+named mmap. Both root causes were repaired and requalified by the continuation
+report in `docs/ROCM_KV_OFFLOAD_RESTORE_BASELINE.md`. Keep this section as the
+historical observation that motivated that work, not as current behavior.
 
-Docker shutdown also left the root-owned mmap file behind even though vLLM's
-region cleanup method can unlink it when called. After the container was fully
-stopped, the exact orphan was removed and `/dev/shm` returned to 48 GiB free.
-This is an upstream worker-lifecycle cleanup gap, not a registration-safety
-failure. Operators changing offload size must verify no vLLM process maps the
-file before removing a stale `/dev/shm/vllm_offload_*.mmap`.
+The merged upstream unlink-after-rendezvous lifecycle repair is now backported,
+and the selective DFlash/MTP group annotation restores real CPU hits. DFlash
+strict equivalence remains unqualified for a separate speculative/APC reason;
+non-spec and MTP pass the strict restore gate.
 
 The production recommendation remains 24 GiB/C4 with `auto`: it pins on this
 host and retains the established 256K admission envelope. Values at or above
