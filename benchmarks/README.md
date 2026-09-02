@@ -553,6 +553,37 @@ The first immutable baseline is
 correctness status, negative experiments, and results are in
 `docs/ROCM_KV_OFFLOAD_RESTORE_BASELINE.md`.
 
+### 128K/256K cache-placement pressure matrix
+
+`run_kv_offload_long_context.py` builds exact-token, disjoint prompts and runs
+a cold wave, immediate repeat, and optional forced CPU restore for each
+context/concurrency pair. It records streaming TTFT/TPOT, end-to-end and decode
+TPS, request queueing, preemptions, exact local-compute/local-cache/external-KV
+token counters, CPU transfer bytes/time, response equality, and a Prometheus
+trace. The raw phase name `gpu_hit` means immediate repeat; always use its
+source counters to determine whether it actually hit GPU, restored from CPU,
+or recomputed.
+
+```bash
+python benchmarks/bin/run_kv_offload_long_context.py \
+  --model Qwen3.8-27B \
+  --tokenizer /models/Qwen3.8-27B-Quark-AWQ-MXFP4-amd \
+  --output-dir benchmarks/results/$(date -u +%Y%m%dT%H%M%SZ)-kv-long \
+  --label offload24 \
+  --cases 131072:1 131072:2 131072:4 262144:1 262144:2 262144:3 262144:4 \
+  --max-tokens 256 --cpu-restore --continue-on-error
+```
+
+The first matched no-offload/24-GiB runs are
+`20260901T234819Z-kv-long-allgpu` and
+`20260902T004340Z-kv-long-offload24`. The complete scoreboard, capacity
+boundary, metric semantics, and reproduction manifest are in
+`docs/ROCM_KV_OFFLOAD_LONG_CONTEXT_BASELINE.md`.
+
+Each committed run contains a readable `summary.json` plus exact zstd-compressed
+`results.json.zst` and `telemetry.jsonl.zst` evidence. Recover the raw stream
+with, for example, `zstd -dc results.json.zst > results.json`.
+
 Each timestamped directory beneath `runs/` includes exact manifests, resolved
 server commands, raw vLLM JSON, logs, two-second GPU/host telemetry, checksums,
 and consolidated CSV/JSON/Markdown summaries. `telemetry-summary.json` and

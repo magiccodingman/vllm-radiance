@@ -175,3 +175,8 @@ This checkpoint repairs restore, shared-memory cleanup, and convoy scheduling.
 It does not tune offload size, transfer chunking, prefetch, NUMA placement, or
 concurrency policy. The established 24 GiB/C4 production recommendation remains
 unchanged until the next phase compares those controls against this baseline.
+
+That next matched 128K/256K cache-placement matrix is now recorded in
+`docs/ROCM_KV_OFFLOAD_LONG_CONTEXT_BASELINE.md`. It preserves this repair gate
+as the lower-level reference and adds cold, immediate-repeat, and forced-restore
+pressure results without changing the qualification boundary above.
