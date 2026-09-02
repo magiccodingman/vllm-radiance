@@ -1,0 +1,929 @@
+{
+  "schema": 1,
+  "label": "allgpu-control",
+  "started_unix": 1788306501.0687149,
+  "finished_unix": 1788309485.1595867,
+  "complete": true,
+  "base_url": "http://127.0.0.1:8000",
+  "model": "Qwen3.8-27B",
+  "tokenizer": "/nvme/lexar-2/ai/models/Qwen3.8-27B-Quark-AWQ-MXFP4-amd",
+  "temperature": 0,
+  "seed": 17,
+  "max_tokens": 256,
+  "cpu_restore": false,
+  "post_restore_gpu_hit": false,
+  "requested_cases": [
+    "131072:1",
+    "131072:2",
+    "131072:4",
+    "262144:1",
+    "262144:2",
+    "262144:3",
+    "262144:4"
+  ],
+  "cases": [
+    {
+      "name": "ctx131072-c1",
+      "total_context": 131072,
+      "target_input_tokens": 130816,
+      "concurrency": 1,
+      "status": "complete",
+      "error": null,
+      "prompts": [
+        {
+          "actual_input_tokens": 130816,
+          "characters": 616261,
+          "index": 0,
+          "sha256": "7b643226a3f67b27dae2d2e434016a907f8ffb5cd8aec7cef2d90f218c50a601"
+        }
+      ],
+      "external_reset_attempts": 1,
+      "local_reset_attempts": null,
+      "output_equivalence": {
+        "gpu_hit": {
+          "all_byte_equal": true,
+          "count_matches": true,
+          "per_request_byte_equal": [
+            true
+          ]
+        }
+      },
+      "phases": {
+        "cold": {
+          "wall_seconds": 47.95025619887747,
+          "request_throughput": 0.020854945922549842,
+          "output_tps_end_to_end": 5.3388661561727595,
+          "total_token_tps_end_to_end": 2733.499471960453,
+          "prompt_tps_to_last_first_token": 2784.7842848572955,
+          "prompt_tokens": 130816,
+          "output_tokens": 256,
+          "median_ttft_seconds": 46.97527227201499,
+          "max_ttft_seconds": 46.97527227201499,
+          "median_tpot_seconds": 0.0038231314077754232,
+          "median_decode_tps": 261.56568878752535,
+          "median_request_seconds": 47.95017078099772,
+          "max_request_seconds": 47.95017078099772,
+          "acceptance_rate": 1.0,
+          "metrics_delta": {
+            "accepted_tokens": 224.0,
+            "draft_tokens": 224.0,
+            "external_hits": 0.0,
+            "external_queries": 0.0,
+            "generation_tokens": 256.0,
+            "load_bytes": 0.0,
+            "load_ops": 0.0,
+            "load_time": 0.0,
+            "preemptions": 0.0,
+            "prefix_hits": 0.0,
+            "prefix_queries": 130816.0,
+            "prompt_external_transfer": 0.0,
+            "prompt_local_cache": 0.0,
+            "prompt_local_compute": 130816.0,
+            "prompt_tokens": 130816.0,
+            "store_bytes": 0.0,
+            "store_ops": 0.0,
+            "store_time": 0.0
+          },
+          "monitor_summary": {
+            "max_cpu_cache_read_usage": 0.0,
+            "max_cpu_cache_usage": 0.0,
+            "max_cpu_cache_write_usage": 0.0,
+            "max_gpu_cache_usage": 0.19691470054446458,
+            "max_running": 1.0,
+            "max_waiting": 0.0,
+            "max_waiting_capacity": 0.0
+          }
+        },
+        "gpu_hit": {
+          "wall_seconds": 2.4369899549055845,
+          "request_throughput": 0.4103422740775075,
+          "output_tps_end_to_end": 105.04762216384192,
+          "total_token_tps_end_to_end": 53784.382547887064,
+          "prompt_tps_to_last_first_token": 89123.54315198062,
+          "prompt_tokens": 130816,
+          "output_tokens": 256,
+          "median_ttft_seconds": 1.467805199092254,
+          "max_ttft_seconds": 1.467805199092254,
+          "median_tpot_seconds": 0.0038004526585413544,
+          "median_decode_tps": 263.12655092612266,
+          "median_request_seconds": 2.4369206270202994,
+          "max_request_seconds": 2.4369206270202994,
+          "acceptance_rate": 1.0,
+          "metrics_delta": {
+            "accepted_tokens": 224.0,
+            "draft_tokens": 224.0,
+            "external_hits": 0.0,
+            "external_queries": 0.0,
+            "generation_tokens": 256.0,
+            "load_bytes": 0.0,
+            "load_ops": 0.0,
+            "load_time": 0.0,
+            "preemptions": 0.0,
+            "prefix_hits": 128544.0,
+            "prefix_queries": 130816.0,
+            "prompt_external_transfer": 0.0,
+            "prompt_local_cache": 128544.0,
+            "prompt_local_compute": 2272.0,
+            "prompt_tokens": 130816.0,
+            "store_bytes": 0.0,
+            "store_ops": 0.0,
+            "store_time": 0.0
+          },
+          "monitor_summary": {
+            "max_cpu_cache_read_usage": 0.0,
+            "max_cpu_cache_usage": 0.0,
+            "max_cpu_cache_write_usage": 0.0,
+            "max_gpu_cache_usage": 0.19056261343012704,
+            "max_running": 1.0,
+            "max_waiting": 0.0,
+            "max_waiting_capacity": 0.0
+          }
+        }
+      }
+    },
+    {
+      "name": "ctx131072-c2",
+      "total_context": 131072,
+      "target_input_tokens": 130816,
+      "concurrency": 2,
+      "status": "complete",
+      "error": null,
+      "prompts": [
+        {
+          "actual_input_tokens": 130816,
+          "characters": 616261,
+          "index": 0,
+          "sha256": "b4b461560ab38b5d8b708160049365660232e80e0f0edc7cba918a3cad87a37a"
+        },
+        {
+          "actual_input_tokens": 130816,
+          "characters": 616261,
+          "index": 1,
+          "sha256": "47acfee5c8f6f10c018118fe9f4caf6a9739c0bc5ea1a09f8a23365d4759336a"
+        }
+      ],
+      "external_reset_attempts": 1,
+      "local_reset_attempts": null,
+      "output_equivalence": {
+        "gpu_hit": {
+          "all_byte_equal": true,
+          "count_matches": true,
+          "per_request_byte_equal": [
+            true,
+            true
+          ]
+        }
+      },
+      "phases": {
+        "cold": {
+          "wall_seconds": 97.26445885095745,
+          "request_throughput": 0.020562495526394556,
+          "output_tps_end_to_end": 5.2639988547570065,
+          "total_token_tps_end_to_end": 2695.1674136355873,
+          "prompt_tps_to_last_first_token": 2717.250669630907,
+          "prompt_tokens": 261632,
+          "output_tokens": 512,
+          "median_ttft_seconds": 72.23280982405413,
+          "max_ttft_seconds": 96.28555912198499,
+          "median_tpot_seconds": 0.07312502413942461,
+          "median_decode_tps": 13.675209160865908,
+          "median_request_seconds": 90.8796909796074,
+          "max_request_seconds": 97.26433786400594,
+          "acceptance_rate": 1.0,
+          "metrics_delta": {
+            "accepted_tokens": 448.0,
+            "draft_tokens": 448.0,
+            "external_hits": 0.0,
+            "external_queries": 0.0,
+            "generation_tokens": 512.0,
+            "load_bytes": 0.0,
+            "load_ops": 0.0,
+            "load_time": 0.0,
+            "preemptions": 0.0,
+            "prefix_hits": 0.0,
+            "prefix_queries": 261632.0,
+            "prompt_external_transfer": 0.0,
+            "prompt_local_cache": 0.0,
+            "prompt_local_compute": 261632.0,
+            "prompt_tokens": 261632.0,
+            "store_bytes": 0.0,
+            "store_ops": 0.0,
+            "store_time": 0.0
+          },
+          "monitor_summary": {
+            "max_cpu_cache_read_usage": 0.0,
+            "max_cpu_cache_usage": 0.0,
+            "max_cpu_cache_write_usage": 0.0,
+            "max_gpu_cache_usage": 0.36025408348457355,
+            "max_running": 2.0,
+            "max_waiting": 1.0,
+            "max_waiting_capacity": 1.0
+          }
+        },
+        "gpu_hit": {
+          "wall_seconds": 3.9887906520161778,
+          "request_throughput": 0.5014051060787255,
+          "output_tps_end_to_end": 128.35970715615372,
+          "total_token_tps_end_to_end": 65720.1700639507,
+          "prompt_tps_to_last_first_token": 94558.57242394287,
+          "prompt_tokens": 261632,
+          "output_tokens": 512,
+          "median_ttft_seconds": 2.552055871579796,
+          "max_ttft_seconds": 2.766877643065527,
+          "median_tpot_seconds": 0.005573189642974267,
+          "median_decode_tps": 179.43046335425362,
+          "median_request_seconds": 3.973219230538234,
+          "max_request_seconds": 3.9886552339885384,
+          "acceptance_rate": 1.0,
+          "metrics_delta": {
+            "accepted_tokens": 448.0,
+            "draft_tokens": 448.0,
+            "external_hits": 0.0,
+            "external_queries": 0.0,
+            "generation_tokens": 512.0,
+            "load_bytes": 0.0,
+            "load_ops": 0.0,
+            "load_time": 0.0,
+            "preemptions": 0.0,
+            "prefix_hits": 257088.0,
+            "prefix_queries": 261632.0,
+            "prompt_external_transfer": 0.0,
+            "prompt_local_cache": 257088.0,
+            "prompt_local_compute": 4544.0,
+            "prompt_tokens": 261632.0,
+            "store_bytes": 0.0,
+            "store_ops": 0.0,
+            "store_time": 0.0
+          },
+          "monitor_summary": {
+            "max_cpu_cache_read_usage": 0.0,
+            "max_cpu_cache_usage": 0.0,
+            "max_cpu_cache_write_usage": 0.0,
+            "max_gpu_cache_usage": 0.39473684210526316,
+            "max_running": 2.0,
+            "max_waiting": 0.0,
+            "max_waiting_capacity": 0.0
+          }
+        }
+      }
+    },
+    {
+      "name": "ctx131072-c4",
+      "total_context": 131072,
+      "target_input_tokens": 130816,
+      "concurrency": 4,
+      "status": "complete",
+      "error": null,
+      "prompts": [
+        {
+          "actual_input_tokens": 130816,
+          "characters": 616261,
+          "index": 0,
+          "sha256": "b6e772f51af5f169e34b02ba3a1c0e53b092e6ef8647c4ef40ad70fe05388b92"
+        },
+        {
+          "actual_input_tokens": 130816,
+          "characters": 616261,
+          "index": 1,
+          "sha256": "8b78d1fefac9229f405a53e53baed3973d415c53b0dc25b1cde2c1807f4307cb"
+        },
+        {
+          "actual_input_tokens": 130816,
+          "characters": 616261,
+          "index": 2,
+          "sha256": "6da1801b3175eca88693ad18e705fed2767f02fee67255e643590a5d85543495"
+        },
+        {
+          "actual_input_tokens": 130816,
+          "characters": 616261,
+          "index": 3,
+          "sha256": "ecf1452bd1d8a9251227078390718e7e47e688ce2bd5603020c0e705b216ccca"
+        }
+      ],
+      "external_reset_attempts": 1,
+      "local_reset_attempts": null,
+      "output_equivalence": {
+        "gpu_hit": {
+          "all_byte_equal": true,
+          "count_matches": true,
+          "per_request_byte_equal": [
+            true,
+            true,
+            true,
+            true
+          ]
+        }
+      },
+      "phases": {
+        "cold": {
+          "wall_seconds": 194.98494157008827,
+          "request_throughput": 0.020514404690898557,
+          "output_tps_end_to_end": 5.251687600870031,
+          "total_token_tps_end_to_end": 2688.8640516454557,
+          "prompt_tps_to_last_first_token": 2697.1658256817545,
+          "prompt_tokens": 523264,
+          "output_tokens": 1024,
+          "median_ttft_seconds": 121.54718840890564,
+          "max_ttft_seconds": 194.00512753706425,
+          "median_tpot_seconds": 0.1429317287918107,
+          "median_decode_tps": 6.996347196335703,
+          "median_request_seconds": 158.22418619145174,
+          "max_request_seconds": 194.98476591310464,
+          "acceptance_rate": 1.0,
+          "metrics_delta": {
+            "accepted_tokens": 896.0,
+            "draft_tokens": 896.0,
+            "external_hits": 0.0,
+            "external_queries": 0.0,
+            "generation_tokens": 1024.0,
+            "load_bytes": 0.0,
+            "load_ops": 0.0,
+            "load_time": 0.0,
+            "preemptions": 0.0,
+            "prefix_hits": 0.0,
+            "prefix_queries": 523264.0,
+            "prompt_external_transfer": 0.0,
+            "prompt_local_cache": 0.0,
+            "prompt_local_compute": 523264.0,
+            "prompt_tokens": 523264.0,
+            "store_bytes": 0.0,
+            "store_ops": 0.0,
+            "store_time": 0.0
+          },
+          "monitor_summary": {
+            "max_cpu_cache_read_usage": 0.0,
+            "max_cpu_cache_usage": 0.0,
+            "max_cpu_cache_write_usage": 0.0,
+            "max_gpu_cache_usage": 0.3620689655172413,
+            "max_running": 2.0,
+            "max_waiting": 3.0,
+            "max_waiting_capacity": 3.0
+          }
+        },
+        "gpu_hit": {
+          "wall_seconds": 101.27828160999343,
+          "request_throughput": 0.03949514087732417,
+          "output_tps_end_to_end": 10.110756064594987,
+          "total_token_tps_end_to_end": 5176.707105072634,
+          "prompt_tps_to_last_first_token": 5217.334440464128,
+          "prompt_tokens": 523264,
+          "output_tokens": 1024,
+          "median_ttft_seconds": 28.475680965464562,
+          "max_ttft_seconds": 100.29335975507274,
+          "median_tpot_seconds": 0.14621148982733562,
+          "median_decode_tps": 6.839407772815407,
+          "median_request_seconds": 66.09766723297071,
+          "max_request_seconds": 101.27810937305912,
+          "acceptance_rate": 1.0,
+          "metrics_delta": {
+            "accepted_tokens": 896.0,
+            "draft_tokens": 896.0,
+            "external_hits": 0.0,
+            "external_queries": 0.0,
+            "generation_tokens": 1024.0,
+            "load_bytes": 0.0,
+            "load_ops": 0.0,
+            "load_time": 0.0,
+            "preemptions": 0.0,
+            "prefix_hits": 257088.0,
+            "prefix_queries": 523264.0,
+            "prompt_external_transfer": 0.0,
+            "prompt_local_cache": 257088.0,
+            "prompt_local_compute": 266176.0,
+            "prompt_tokens": 523264.0,
+            "store_bytes": 0.0,
+            "store_ops": 0.0,
+            "store_time": 0.0
+          },
+          "monitor_summary": {
+            "max_cpu_cache_read_usage": 0.0,
+            "max_cpu_cache_usage": 0.0,
+            "max_cpu_cache_write_usage": 0.0,
+            "max_gpu_cache_usage": 0.5508166969147006,
+            "max_running": 3.0,
+            "max_waiting": 1.0,
+            "max_waiting_capacity": 1.0
+          }
+        }
+      }
+    },
+    {
+      "name": "ctx262144-c1",
+      "total_context": 262144,
+      "target_input_tokens": 261888,
+      "concurrency": 1,
+      "status": "complete",
+      "error": null,
+      "prompts": [
+        {
+          "actual_input_tokens": 261888,
+          "characters": 1233777,
+          "index": 0,
+          "sha256": "db88397c6ef8c8ceeb4a672f73f113ff59bbb0a630ab7b8fa34da928a4656a1d"
+        }
+      ],
+      "external_reset_attempts": 1,
+      "local_reset_attempts": null,
+      "output_equivalence": {
+        "gpu_hit": {
+          "all_byte_equal": true,
+          "count_matches": true,
+          "per_request_byte_equal": [
+            true
+          ]
+        }
+      },
+      "phases": {
+        "cold": {
+          "wall_seconds": 138.48552236682735,
+          "request_throughput": 0.007220971426537643,
+          "output_tps_end_to_end": 1.8485686851936367,
+          "total_token_tps_end_to_end": 1892.934333638284,
+          "prompt_tps_to_last_first_token": 1906.307858956442,
+          "prompt_tokens": 261888,
+          "output_tokens": 256,
+          "median_ttft_seconds": 137.37969907093793,
+          "max_ttft_seconds": 137.37969907093793,
+          "median_tpot_seconds": 0.004336291949684714,
+          "median_decode_tps": 230.61177882008354,
+          "median_request_seconds": 138.48545351810753,
+          "max_request_seconds": 138.48545351810753,
+          "acceptance_rate": 1.0,
+          "metrics_delta": {
+            "accepted_tokens": 223.0,
+            "draft_tokens": 223.0,
+            "external_hits": 0.0,
+            "external_queries": 0.0,
+            "generation_tokens": 256.0,
+            "load_bytes": 0.0,
+            "load_ops": 0.0,
+            "load_time": 0.0,
+            "preemptions": 0.0,
+            "prefix_hits": 0.0,
+            "prefix_queries": 261888.0,
+            "prompt_external_transfer": 0.0,
+            "prompt_local_cache": 0.0,
+            "prompt_local_compute": 261888.0,
+            "prompt_tokens": 261888.0,
+            "store_bytes": 0.0,
+            "store_ops": 0.0,
+            "store_time": 0.0
+          },
+          "monitor_summary": {
+            "max_cpu_cache_read_usage": 0.0,
+            "max_cpu_cache_usage": 0.0,
+            "max_cpu_cache_write_usage": 0.0,
+            "max_gpu_cache_usage": 0.3421052631578947,
+            "max_running": 1.0,
+            "max_waiting": 0.0,
+            "max_waiting_capacity": 0.0
+          }
+        },
+        "gpu_hit": {
+          "wall_seconds": 4.228641336085275,
+          "request_throughput": 0.23648257691340743,
+          "output_tps_end_to_end": 60.5395396898323,
+          "total_token_tps_end_to_end": 61992.48864238828,
+          "prompt_tps_to_last_first_token": 83819.749051069,
+          "prompt_tokens": 261888,
+          "output_tokens": 256,
+          "median_ttft_seconds": 3.124418803025037,
+          "max_ttft_seconds": 3.124418803025037,
+          "median_tpot_seconds": 0.004330034329391577,
+          "median_decode_tps": 230.9450512233034,
+          "median_request_seconds": 4.228577557019889,
+          "max_request_seconds": 4.228577557019889,
+          "acceptance_rate": 1.0,
+          "metrics_delta": {
+            "accepted_tokens": 223.0,
+            "draft_tokens": 223.0,
+            "external_hits": 0.0,
+            "external_queries": 0.0,
+            "generation_tokens": 256.0,
+            "load_bytes": 0.0,
+            "load_ops": 0.0,
+            "load_time": 0.0,
+            "preemptions": 0.0,
+            "prefix_hits": 258736.0,
+            "prefix_queries": 261888.0,
+            "prompt_external_transfer": 0.0,
+            "prompt_local_cache": 258736.0,
+            "prompt_local_compute": 3152.0,
+            "prompt_tokens": 261888.0,
+            "store_bytes": 0.0,
+            "store_ops": 0.0,
+            "store_time": 0.0
+          },
+          "monitor_summary": {
+            "max_cpu_cache_read_usage": 0.0,
+            "max_cpu_cache_usage": 0.0,
+            "max_cpu_cache_write_usage": 0.0,
+            "max_gpu_cache_usage": 0.3411978221415608,
+            "max_running": 1.0,
+            "max_waiting": 0.0,
+            "max_waiting_capacity": 0.0
+          }
+        }
+      }
+    },
+    {
+      "name": "ctx262144-c2",
+      "total_context": 262144,
+      "target_input_tokens": 261888,
+      "concurrency": 2,
+      "status": "complete",
+      "error": null,
+      "prompts": [
+        {
+          "actual_input_tokens": 261888,
+          "characters": 1233777,
+          "index": 0,
+          "sha256": "b8e398977b7d6d22f359aa59150a46c4441c2d76db4dab5ba971222542e000f1"
+        },
+        {
+          "actual_input_tokens": 261888,
+          "characters": 1233777,
+          "index": 1,
+          "sha256": "e097b712490cd6c67a3d74342fd5b9e1a253a3c82855b40fc906f5733562778a"
+        }
+      ],
+      "external_reset_attempts": 1,
+      "local_reset_attempts": null,
+      "output_equivalence": {
+        "gpu_hit": {
+          "all_byte_equal": true,
+          "count_matches": true,
+          "per_request_byte_equal": [
+            true,
+            true
+          ]
+        }
+      },
+      "phases": {
+        "cold": {
+          "wall_seconds": 276.006700924132,
+          "request_throughput": 0.007246200883179842,
+          "output_tps_end_to_end": 1.8550274260940396,
+          "total_token_tps_end_to_end": 1899.5480843202965,
+          "prompt_tps_to_last_first_token": 1905.3318062193362,
+          "prompt_tokens": 523776,
+          "output_tokens": 512,
+          "median_ttft_seconds": 206.24923293245956,
+          "max_ttft_seconds": 274.9001503519248,
+          "median_tpot_seconds": 0.07387506584865132,
+          "median_decode_tps": 13.536366952940675,
+          "median_request_seconds": 225.08737472386565,
+          "max_request_seconds": 276.0066328148823,
+          "acceptance_rate": 1.0,
+          "metrics_delta": {
+            "accepted_tokens": 446.0,
+            "draft_tokens": 446.0,
+            "external_hits": 0.0,
+            "external_queries": 0.0,
+            "generation_tokens": 512.0,
+            "load_bytes": 0.0,
+            "load_ops": 0.0,
+            "load_time": 0.0,
+            "preemptions": 0.0,
+            "prefix_hits": 0.0,
+            "prefix_queries": 523776.0,
+            "prompt_external_transfer": 0.0,
+            "prompt_local_cache": 0.0,
+            "prompt_local_compute": 523776.0,
+            "prompt_tokens": 523776.0,
+            "store_bytes": 0.0,
+            "store_ops": 0.0,
+            "store_time": 0.0
+          },
+          "monitor_summary": {
+            "max_cpu_cache_read_usage": 0.0,
+            "max_cpu_cache_usage": 0.0,
+            "max_cpu_cache_write_usage": 0.0,
+            "max_gpu_cache_usage": 0.5063520871143375,
+            "max_running": 2.0,
+            "max_waiting": 1.0,
+            "max_waiting_capacity": 1.0
+          }
+        },
+        "gpu_hit": {
+          "wall_seconds": 141.96534250001423,
+          "request_throughput": 0.014087945443443701,
+          "output_tps_end_to_end": 3.6065140335215875,
+          "total_token_tps_end_to_end": 3693.0703703261056,
+          "prompt_tps_to_last_first_token": 3718.385170367466,
+          "prompt_tokens": 523776,
+          "output_tokens": 512,
+          "median_ttft_seconds": 72.23956205497961,
+          "max_ttft_seconds": 140.86114697693847,
+          "median_tpot_seconds": 0.07375947418029183,
+          "median_decode_tps": 13.557580380191961,
+          "median_request_seconds": 91.04822797095403,
+          "max_request_seconds": 141.965263630962,
+          "acceptance_rate": 0.9977628635346756,
+          "metrics_delta": {
+            "accepted_tokens": 446.0,
+            "draft_tokens": 447.0,
+            "external_hits": 0.0,
+            "external_queries": 0.0,
+            "generation_tokens": 512.0,
+            "load_bytes": 0.0,
+            "load_ops": 0.0,
+            "load_time": 0.0,
+            "preemptions": 0.0,
+            "prefix_hits": 258736.0,
+            "prefix_queries": 523776.0,
+            "prompt_external_transfer": 0.0,
+            "prompt_local_cache": 258736.0,
+            "prompt_local_compute": 265040.0,
+            "prompt_tokens": 523776.0,
+            "store_bytes": 0.0,
+            "store_ops": 0.0,
+            "store_time": 0.0
+          },
+          "monitor_summary": {
+            "max_cpu_cache_read_usage": 0.0,
+            "max_cpu_cache_usage": 0.0,
+            "max_cpu_cache_write_usage": 0.0,
+            "max_gpu_cache_usage": 0.5063520871143375,
+            "max_running": 2.0,
+            "max_waiting": 0.0,
+            "max_waiting_capacity": 0.0
+          }
+        }
+      }
+    },
+    {
+      "name": "ctx262144-c3",
+      "total_context": 262144,
+      "target_input_tokens": 261888,
+      "concurrency": 3,
+      "status": "complete",
+      "error": null,
+      "prompts": [
+        {
+          "actual_input_tokens": 261888,
+          "characters": 1233777,
+          "index": 0,
+          "sha256": "7a93b85b0d7dcec7f4a0c93b6c6737d9b900bd555b3f33d3c927aa0f1e83f130"
+        },
+        {
+          "actual_input_tokens": 261888,
+          "characters": 1233777,
+          "index": 1,
+          "sha256": "1d323d789a5a5b77b5fbccf5f46ef1008e2465e969c86c408f44f47081248307"
+        },
+        {
+          "actual_input_tokens": 261888,
+          "characters": 1233777,
+          "index": 2,
+          "sha256": "3919f8c9e89375ba34392bb07c9d95b93ecea593c7ea070f3a371c3baa8b58d3"
+        }
+      ],
+      "external_reset_attempts": 1,
+      "local_reset_attempts": null,
+      "output_equivalence": {
+        "gpu_hit": {
+          "all_byte_equal": true,
+          "count_matches": true,
+          "per_request_byte_equal": [
+            true,
+            true,
+            true
+          ]
+        }
+      },
+      "phases": {
+        "cold": {
+          "wall_seconds": 413.8597438528668,
+          "request_throughput": 0.00724883259258611,
+          "output_tps_end_to_end": 1.855701143702044,
+          "total_token_tps_end_to_end": 1900.2379711508931,
+          "prompt_tps_to_last_first_token": 1903.5666556437495,
+          "prompt_tokens": 785664,
+          "output_tokens": 768,
+          "median_ttft_seconds": 274.92501707887277,
+          "max_ttft_seconds": 412.732592090033,
+          "median_tpot_seconds": 0.1422685194477512,
+          "median_decode_tps": 7.0289618805462775,
+          "median_request_seconds": 311.2034895380493,
+          "max_request_seconds": 413.85968266404234,
+          "acceptance_rate": 0.9985074626865672,
+          "metrics_delta": {
+            "accepted_tokens": 669.0,
+            "draft_tokens": 670.0,
+            "external_hits": 0.0,
+            "external_queries": 0.0,
+            "generation_tokens": 768.0,
+            "load_bytes": 0.0,
+            "load_ops": 0.0,
+            "load_time": 0.0,
+            "preemptions": 0.0,
+            "prefix_hits": 0.0,
+            "prefix_queries": 785664.0,
+            "prompt_external_transfer": 0.0,
+            "prompt_local_cache": 0.0,
+            "prompt_local_compute": 785664.0,
+            "prompt_tokens": 785664.0,
+            "store_bytes": 0.0,
+            "store_ops": 0.0,
+            "store_time": 0.0
+          },
+          "monitor_summary": {
+            "max_cpu_cache_read_usage": 0.0,
+            "max_cpu_cache_usage": 0.0,
+            "max_cpu_cache_write_usage": 0.0,
+            "max_gpu_cache_usage": 0.5063520871143375,
+            "max_running": 2.0,
+            "max_waiting": 2.0,
+            "max_waiting_capacity": 2.0
+          }
+        },
+        "gpu_hit": {
+          "wall_seconds": 414.2462961401325,
+          "request_throughput": 0.007242068373220049,
+          "output_tps_end_to_end": 1.8539695035443327,
+          "total_token_tps_end_to_end": 1898.4647716293966,
+          "prompt_tps_to_last_first_token": 1901.6888315513334,
+          "prompt_tokens": 785664,
+          "output_tokens": 768,
+          "median_ttft_seconds": 275.26054267119616,
+          "max_ttft_seconds": 413.14014520403,
+          "median_tpot_seconds": 0.14227910408585825,
+          "median_decode_tps": 7.028438971590308,
+          "median_request_seconds": 311.54171421309,
+          "max_request_seconds": 414.2461270429194,
+          "acceptance_rate": 0.9985074626865672,
+          "metrics_delta": {
+            "accepted_tokens": 669.0,
+            "draft_tokens": 670.0,
+            "external_hits": 0.0,
+            "external_queries": 0.0,
+            "generation_tokens": 768.0,
+            "load_bytes": 0.0,
+            "load_ops": 0.0,
+            "load_time": 0.0,
+            "preemptions": 0.0,
+            "prefix_hits": 0.0,
+            "prefix_queries": 785664.0,
+            "prompt_external_transfer": 0.0,
+            "prompt_local_cache": 0.0,
+            "prompt_local_compute": 785664.0,
+            "prompt_tokens": 785664.0,
+            "store_bytes": 0.0,
+            "store_ops": 0.0,
+            "store_time": 0.0
+          },
+          "monitor_summary": {
+            "max_cpu_cache_read_usage": 0.0,
+            "max_cpu_cache_usage": 0.0,
+            "max_cpu_cache_write_usage": 0.0,
+            "max_gpu_cache_usage": 0.5099818511796733,
+            "max_running": 2.0,
+            "max_waiting": 2.0,
+            "max_waiting_capacity": 2.0
+          }
+        }
+      }
+    },
+    {
+      "name": "ctx262144-c4",
+      "total_context": 262144,
+      "target_input_tokens": 261888,
+      "concurrency": 4,
+      "status": "complete",
+      "error": null,
+      "prompts": [
+        {
+          "actual_input_tokens": 261888,
+          "characters": 1233777,
+          "index": 0,
+          "sha256": "e00d85f4748c1f60669967e5d40b65a30a51d9d498c79fbc6ece38ee71cf27ec"
+        },
+        {
+          "actual_input_tokens": 261888,
+          "characters": 1233777,
+          "index": 1,
+          "sha256": "7ff2338372bc83686fe3dd15d5718bf342add0a1b6af491c4ce15a58d24ccd06"
+        },
+        {
+          "actual_input_tokens": 261888,
+          "characters": 1233777,
+          "index": 2,
+          "sha256": "dcb033df245d7b35762aa4f51c7651b0efaf11cbb68f434cff15d5c8f83f0d95"
+        },
+        {
+          "actual_input_tokens": 261888,
+          "characters": 1233777,
+          "index": 3,
+          "sha256": "0e66260242f7e179ef2c3abaca015652adc6f89359b930809600d89d2c2b5bdc"
+        }
+      ],
+      "external_reset_attempts": 1,
+      "local_reset_attempts": null,
+      "output_equivalence": {
+        "gpu_hit": {
+          "all_byte_equal": false,
+          "count_matches": true,
+          "per_request_byte_equal": [
+            false,
+            true,
+            true,
+            true
+          ]
+        }
+      },
+      "phases": {
+        "cold": {
+          "wall_seconds": 552.1369223429356,
+          "request_throughput": 0.007244579810070329,
+          "output_tps_end_to_end": 1.8546124313780041,
+          "total_token_tps_end_to_end": 1899.1231297310762,
+          "prompt_tps_to_last_first_token": 1901.0742085655584,
+          "prompt_tokens": 1047552,
+          "output_tokens": 1024,
+          "median_ttft_seconds": 344.39320468949154,
+          "max_ttft_seconds": 551.0316195338964,
+          "median_tpot_seconds": 0.1460410054709178,
+          "median_decode_tps": 6.847391914178084,
+          "median_request_seconds": 381.6336610845756,
+          "max_request_seconds": 552.1368491149042,
+          "acceptance_rate": 0.9955257270693513,
+          "metrics_delta": {
+            "accepted_tokens": 890.0,
+            "draft_tokens": 894.0,
+            "external_hits": 0.0,
+            "external_queries": 0.0,
+            "generation_tokens": 1024.0,
+            "load_bytes": 0.0,
+            "load_ops": 0.0,
+            "load_time": 0.0,
+            "preemptions": 0.0,
+            "prefix_hits": 0.0,
+            "prefix_queries": 1047552.0,
+            "prompt_external_transfer": 0.0,
+            "prompt_local_cache": 0.0,
+            "prompt_local_compute": 1047552.0,
+            "prompt_tokens": 1047552.0,
+            "store_bytes": 0.0,
+            "store_ops": 0.0,
+            "store_time": 0.0
+          },
+          "monitor_summary": {
+            "max_cpu_cache_read_usage": 0.0,
+            "max_cpu_cache_usage": 0.0,
+            "max_cpu_cache_write_usage": 0.0,
+            "max_gpu_cache_usage": 0.5099818511796733,
+            "max_running": 2.0,
+            "max_waiting": 3.0,
+            "max_waiting_capacity": 3.0
+          }
+        },
+        "gpu_hit": {
+          "wall_seconds": 552.3936968499329,
+          "request_throughput": 0.0072412122419395885,
+          "output_tps_end_to_end": 1.8537503339365347,
+          "total_token_tps_end_to_end": 1898.2403419510115,
+          "prompt_tps_to_last_first_token": 1900.2016511389008,
+          "prompt_tokens": 1047552,
+          "output_tokens": 1024,
+          "median_ttft_seconds": 344.60405104153324,
+          "max_ttft_seconds": 551.2846488540526,
+          "median_tpot_seconds": 0.14520894610186053,
+          "median_decode_tps": 6.8866280407993905,
+          "median_request_seconds": 381.83343062957283,
+          "max_request_seconds": 552.3934894339181,
+          "acceptance_rate": 0.9966442953020134,
+          "metrics_delta": {
+            "accepted_tokens": 891.0,
+            "draft_tokens": 894.0,
+            "external_hits": 0.0,
+            "external_queries": 0.0,
+            "generation_tokens": 1024.0,
+            "load_bytes": 0.0,
+            "load_ops": 0.0,
+            "load_time": 0.0,
+            "preemptions": 0.0,
+            "prefix_hits": 0.0,
+            "prefix_queries": 1047552.0,
+            "prompt_external_transfer": 0.0,
+            "prompt_local_cache": 0.0,
+            "prompt_local_compute": 1047552.0,
+            "prompt_tokens": 1047552.0,
+            "store_bytes": 0.0,
+            "store_ops": 0.0,
+            "store_time": 0.0
+          },
+          "monitor_summary": {
+            "max_cpu_cache_read_usage": 0.0,
+            "max_cpu_cache_usage": 0.0,
+            "max_cpu_cache_write_usage": 0.0,
+            "max_gpu_cache_usage": 0.5099818511796733,
+            "max_running": 2.0,
+            "max_waiting": 3.0,
+            "max_waiting_capacity": 3.0
+          }
+        }
+      }
+    }
+  ]
+}

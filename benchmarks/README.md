@@ -12,6 +12,31 @@ rather than searching for maximum throughput.
 - Every script verifies the required mounts before starting a container or run.
 - A run directory is never reused or overwritten.
 
+### ROCm host-registration probe
+
+`bin/probe_rocm_host_registration.py` isolates mmap registration from model
+loading. Run it only during a declared maintenance window and from inside the
+same root ROCm image used for serving. `--prefault distributed` makes both
+workers populate disjoint portions of the shared backing before registration,
+matching the vLLM worker layout. The probe uses bounded barriers, reports the
+stage of any failed worker, drains the HIP error on the same runtime handle,
+performs a post-failure HIP allocation, and rolls back every successful chunk.
+
+```bash
+python benchmarks/bin/probe_rocm_host_registration.py \
+  --confirm-maintenance \
+  --sizes-gib 24 28 30 32 36 \
+  --chunk-gib 0 8 \
+  --modes sequential simultaneous \
+  --prefault distributed \
+  --gpus 0 1 \
+  --output /path/to/new-immutable-run/probe.json
+```
+
+The dual-R9700 qualification and deployment decision are recorded in
+`docs/ROCM_KV_OFFLOAD_REGISTRATION.md`; do not infer a pin ceiling from a
+non-prefaulted host-shell probe.
+
 ## Profiles and matrix
 
 The default `quick` profile is the everyday A/B gate. It uses one server warmup,
@@ -77,6 +102,18 @@ and source-overlay check inside the candidate image:
 ```bash
 python benchmarks/bin/check_xgrammar_spec_termination.py
 ```
+
+The mmap KV-offload host-registration failure paths are GPU-free and should be
+checked on every source-overlay change:
+
+```bash
+python benchmarks/bin/check_kv_offload_registration.py
+```
+
+The live ROCm registration matrix is a maintenance-only probe. It refuses to
+run without `--confirm-maintenance` or while local API port 8000 is open. See
+[`docs/ROCM_KV_OFFLOAD_REGISTRATION.md`](../docs/ROCM_KV_OFFLOAD_REGISTRATION.md)
+for its exact command, result schema, and follow-up server qualification.
 
 Then run the sampled gate and inspect the server log over the exact same time
 window. A qualified result requires both 100% valid calls and zero occurrences
@@ -485,6 +522,67 @@ otherwise easy-to-miss drafter change in future matched comparisons without
 rereading multi-gigabyte weight files for every run.
 
 ## Results
+
+### Native CPU-KV restore gate and convoy baseline
+
+The v0.28 ROCm native-offload continuation adds two focused tools. They require
+the development reset endpoint (`VLLM_SERVER_DEV_MODE=1`) and must not enable
+that endpoint in production Compose.
+
+`run_kv_offload_restore_gate.py` performs cold fill, local GPU reuse, a
+local-only reset, and CPU restore with one deterministic meaningful prompt. It
+records exact output equality plus store/load bytes, time, external queries,
+and externally restored tokens. `run_kv_offload_baseline.py` primes a disjoint
+CPU prefix for each C1/C2/C4 case and releases simultaneous identical-prefix
+requests to expose transfer convoys without running a large throughput suite.
+
+```bash
+python benchmarks/bin/check_kv_offload_restore.py
+
+python benchmarks/bin/run_kv_offload_restore_gate.py \
+  --model Qwen3.8-27B \
+  --output benchmarks/results/$(date -u +%Y%m%dT%H%M%SZ)-restore/restore-gate.json
+
+python benchmarks/bin/run_kv_offload_baseline.py \
+  --model Qwen3.8-27B \
+  --output benchmarks/results/$(date -u +%Y%m%dT%H%M%SZ)-baseline/baseline.json
+```
+
+The first immutable baseline is
+`20260901T230544Z-dflash-cpu-kv-baseline-final2`; full configuration,
+correctness status, negative experiments, and results are in
+`docs/ROCM_KV_OFFLOAD_RESTORE_BASELINE.md`.
+
+### 128K/256K cache-placement pressure matrix
+
+`run_kv_offload_long_context.py` builds exact-token, disjoint prompts and runs
+a cold wave, immediate repeat, and optional forced CPU restore for each
+context/concurrency pair. It records streaming TTFT/TPOT, end-to-end and decode
+TPS, request queueing, preemptions, exact local-compute/local-cache/external-KV
+token counters, CPU transfer bytes/time, response equality, and a Prometheus
+trace. The raw phase name `gpu_hit` means immediate repeat; always use its
+source counters to determine whether it actually hit GPU, restored from CPU,
+or recomputed.
+
+```bash
+python benchmarks/bin/run_kv_offload_long_context.py \
+  --model Qwen3.8-27B \
+  --tokenizer /models/Qwen3.8-27B-Quark-AWQ-MXFP4-amd \
+  --output-dir benchmarks/results/$(date -u +%Y%m%dT%H%M%SZ)-kv-long \
+  --label offload24 \
+  --cases 131072:1 131072:2 131072:4 262144:1 262144:2 262144:3 262144:4 \
+  --max-tokens 256 --cpu-restore --continue-on-error
+```
+
+The first matched no-offload/24-GiB runs are
+`20260901T234819Z-kv-long-allgpu` and
+`20260902T004340Z-kv-long-offload24`. The complete scoreboard, capacity
+boundary, metric semantics, and reproduction manifest are in
+`docs/ROCM_KV_OFFLOAD_LONG_CONTEXT_BASELINE.md`.
+
+Each committed run contains a readable `summary.json` plus exact zstd-compressed
+`results.json.zst` and `telemetry.jsonl.zst` evidence. Recover the raw stream
+with, for example, `zstd -dc results.json.zst > results.json`.
 
 Each timestamped directory beneath `runs/` includes exact manifests, resolved
 server commands, raw vLLM JSON, logs, two-second GPU/host telemetry, checksums,
