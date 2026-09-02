@@ -179,6 +179,14 @@ services:
       # Optional raw vLLM compilation-config JSON, handled like the speculative
       # config above. The measured DFlash2 profile uses PIECEWISE graphs.
       RADIANCE_COMPILATION_CONFIG: "${RADIANCE_COMPILATION_CONFIG:-}"
+      # Optional mmap-backed CPU KV tier, in GiB. Empty keeps offload disabled.
+      # `auto` prevents a failed hipHostRegister from poisoning the next torch
+      # operation and coherently falls every TP worker back to pageable DMA.
+      RADIANCE_KV_OFFLOADING_SIZE: "${RADIANCE_KV_OFFLOADING_SIZE:-}"
+      RADIANCE_KV_OFFLOAD_PIN_POLICY: "${RADIANCE_KV_OFFLOAD_PIN_POLICY:-auto}"
+      # Experimental until qualified per host; 0 preserves one whole-region
+      # registration. A positive GiB value requests row-aligned chunks.
+      RADIANCE_KV_OFFLOAD_REGISTER_CHUNK_GIB: "${RADIANCE_KV_OFFLOAD_REGISTER_CHUNK_GIB:-0}"
       # DFlash2 requires the V2-compatible model runner. Normal Radiance retains
       # the pinned stack's default unless this is explicitly enabled.
       VLLM_USE_V2_MODEL_RUNNER: "${VLLM_USE_V2_MODEL_RUNNER:-0}"

@@ -1,0 +1,139 @@
+{
+  "base_url": "http://127.0.0.1:8000",
+  "checks": {
+    "cold_stored_to_cpu": true,
+    "cpu_restore_byte_identical": true,
+    "cpu_restore_cached_tokens": true,
+    "cpu_restore_external_hit": true,
+    "cpu_restore_loaded_bytes": true,
+    "gpu_hit_byte_identical": true,
+    "gpu_repeat_cached": true,
+    "meaningful_prompt": true
+  },
+  "derived": {
+    "cpu_restored_tokens": 8080,
+    "gpu_local_cached_tokens": 8080
+  },
+  "finished_unix": 1788303733.6470795,
+  "initial_reset_attempts": 1,
+  "local_reset_attempts": 1,
+  "max_tokens": 32,
+  "metrics": {
+    "after_cold": {
+      "external_hits": 0.0,
+      "external_queries": 10504.0,
+      "load_bytes": 0.0,
+      "load_time": 0.0,
+      "store_bytes": 811204608.0,
+      "store_time": 0.03589303719997406
+    },
+    "after_cpu_restore": {
+      "external_hits": 8080.0,
+      "external_queries": 23432.0,
+      "load_bytes": 439189504.0,
+      "load_time": 0.015484810829162598,
+      "store_bytes": 811204608.0,
+      "store_time": 0.03589303719997406
+    },
+    "after_gpu_hit": {
+      "external_hits": 0.0,
+      "external_queries": 12928.0,
+      "load_bytes": 0.0,
+      "load_time": 0.0,
+      "store_bytes": 811204608.0,
+      "store_time": 0.03589303719997406
+    },
+    "before": {
+      "external_hits": 0.0,
+      "external_queries": 0.0,
+      "load_bytes": 0.0,
+      "load_time": 0.0,
+      "store_bytes": 0.0,
+      "store_time": 0.0
+    },
+    "before_cpu_restore": {
+      "external_hits": 0.0,
+      "external_queries": 12928.0,
+      "load_bytes": 0.0,
+      "load_time": 0.0,
+      "store_bytes": 811204608.0,
+      "store_time": 0.03589303719997406
+    },
+    "cold_delta": {
+      "external_hits": 0.0,
+      "external_queries": 10504.0,
+      "load_bytes": 0.0,
+      "load_time": 0.0,
+      "store_bytes": 811204608.0,
+      "store_time": 0.03589303719997406
+    },
+    "cpu_restore_delta": {
+      "external_hits": 8080.0,
+      "external_queries": 10504.0,
+      "load_bytes": 439189504.0,
+      "load_time": 0.015484810829162598,
+      "store_bytes": 0.0,
+      "store_time": 0.0
+    },
+    "gpu_hit_delta": {
+      "external_hits": 0.0,
+      "external_queries": 2424.0,
+      "load_bytes": 0.0,
+      "load_time": 0.0,
+      "store_bytes": 0.0,
+      "store_time": 0.0
+    }
+  },
+  "model": "Qwen3.8-27B",
+  "passed": true,
+  "phases": {
+    "cold": {
+      "cached_tokens": 0,
+      "elapsed_seconds": 2.92470421618782,
+      "finish_reason": "stop",
+      "id": "cmpl-ab8d9e01fab3f686",
+      "text": "\n\nThe deterministic cache restore invariant is validated only if every target token, hybrid recurrent state, and draft verification boundary is preserved exactly as in the original fixture.",
+      "usage": {
+        "completion_tokens": 32,
+        "completion_tokens_details": null,
+        "prompt_tokens": 10504,
+        "prompt_tokens_details": null,
+        "total_tokens": 10536
+      }
+    },
+    "cpu_restore": {
+      "cached_tokens": 0,
+      "elapsed_seconds": 0.9282771931029856,
+      "finish_reason": "stop",
+      "id": "cmpl-a913b1fb3eeb2e2a",
+      "text": "\n\nThe deterministic cache restore invariant is validated only if every target token, hybrid recurrent state, and draft verification boundary is preserved exactly as in the original fixture.",
+      "usage": {
+        "completion_tokens": 32,
+        "completion_tokens_details": null,
+        "prompt_tokens": 10504,
+        "prompt_tokens_details": null,
+        "total_tokens": 10536
+      }
+    },
+    "gpu_hit": {
+      "cached_tokens": 0,
+      "elapsed_seconds": 0.9155118318740278,
+      "finish_reason": "stop",
+      "id": "cmpl-9bc9a5029683c378",
+      "text": "\n\nThe deterministic cache restore invariant is validated only if every target token, hybrid recurrent state, and draft verification boundary is preserved exactly as in the original fixture.",
+      "usage": {
+        "completion_tokens": 32,
+        "completion_tokens_details": null,
+        "prompt_tokens": 10504,
+        "prompt_tokens_details": null,
+        "total_tokens": 10536
+      }
+    }
+  },
+  "prompt_characters": 48176,
+  "prompt_repetitions": 256,
+  "schema": 1,
+  "seed": 17,
+  "started_unix": 1788303728.816527,
+  "temperature": 0
+}
