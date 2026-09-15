@@ -1,0 +1,253 @@
+schema_version: 1
+defaults:
+  component: vllm
+  active: true
+  activation: dockerfile-direct
+  status: active
+  runner: unknown
+  baseline_tests:
+  - python-compile
+  provenance:
+    kind: radiance-lineage-or-local
+    evidence: source comments, Git history, and qualification reports; exact external provenance not asserted here
+  remove_when: Re-audit on relevant upstream upgrades; remove when equivalent upstream behavior is present and qualified.
+area_tests:
+  allreduce:
+  - r9700-tp2-smoke
+  - betterbench-standard
+  mxfp4:
+  - r9700-tp2-smoke
+  - betterbench-standard
+  gdn:
+  - r9700-tp2-smoke
+  - correctness-equivalence
+  attention:
+  - r9700-tp2-smoke
+  - betterbench-standard
+  dflash:
+  - r9700-tp2-smoke
+  - correctness-equivalence
+  - betterbench-standard
+  speculative:
+  - r9700-tp2-smoke
+  - correctness-equivalence
+  parser:
+  - parser-shared-engine-image
+  - tool-schema-live
+  structured-output:
+  - xgrammar-spec-image
+  - qwen-open-object-image
+  - tool-schema-live
+  - open-object-tool-live
+  kv-offload:
+  - kv-offload-registration-cpu
+  - kv-offload-rank-sharded-cpu
+  - kv-offload-restore-cpu
+runner_values:
+- v1
+- v2
+- both
+- independent
+- unknown
+activation_values:
+- dockerfile-direct
+- indirect
+- historical
+policy:
+  prefer_upstream_ownership: true
+  upgrade_rule: Classify each active overlay as upstream-owned, still-required, mechanical-drift, semantic-migration, obsolete, deprecated-architecture debt, or Tier-3.
+  gate_rule: Required gates may be strengthened but not silently weakened or removed to make a candidate pass.
+patches:
+  patch_ar_geometry:
+    areas: [allreduce, tp2, performance]
+    reason: Expose the measured TP2 compressed all-reduce geometry controls.
+    runner: both
+  patch_ar_maxbytes:
+    areas: [allreduce, tp2]
+    reason: Retain exact-message size limits for the qualified Radiance TP2 collective path.
+    runner: both
+  patch_conv1d_blockn:
+    areas: [gdn, conv1d]
+    reason: Retain block-N compatibility for the qualified GDN/conv1d path.
+    runner: both
+  patch_dflash2_v0271_backport:
+    areas: [dflash, historical]
+    reason: Historical v0.27.1 DFlash2 source-copy backport; retained only for archaeology because v0.28 owns DFlash2 natively.
+    runner: v1
+    activation: historical
+    active: false
+    status: retired-historical
+    provenance: {kind: historical-upstream-backport, evidence: docs/V028_UPGRADE.md}
+    remove_when: null
+  patch_dflash_base:
+    areas: [dflash, speculative]
+    reason: Install Radiance DFlash integration hooks on top of vLLM's native DFlash2 implementation.
+    runner: v2
+  patch_dflash_fused_kv_fp8:
+    areas: [dflash, fp8-kv, speculative]
+    reason: Preserve fused FP8 KV handling required by the qualified DFlash lane.
+    runner: v2
+  patch_dflash_logits_cache_stride:
+    areas: [dflash, speculative, correctness]
+    reason: Backport the post-v0.28 DFlash logits-cache stride/width correctness fix.
+    runner: v2
+    provenance: {kind: upstream-backport, upstream_pr: 'vLLM #53017', upstream_commit: d4f4d3f40fc5350a71777fcb0e5eb8a57bda631f, evidence: docs/V028_UPGRADE.md}
+  patch_dflash_selector_topk:
+    areas: [dflash, sampling, experimental]
+    reason: Expose the DFlash selector top-k experimental control while preserving the checkpoint default.
+    runner: v2
+  patch_dflash_w4:
+    areas: [dflash, quantization, draft]
+    reason: Integrate Radiance W4 draft-linears for the opt-in fast DFlash path.
+    runner: v2
+  patch_dynamo_metrics:
+    areas: [metrics, dynamo]
+    reason: Expose/retain metrics required to diagnose compiled serving behavior.
+    runner: both
+  patch_dynwidth:
+    areas: [dflash, scheduler, speculative]
+    reason: Apply per-request DFlash verification-width policy from observed acceptance.
+    runner: v2
+    provenance: {kind: selective-adaptation, source: ggz14/radiance-vllm-mxfp4 lineage, evidence: docs/RADIANCE_093_R4D050_MXFP4.md}
+  patch_fp8_kv_sidecar:
+    areas: [fp8-kv, calibration]
+    reason: Support immutable checkpoint-bound FP8 KV calibration sidecars as an opt-in fidelity laboratory.
+    runner: both
+  patch_from_json_filter:
+    areas: [parser, serialization]
+    reason: Retain JSON filtering compatibility used by the serving/tooling path.
+    runner: independent
+  patch_gdn_aiter_prefill:
+    areas: [gdn, aiter, prefill]
+    reason: Provide the explicit AITER GDN prefill bridge retained as a measured opt-in path.
+    runner: both
+  patch_gdn_merge_inproj:
+    areas: [gdn, gemm, performance]
+    reason: Merge compatible GDN input projections at load time to reduce launch overhead.
+    runner: both
+    provenance: {kind: selective-adaptation, source: ggz14/radiance-vllm-mxfp4 lineage, evidence: docs/MXFP4_RX4_CONTINUATION.md}
+  patch_gdn_metadata:
+    areas: [gdn, speculative]
+    reason: Provide exact GPU GDN metadata used by speculative execution.
+    runner: both
+  patch_gdn_shared_build:
+    areas: [gdn, speculative, performance]
+    reason: Share equivalent speculative GDN metadata construction across KV groups.
+    runner: both
+  patch_gdn_wmma:
+    areas: [gdn, rocm, wmma]
+    reason: Apply the gfx1201 WMMA triangular-solve path used by qualified GDN execution.
+    runner: both
+  patch_gfx1201:
+    areas: [gfx1201, rocm, build]
+    reason: Enable/guard gfx1201-specific vLLM behavior required by the qualified R9700 stack.
+    runner: both
+  patch_kv_group_size:
+    areas: [kv-cache, capacity]
+    reason: Select hybrid KV group size by measured capacity cost rather than smallest-bucket padding.
+    runner: both
+  patch_kv_offload_lifecycle:
+    areas: [kv-offload, lifecycle]
+    reason: Backport leak-proof shared CPU KV mmap lifetime management and chain the rank-sharded opt-in.
+    runner: independent
+    provenance: {kind: upstream-backport-plus-radiance-extension, upstream_pr: 'vLLM #52596', upstream_commit: 4c58a0c398b056b135b98bd93c644945be7e3109, evidence: patch_kv_offload_lifecycle.py}
+  patch_kv_offload_rank_sharded:
+    areas: [kv-offload, tp2, experimental]
+    reason: Add the opt-in rank-major CPU KV layout; invoked transitively by the lifecycle overlay.
+    runner: independent
+    activation: indirect
+    status: radiance-extension
+  patch_kv_offload_registration:
+    areas: [kv-offload, rocm]
+    reason: Harden mmap host registration, HIP error draining, and coherent TP fallback.
+    runner: independent
+  patch_kv_offload_restore:
+    areas: [kv-offload, restore]
+    reason: Repair native CPU KV restore/group handling for qualified hybrid/speculative layouts.
+    runner: independent
+  patch_mtp_loopbreak:
+    areas: [mtp, speculative]
+    reason: Preserve Radiance MTP loop termination/controller behavior.
+    runner: both
+  patch_mtp_mm_mask:
+    areas: [mtp, speculative]
+    reason: Preserve MTP matrix/mask correctness behavior used by the qualified fast-draft path.
+    runner: both
+  patch_parser_shared_engine:
+    areas: [parser, tools, correctness]
+    reason: Backport the v0.28 shared-parser fix that preserves registered reasoning/tool adapters and structural tags.
+    runner: independent
+    provenance: {kind: upstream-backport, upstream_pr: 'vLLM #52830', upstream_commit: 46638857fdbb30e0c232c9e8f9cb1ff6d6f545c3, evidence: docs/V028_UPGRADE.md}
+  patch_preshuffle:
+    areas: [fp8, gemm, weights]
+    reason: Install Radiance preshuffled FP8 weight handling and dispatcher integration.
+    runner: both
+  patch_quark_bf16_mtp:
+    areas: [mxfp4, quark, mtp]
+    reason: Allow the qualified Quark checkpoint's BF16 MTP tensors only when explicitly selected.
+    runner: both
+  patch_quark_mxfp4:
+    areas: [mxfp4, quark, quantization]
+    reason: Register and route native Quark MXFP4/W4A8 on gfx1201.
+    runner: both
+    provenance: {kind: selective-adaptation, source: ggz14/radiance-vllm-mxfp4 lineage, evidence: docs/MXFP4_W4A8_R9700.md}
+  patch_qwen3_toolparse:
+    areas: [parser, qwen, tools]
+    reason: Preserve Qwen3 tool/reasoning parser behavior required by Radiance tool-call qualification.
+    runner: independent
+  patch_qwen_open_object_schema:
+    areas: [parser, tools, structured-output]
+    reason: Preserve open nested-object schemas used by deferred-tool wrappers instead of flattening/restricting arguments.
+    runner: independent
+  patch_r4d:
+    areas: [libr4d, attention, gdn]
+    reason: Integrate libr4d operators with the pinned vLLM model/runtime paths.
+    runner: both
+  patch_radiance_dispatch:
+    areas: [quantization, fp8, dispatch]
+    reason: Install Radiance FP8 dispatch selection and guarded fallbacks.
+    runner: both
+  patch_rocm_cudagraph_current_stream:
+    areas: [rocm, cudagraph, correctness]
+    reason: Backport vLLM's post-v0.28 ROCm graph capture fix to use the current stream.
+    runner: both
+    provenance: {kind: upstream-backport, upstream_pr: 'vLLM #53818', upstream_commit: 080a66a69c6fd1fe464756f88ab958baad66ce69, evidence: docs/V028_UPGRADE.md}
+  patch_skinny_gemm:
+    areas: [gemm, decode]
+    reason: Route qualified skinny GEMM shapes through Radiance-tuned implementations.
+    runner: both
+  patch_topk_composite:
+    areas: [sampling, topk]
+    reason: Install the bounded composite top-k path with exact fallback.
+    runner: both
+  patch_topk_triton_rows:
+    areas: [sampling, topk]
+    reason: Route small-row top-k work through the qualified Triton path.
+    runner: both
+  patch_unified_attention_lds:
+    areas: [attention, rocm]
+    reason: Retain the qualified broader ROCm LDS fit/tuning guard for unified attention.
+    runner: both
+  patch_unpad:
+    areas: [runtime, tensor-shapes]
+    reason: Carry Radiance's guarded unpadding compatibility behavior.
+    runner: unknown
+  patch_verify_head:
+    areas: [dflash, sampling, speculative]
+    reason: Install the sampling-aware target verification head with exact fallback.
+    runner: v2
+    provenance: {kind: selective-adaptation, source: ggz14/radiance-vllm-mxfp4 lineage, evidence: docs/RADIANCE_093_R4D050_MXFP4.md}
+  patch_xgrammar_spec_reasoning:
+    areas: [structured-output, xgrammar, reasoning, speculative]
+    reason: Backport reasoning-boundary validation for drafts generated before the grammar mask activates.
+    runner: independent
+    provenance: {kind: upstream-backport, upstream_pr: 'vLLM #52805/#53046', evidence: docs/V028_UPGRADE.md}
+  patch_xgrammar_spec_termination:
+    areas: [structured-output, xgrammar, speculative]
+    reason: Backport speculative grammar termination handling so draft batches cannot overrun a terminated FSM.
+    runner: independent
+    provenance: {kind: upstream-backport, upstream_pr: 'vLLM #52805/#53046', evidence: docs/V028_UPGRADE.md}
+  install_radiance_hooks:
+    areas: [hooks, runtime]
+    reason: Install Radiance runtime hooks into the pinned vLLM tree.
+    runner: both
