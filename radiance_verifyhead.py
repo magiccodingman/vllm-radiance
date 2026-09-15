@@ -27,7 +27,9 @@ the sampler's support is a subset of those RERANK tokens:
     the sample is a max -- so top_k arrives as vocab_size, and a gate written only around top_k
     rejects precisely the traffic that is safest. That mistake sent both arms of a GSM8K 500q A/B
     down the bf16 fallback and produced a clean-looking result that gated nothing.
-  * A SAMPLED request needs `top_k <= RERANK // 4`. The same 4x margin the drafter needed:
+  * A SAMPLED request needs `top_k <= min(RERANK // 4, KCAND)`. KCAND is a necessary
+    per-block capacity limit: the true top_k tokens can all fall in one 64-token block.
+    The RERANK limit retains the existing empirical 4x margin the drafter needed:
     selector_top_k=16 was correct at RERANK=64 and lossy at 32. top_k bounds the support, and its
     truncation happens before top_p, so top_p and temperature ride along safely -- both are
     monotonic and operate inside the kept set.
@@ -140,7 +142,7 @@ def _arm(model):
     _state["lp"] = lp
     _state["armed"] = True
     sys.stderr.write(f"[radiance.verifyhead] VERIFY_HEAD: {status} "
-                     f"(max top_k {_dh.RERANK // 4}, exact fallback otherwise)\n")
+                     f"(max top_k {min(_dh.RERANK // 4, _dh.KCAND)}, exact fallback otherwise)\n")
     sys.stderr.flush()
 
 
@@ -184,7 +186,9 @@ def _batch_is_safe(runner, input_batch, grammar_output) -> bool:
         # reranked set. min_p is a threshold on the full row rather than a rank cut, so it can
         # admit tokens past RERANK; it is irrelevant for the greedy rows, hence the mask.
         sampled = ~greedy
-        if int(ss.top_k.np[idx][sampled].max()) > _dh.RERANK // 4:
+        # Reranking cannot recover tokens already discarded by a per-block shortlist.
+        # This capacity check is necessary; it does not prove approximate-head recall.
+        if int(ss.top_k.np[idx][sampled].max()) > min(_dh.RERANK // 4, _dh.KCAND):
             return False
         if float(ss.min_p.np[idx][sampled].max()) != 0.0:
             return False
