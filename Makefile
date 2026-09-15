@@ -7,6 +7,14 @@
 #     make r4d
 #     make verify
 #     make clean
+#
+# Maintenance/control-plane helpers:
+#
+#     make validate
+#     make test
+#     make test-changed
+#     make qualify-upgrade
+#     make qualify-release
 
 GFX_ARCH ?= gfx1201
 IMAGE    ?= vllm-radiance:$(shell cat VERSION 2>/dev/null || echo latest)
@@ -19,7 +27,7 @@ R4D_DIR     ?= libr4d
 RUN = docker run --rm --entrypoint bash -v "$(CURDIR)/$(R4D_DIR):/work" -w /work $(IMAGE) -c
 
 .DEFAULT_GOAL := r4d
-.PHONY: r4d verify clean
+.PHONY: r4d verify clean validate test test-pr test-changed qualify-upgrade qualify-release
 
 $(R4D_DIR):
 	git clone --filter=blob:none $(R4D_REPO) $(R4D_DIR)
@@ -39,3 +47,20 @@ verify:
 
 clean:
 	rm -rf -- $(R4D_DIR)
+
+validate:
+	$(PYTHON) tools/validate_control_plane.py
+
+test: test-pr
+
+test-pr:
+	$(PYTHON) tools/radiance.py test pr
+
+test-changed:
+	$(PYTHON) tools/radiance.py test changed
+
+qualify-upgrade:
+	$(PYTHON) tools/radiance.py qualify upgrade
+
+qualify-release:
+	$(PYTHON) tools/radiance.py qualify release
