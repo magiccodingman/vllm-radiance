@@ -260,7 +260,7 @@ RUN set -eu; cd /opt/patches; \
              patch_gdn_wmma patch_gdn_aiter_prefill patch_preshuffle install_radiance_hooks \
              patch_unpad patch_mtp_mm_mask patch_mtp_loopbreak patch_qwen3_toolparse patch_from_json_filter \
              patch_dynamo_metrics patch_conv1d_blockn patch_r4d patch_dflash_base \
-             patch_dflash_fused_kv_fp8 patch_dflash_logits_cache_stride patch_dflash_w4 \
+             patch_dflash_fused_kv_fp8 patch_dflash_logits_cache_stride patch_dflash_sampling_rng patch_dflash_w4 \
              patch_dflash_selector_topk patch_gdn_metadata patch_gdn_shared_build \
              patch_topk_triton_rows patch_topk_composite patch_rocm_cudagraph_current_stream \
              patch_quark_mxfp4 patch_quark_bf16_mtp patch_ar_maxbytes patch_ar_geometry \
