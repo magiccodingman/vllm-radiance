@@ -1,0 +1,182 @@
+schema_version: 1
+hardware_levels:
+- cpu
+- candidate-image
+- generic-rocm
+- r9700
+- r9700-tp2
+- maintenance-window-r9700-tp2
+qualification_levels:
+- cpu-qualified
+- gpu-smoke-qualified
+- r9700-tp2-qualified
+- performance-qualified
+- release-qualified
+change_map:
+- pattern: '^(\.radiance/|tools/|AGENTS\.md$|CONTRIBUTING\.md$|docs/maintenance/)'
+  areas: [control-plane]
+- pattern: '^(Dockerfile|Dockerfile\.dev|Dockerfile\.patch|\.gitlab-ci\.yml|Makefile)$'
+  areas: [build, upgrade]
+- pattern: '^(patch_parser_shared_engine|patch_qwen3_toolparse|patch_qwen_open_object_schema|patch_from_json_filter|patch_xgrammar_)'
+  areas: [parser, structured-output]
+- pattern: '^(radiance_kv_offload|patch_kv_offload_|docker-compose\.kv-rank-sharded|docs/ROCM_KV_OFFLOAD)'
+  areas: [kv-offload]
+- pattern: '^(radiance_allreduce|patch_ar_|r4d_radiance_extras\.patch)'
+  areas: [allreduce, libr4d]
+- pattern: '^(radiance_mxfp4|patch_quark_|mxfp4-configs/|docs/MXFP4)'
+  areas: [mxfp4]
+- pattern: '^(radiance_gdn|patch_gdn_)'
+  areas: [gdn]
+- pattern: '^(radiance_draft|patch_dflash_|patch_dynwidth|patch_verify_head)'
+  areas: [dflash, speculative]
+- pattern: '^(radiance_r4d_attn|patch_r4d|patch_unified_attention_lds)'
+  areas: [attention, libr4d]
+profiles:
+  pr: [control-plane-validate, python-compile, kv-offload-registration-cpu, kv-offload-rank-sharded-cpu, kv-offload-restore-cpu]
+  upgrade: [control-plane-validate, python-compile, kv-offload-registration-cpu, kv-offload-rank-sharded-cpu, kv-offload-restore-cpu, parser-shared-engine-image, xgrammar-spec-image, qwen-open-object-image, fp8-kv-calibration-image, tunableop-preflight-image, r9700-tp2-smoke, tool-schema-live, open-object-tool-live, betterbench-standard, correctness-equivalence]
+  release: [control-plane-validate, python-compile, kv-offload-registration-cpu, kv-offload-rank-sharded-cpu, kv-offload-restore-cpu, parser-shared-engine-image, xgrammar-spec-image, qwen-open-object-image, fp8-kv-calibration-image, tunableop-preflight-image, r9700-tp2-smoke, tool-schema-live, open-object-tool-live, betterbench-standard, correctness-equivalence, capacity-qualification]
+tests:
+- id: control-plane-validate
+  class: static
+  hardware: cpu
+  areas: [control-plane, build, upgrade]
+  command: python tools/validate_control_plane.py
+  automatic: true
+  ci: true
+  description: Validate stack, patch, upstream, and test registries against the repository.
+- id: python-compile
+  class: static
+  hardware: cpu
+  areas: [control-plane, patches, runtime, build]
+  command: python -m compileall -q _patchlib.py install_radiance_hooks.py patch_*.py radiance_*.py benchmarks/bin tools
+  automatic: true
+  ci: true
+  description: Compile Python sources without importing GPU/runtime dependencies.
+- id: kv-offload-registration-cpu
+  class: contract
+  hardware: cpu
+  areas: [kv-offload]
+  command: python benchmarks/bin/check_kv_offload_registration.py
+  automatic: true
+  ci: true
+  description: Exercise host-registration policy, chunking, rollback, and repository wiring.
+- id: kv-offload-rank-sharded-cpu
+  class: contract
+  hardware: cpu
+  areas: [kv-offload]
+  command: python benchmarks/bin/check_kv_offload_rank_sharded.py
+  automatic: true
+  ci: true
+  description: Exercise rank-major TP2 layout and rollback invariants without a GPU.
+- id: kv-offload-restore-cpu
+  class: contract
+  hardware: cpu
+  areas: [kv-offload]
+  command: python benchmarks/bin/check_kv_offload_restore.py
+  automatic: true
+  ci: true
+  description: Check KV restore layer ranges, lifecycle wiring, and source contracts.
+- id: parser-shared-engine-image
+  class: contract
+  hardware: candidate-image
+  areas: [parser, structured-output, upgrade]
+  command: 'python benchmarks/bin/check_parser_shared_engine.py --tokenizer "$MODEL_PATH"'
+  automatic: false
+  ci: false
+  description: Validate the installed candidate vLLM parser delegation and structural tag contract.
+- id: xgrammar-spec-image
+  class: contract
+  hardware: candidate-image
+  areas: [structured-output, speculative, upgrade]
+  command: python benchmarks/bin/check_xgrammar_spec_termination.py
+  automatic: false
+  ci: false
+  description: Candidate-image speculative XGrammar termination/reasoning-boundary regression check.
+- id: qwen-open-object-image
+  class: contract
+  hardware: candidate-image
+  areas: [parser, structured-output]
+  command: python benchmarks/bin/check_qwen_open_object_schema.py
+  automatic: false
+  ci: false
+  description: Candidate-image compiler check for open nested Qwen tool arguments.
+- id: fp8-kv-calibration-image
+  class: contract
+  hardware: candidate-image
+  areas: [fp8-kv, attention]
+  command: python benchmarks/bin/check_fp8_kv_calibration.py
+  automatic: false
+  ci: false
+  description: CPU-side artifact integrity preflight for FP8-KV calibration within the candidate environment.
+- id: tunableop-preflight-image
+  class: contract
+  hardware: candidate-image
+  areas: [tunableop, gemm]
+  command: python benchmarks/bin/check_tunableop.py
+  automatic: false
+  ci: false
+  description: CPU-side persisted TunableOp integrity preflight within the candidate environment.
+- id: r9700-tp2-smoke
+  class: live-serving
+  hardware: r9700-tp2
+  areas: [runtime, build, upgrade, attention, gdn, allreduce, mxfp4, dflash]
+  command: 'benchmarks/bin/run_configuration.sh --run-root "$RUN_ROOT" --label smoke --tp 2 --spec off --image "$RADIANCE_IMAGE" --max-model-len 8192 --suite smoke'
+  automatic: false
+  ci: false
+  description: Physical dual-R9700 startup and serving smoke using the benchmark harness.
+- id: tool-schema-live
+  class: correctness
+  hardware: r9700-tp2
+  areas: [parser, structured-output, speculative]
+  command: 'BASE_URL=http://127.0.0.1:8000/v1 MODEL_NAME="$MODEL_NAME" ATTEMPTS=30 benchmarks/bin/run_tool_schema_gate.sh'
+  automatic: false
+  ci: false
+  description: Sampled required-tool regression gate; do not replace with a deterministic one-tool smoke.
+- id: open-object-tool-live
+  class: correctness
+  hardware: r9700-tp2
+  areas: [parser, structured-output]
+  command: 'python benchmarks/bin/run_open_object_tool_gate.py --base-url http://127.0.0.1:8000/v1 --model "$MODEL_NAME" --runs 5 --capture-root "$RUN_ROOT/open-object"'
+  automatic: false
+  ci: false
+  description: Streaming/non-streaming provider-wire validation for nested tool arguments.
+- id: betterbench-standard
+  class: performance
+  hardware: r9700-tp2
+  areas: [performance, upgrade, runtime]
+  command: 'BETTERBENCH_PROFILE=standard benchmarks/bin/run_configuration.sh --run-root "$RUN_ROOT" --label "$LABEL" --tp 2 --spec off --image "$RADIANCE_IMAGE" --max-model-len 8192 --suite betterbench'
+  automatic: false
+  ci: false
+  description: Matched 10-pass/category publication lane with immutable manifests and telemetry.
+- id: correctness-equivalence
+  class: correctness
+  hardware: r9700-tp2
+  areas: [speculative, runtime, upgrade]
+  command: 'benchmarks/bin/verify_outputs.py "$BASE_RUN" "$CANDIDATE_RUN" --output "$OUTPUT_JSON"'
+  automatic: false
+  ci: false
+  description: Strict seeded output equivalence; a near-tie is diagnostic evidence, not permission to weaken the gate.
+- id: capacity-qualification
+  class: capacity
+  hardware: r9700-tp2
+  areas: [capacity, kv-cache, release]
+  command: 'BENCH_WORKLOADS=capacity benchmarks/bin/run_configuration.sh --run-root "$RUN_ROOT" --label capacity --tp 2 --spec off --image "$RADIANCE_IMAGE" --max-model-len "$MAX_MODEL_LEN" --suite quick'
+  automatic: false
+  ci: false
+  description: Explicit full-wave capacity qualification; cases and envelope must be supplied for the target profile.
+- id: rocm-host-registration-live
+  class: maintenance-only
+  hardware: maintenance-window-r9700-tp2
+  areas: [kv-offload]
+  command: 'python benchmarks/bin/probe_rocm_host_registration.py --confirm-maintenance --gpus 0 1 --output "$OUTPUT_JSON"'
+  automatic: false
+  ci: false
+  description: Destructive/maintenance-window host-registration matrix; never run as ordinary CI.
+- id: kv-long-context
+  class: capacity
+  hardware: r9700-tp2
+  areas: [kv-offload, long-context, capacity]
+  command: 'python benchmarks/bin/run_kv_offload_long_context.py --model "$MODEL_NAME" --tokenizer "$MODEL_PATH" --output-dir "$RUN_ROOT" --label "$LABEL" --continue-on-error'
+  automatic: false
+  ci: false
+  description: Long-context cache-placement pressure matrix with source counters and response equality.
