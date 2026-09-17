@@ -1,0 +1,83 @@
+{
+  "platform": "AMD Radeon R9700 (gfx1201)",
+  "radiance_image_id": "4adbeb66552ed76b329734ee5e830d79ed22961662b886e5029c9920d1bdb7cf",
+  "libr4d_commit": "e8de4bc1f3dbd608dcb8d3ffceb6b48acdf83bb7",
+  "scope": "Native numerical regressions; no end-to-end quality or throughput claim",
+  "sampling": {
+    "samples_per_arm_and_position": 200000,
+    "greedy_exact": true,
+    "positions": [
+      {
+        "position": 37,
+        "shared_noise_max_probability_error": 0.01952502131462097,
+        "corrected_max_probability_error": 0.001145005226135254
+      },
+      {
+        "position": 86142,
+        "shared_noise_max_probability_error": 0.01780998706817627,
+        "corrected_max_probability_error": 0.0009650290012359619
+      },
+      {
+        "position": 132739,
+        "shared_noise_max_probability_error": 0.018975019454956055,
+        "corrected_max_probability_error": 0.001180022954940796
+      }
+    ]
+  },
+  "gdn": [
+    {
+      "arm": "gdn-original",
+      "cases": 12,
+      "all_within_one_percent": false,
+      "max_output_relative_error": 0.9444960157038121,
+      "max_state_relative_error": 1.0,
+      "graph_replays": {
+        "replays": 3,
+        "changed_query_inputs": true,
+        "output_relative_error": 0.02229825229335498,
+        "state_relative_error": 0.002728025914061443,
+        "within_one_percent": false
+      },
+      "scan_library_sha256": "bff8fb07da5ac191326ca655b9b589934f459e9fc52502d8aeb0e1ae5e677af1",
+      "report_sha256": "5f532e9ba42c2742345c5d1250173aca37a1de5159309f7dd7b71238c078549b"
+    },
+    {
+      "arm": "gdn-corrected-48",
+      "cases": 12,
+      "all_within_one_percent": true,
+      "max_output_relative_error": 0.0034449567651698796,
+      "max_state_relative_error": 0.0025163873233518637,
+      "graph_replays": {
+        "replays": 3,
+        "changed_query_inputs": true,
+        "output_relative_error": 0.003416871299398062,
+        "state_relative_error": 0.0024383175819910753,
+        "within_one_percent": true
+      },
+      "scan_library_sha256": "ec6681c1b5b524fb8d9f7bf9d7637084abe03978f30bee94a51f4c72d7dbf3e8",
+      "report_sha256": "7291986df89dd1f18d8c9f9369d2ea706191b249348ed5eb192e350977f3352d"
+    },
+    {
+      "arm": "gdn-corrected-24",
+      "cases": 12,
+      "all_within_one_percent": true,
+      "max_output_relative_error": 0.0034455666192448127,
+      "max_state_relative_error": 0.002501668141343721,
+      "graph_replays": {
+        "replays": 3,
+        "changed_query_inputs": true,
+        "output_relative_error": 0.003408335996166081,
+        "state_relative_error": 0.002441776999705826,
+        "within_one_percent": true
+      },
+      "scan_library_sha256": "ec6681c1b5b524fb8d9f7bf9d7637084abe03978f30bee94a51f4c72d7dbf3e8",
+      "report_sha256": "5bb70ce9afff329d892fe16b59ea6e3c202d69b63ee1da12b5fac37ae343c742"
+    }
+  ],
+  "input_source_sha256": "64b60b16ed503e44e4efef746669f9a008741357c3698bec5e23c9f1c4a60402",
+  "corrected_source_sha256": "8fbe32751567c2ce0dd4a0378b7aa885c08b81e016e733c8ffc5b046e514998d",
+  "test_source_sha256": {
+    "check_dflash_sampling_rng.py": "902e5a31b65a07165f824876610556b29653049e71648024c25069793ec771fc",
+    "check_gdn_extreme_decay.py": "31e018b580d8e87125e330b03ef22f1ea80483cb6c4ba8aa096516bc7f4070f4"
+  }
+}
