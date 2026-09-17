@@ -26,6 +26,21 @@ residual BLAS GEMMs. Neither is enabled until its exact model/profile passes
 the normal correctness and benchmark gates. See
 [FP8-KV calibration and persisted TunableOp](docs/FP8_KV_TUNABLEOP.md).
 
+**Target verify head:** when target-head acceleration is enabled, this revision
+uses **global-256 candidate selection by default** on supported TP1 requests.
+It removes the former eight-candidates-per-tile restriction while keeping the
+drafter unchanged. Unsupported requests use the full BF16 target head. This is
+an approximate acceleration, with measured recall and numerical differences
+reported [below](#target-verify-head-global-256). It does not enable speculative
+decoding by itself or extend the existing TP2 qualification to this new path.
+
+Start with [Quick start](#quick-start), choose a [target format](#target-formats)
+and one [serving mode](#serving-modes), then select the measured
+[capacity](#measured-capacity-on-two-32-gib-r9700s) for that profile.
+[Repository layout](#repository-layout-and-execution-order),
+[Build](#build), and [Verification](#verification) describe how source changes
+reach the server and how to check them.
+
 ## Quick start
 
 The portable Compose file contains no machine-local paths. Copy the environment template and point it at
@@ -64,6 +79,11 @@ Host paths, GPU IDs, private image tags, and local overrides belong in the gitig
 `docker-compose.dev.yml`, never in the public Compose file. See `.env.example` and
 `docker-compose.dev.example.yml` in the
 [source repository](https://gitlab.sayou.io/lance-wright/vllm-radiance).
+
+The quick start runs the configured image. To use the global-256 implementation
+from this checkout, [build this revision](#build) and point `IMAGE` at
+that image. Editing the host source or Compose default alone does not install
+the implementation into a previously published image.
 
 ## Target formats
 
@@ -146,8 +166,9 @@ RADIANCE_FAST_DRAFT=1
 ```
 
 K8 is a ceiling. Radiance's dynamic controller may select a shallower depth based on confidence and active
-batch size. Fast draft uses an INT2-g128 LM-head copy with exact top-64 reranking; target verification remains
-in place.
+batch size. Fast draft uses an INT2-g128 LM-head copy with BF16-weight reranking
+of 64 candidates; target verification remains in place. The drafter's shortlist
+and the [target-head shortlist](#target-verify-head-global-256) are separate.
 
 ### DFlash2
 
@@ -163,9 +184,9 @@ RADIANCE_SPECULATIVE_CONFIG='{"method":"dflash","model":"/models/Qwen3.8-27B-her
 
 For AMD's Quark MXFP4 target, use the target-matched
 [`tcclaviger/Qwen3.8-27B-DFlash2-FP8`](https://huggingface.co/tcclaviger/Qwen3.8-27B-DFlash2-FP8)
-drafter. `RADIANCE_FAST_DRAFT=1` runtime-quantizes eligible draft linears to W4 and uses the INT2 exact-rerank
+drafter. `RADIANCE_FAST_DRAFT=1` runtime-quantizes eligible draft linears to W4 and uses the INT2 BF16-rerank
 head. The target retains R4D attention while the drafter uses Triton attention. The current image also
-merges GDN input projections, uses libr4d's fused speculative GDN update, increases exact-rerank width to
+merges GDN input projections, uses libr4d's fused speculative GDN update, sets drafter rerank width to
 64, and narrows DFlash verification per request only at c5 and above when observed acceptance says the
 full K7 target verification is wasteful. Every optimization is independently reversible through the
 controls documented in `benchmarks/README.md`.
@@ -178,6 +199,96 @@ modes:
 docker compose down
 docker compose up -d
 ```
+
+## Target verify head: global-256
+
+The target head scores possible next tokens. Its shortlist determines which
+tokens the sampler can choose, so candidate selection affects the answer.
+The former fast head kept only eight candidates from each 64-token vocabulary
+tile, then globally reranked 80 in the measured profile. With `top_k=20`, more
+than eight required tokens can occupy one tile and disappear before reranking.
+
+The default target method now uses the complete INT2 score vector:
+
+```text
+hidden states → INT2 scores for the entire vocabulary
+              → global top-256 candidates
+              → rescore using original BF16 weights
+              → existing sampler
+```
+
+There is no per-tile quota in this path. The drafter keeps its existing
+block-8 selection and rerank configuration; it shares the packed weights but
+does not pay for the target's deeper candidate set.
+
+### Configuration and fallback
+
+With `RADIANCE_FAST_DRAFT=1` and `RADIANCE_VERIFY_HEAD=1`, no additional opt-in
+is needed for global-256. Python and Compose both default
+`RADIANCE_VERIFY_HEAD_GLOBAL_TOPK` to `256`.
+
+| Setting | Target-head behaviour |
+|---|---|
+| `RADIANCE_VERIFY_HEAD_GLOBAL_TOPK=256` | Default global-256 candidate selection |
+| `RADIANCE_VERIFY_HEAD_GLOBAL_TOPK=128` | Smaller global shortlist for comparison |
+| `RADIANCE_VERIFY_HEAD_GLOBAL_TOPK=0` | Legacy block shortlist; sampled `top_k > min(RERANK // 4, 8)` uses the full head |
+| `RADIANCE_VERIFY_HEAD=0` | Full reference target head for every request |
+
+Global selection supports **TP1, BF16 inputs/weights, supported layouts and at
+most 32 target rows**. Sampled requests require positive `top_k` no larger
+than one quarter of the candidate depth, so `top_k=20` uses global-256. That
+margin is empirical. Greedy requests do not use the top-k limit.
+
+The full head handles TP2, unsupported shapes/dtypes, embedding bias, grammar
+masks, logprobs, sampled min-p, unsupported sampled top-k, penalties, logit
+bias/allowed-token masking, bad words, thinking-budget interventions and
+unknown sampler layouts. These checks select the fallback before sampling;
+they do **not** detect approximation misses in an otherwise eligible request.
+
+### One R9700: 60K+ generated tokens per method
+
+Eleven intact private Pi coding request boundaries contain **57,008–65,527
+input tokens**. Each method generated at least **60,000 measured output tokens**
+across 115 natural completions; no tools were executed. This used one R9700,
+TP1, fixed D7 speculation, ROCm 7.14, PyTorch 2.12.0, Triton 3.7.1 and a
+248,320 × 5,120 BF16 head. These results are separate from the historical
+dual-GPU BetterBench results later in this README.
+
+| Target path | Median M8 head time | Top-1 match | Complete reference top-20 retained | Measured tok/s | Estimated tok/s |
+|---|---:|---:|---:|---:|---:|
+| Full BF16 fallback | 4.122 ms | 119,988/119,988 (100.0000%) | 119,988/119,988 (100.0000%) | 63.9 | 63.9 |
+| Original block-8/64 + rerank-80 | 1.085 ms | 119,956/119,988 (99.9733%) | 98,452/119,988 (82.0515%) | 67.2 | 67.2 |
+| Global INT2 top-128 + BF16 rerank | 1.114 ms | 119,986/119,988 (99.9983%) | 118,254/119,988 (98.5549%) | 67.5 | 67.2 |
+| Global INT2 top-256 + BF16 rerank (default) | 1.128 ms | 119,986/119,988 (99.9983%) | 119,786/119,988 (99.8316%) | 66.8 | 67.1 |
+
+Head time is the median GPU time for an **eight-row target verification
+invocation**, with 1,265 timed invocations per method. Top-1 compares the final
+argmax token ID. Complete top-20 retention requires every reference token at or
+above the twentieth score to survive, including ties; it does not imply
+identical logits, rankings or probabilities.
+
+An independent reference pass generated **61,561 output tokens**. All **15,191
+consecutive head invocations / 119,988 prediction rows** were replayed, including
+prefill and rejected speculative rows. Every full-head digest reproduced exactly.
+Global-256 reduced complete-top-20 misses from **21,536 to 202**, adding **0.042 ms**
+to median head time versus block-8. It retained the reference winner in every
+row, but its reranking arithmetic changed two final argmax results and 6,295
+retained logits, with maximum absolute difference 0.25.
+**Global-256 remains approximate; it is not certified lossless.**
+
+Measured rates pool time after first output at temperature 1, top-p 0.95 and
+top-k 20, excluding warmup and prefill. Global-256 was **4.5% faster than full
+BF16** in these runs. Estimates hold output and acceptance fixed and replace
+only head cost. Repeat full-head requests reproduced their earlier output on
+54/111 prompt/seed pairs, so end-to-end differences cannot be attributed solely
+to shortlist selection. The accuracy replay uses identical hidden vectors.
+These sample counts are not universal correctness probabilities.
+
+See [the methodology and limitations](docs/VERIFY_HEAD_GLOBAL_TOPK.md),
+[long-run aggregate measurements](benchmarks/results/20260916-verify-head-global-topk-long/summary.json)
+and [validation evidence](benchmarks/results/20260916-verify-head-global-topk-long/validation.json).
+The [earlier short pilot](benchmarks/results/20260916-verify-head-global-topk/summary.json)
+is retained separately. Private conversation text and captured tensors are not published.
 
 ## Measured capacity on two 32 GiB R9700s
 
@@ -239,6 +350,10 @@ reproducible maintenance probe are documented in
 
 ## Measured performance
 
+The following TP2 measurements predate the global-256 target-head change.
+They describe their recorded revisions and profiles; they do not qualify the
+new TP1 path or establish the speed of this revision on TP2.
+
 BetterBench v0.2.2 used its v1 corpus, ten measured passes per category, greedy decoding, cold nonce-prefixed
 prompts, and c1/c2/c4/c8 on two R9700s. The current recommended MXFP4 kernel
 profile adds `RADIANCE_MXFP4_WPERM=1` and `RADIANCE_MXFP4_DECODE_NT=1` while
@@ -299,8 +414,11 @@ prefill, telemetry, confidence intervals, negative results, and immutable run ID
   and guarded fallbacks.
 - **Native Quark MXFP4/W4A8:** packed OCP group-32 weights with dynamic FP8 activation quantization and
   separate small-M decode and prefill kernels.
-- **Fast speculative drafting:** dynamic MTP depth, verbatim n-gram tails, INT2 exact-rerank heads, and W4
+- **Fast speculative drafting:** dynamic MTP depth, verbatim n-gram tails, INT2 BF16-rerank heads, and W4
   DFlash draft linears.
+- **Global target candidate selection:** default global-256 for eligible TP1
+  requests, an unchanged block-8 drafter, explicit legacy controls and full-head
+  fallback. Measured candidate recall and score fidelity are reported separately.
 - **Hybrid-safe prefix caching:** automatic prefix caching with GDN convolution/recurrent-state restoration
   through `--mamba-cache-mode=align`.
 - **Spec-safe structured output:** upstream XGrammar termination and reasoning-boundary fixes prevent
@@ -311,6 +429,49 @@ prefill, telemetry, confidence intervals, negative results, and immutable run ID
 
 Unsupported geometries fall back per operator. AITER, FLA, Triton, and RCCL controls remain available for
 matched experiments.
+
+## Repository layout and execution order
+
+```text
+vllm-radiance/
+├── Dockerfile, Dockerfile.patch       # Full pinned build and compatible overlay
+├── docker-compose.yml, .env.example  # Server arguments, paths and runtime controls
+├── patch_*.py, _patchlib.py          # Guarded source patches applied during build
+├── install_radiance_hooks.py         # Install the vLLM plugin-loader hook
+├── radiance_*.py, radiance_*.hip     # Runtime dispatchers and native kernels
+├── radiance_entrypoint.sh            # Image startup and server execution
+├── fp8-configs/, mxfp4-configs/      # Tuned GEMM configurations
+├── moe-configs/                      # Tuned MoE configurations
+├── tests/                           # CPU dispatch and native verify-head checks
+├── benchmarks/
+│   ├── bin/                         # Benchmark and correctness drivers
+│   ├── fixtures/, betterbench/      # Inputs and benchmark profiles
+│   └── results/                     # Recorded measurements and provenance
+└── docs/                            # Implementation and qualification reports
+```
+
+The normal sequence is **build → configure → start → verify → benchmark**.
+The Dockerfiles define source-patch order; individual patch scripts operate
+on the pinned image's installed packages and are not host setup commands.
+
+| Entry point | Inputs | Operation and outputs |
+|---|---|---|
+| `Dockerfile` | Pinned dependency commits, patches, runtime sources, kernel configs | Builds the compiler/runtime stack and a tagged serving image |
+| `Dockerfile.patch` | A compatible built image and updated source checkout | Applies guarded overlays, rebuilds small HIP extensions and produces a replacement image |
+| `patch_*.py`, `_patchlib.py` | Installed vLLM/AITER source and expected anchors | Patch supported source layouts; build output records applied/no-op/failed patches |
+| `install_radiance_hooks.py` | vLLM plugin loader | Installs `radiance_kernels.install_all()` before model loading |
+| `radiance_entrypoint.sh`, `radiance_preamble.py` | Environment, devices and server arguments | Run startup checks/reporting and launch `vllm serve` |
+| `patch_verify_head.py` | V2 model-runner sampling call site | Adds the per-step target-head eligibility hook before logits computation |
+| `radiance_verifyhead.py` | Target hidden states, BF16 weights and sampler metadata | Selects global candidates or the full head and returns target logits |
+| `radiance_drafthead.py` | Drafter hidden states and shared packed weights | Produces draft-head scores with its existing block shortlist |
+| Other `radiance_*.py` modules | Model tensors, state and per-feature environment flags | Dispatch attention, GDN, GEMM, sampling, KV/offload and telemetry operations |
+| `tests/test_verify_head_*.py` | Public synthetic tensors and request metadata | Assert dispatch, capacity, default selection, fallback and native kernel behaviour |
+| `benchmarks/bin/` | Model/profile, prompt fixtures and endpoint or image | Produces run manifests, responses, timings and correctness reports; see the [lab guide](benchmarks/README.md) for each driver |
+
+The target-head runtime pipeline is
+`patch_verify_head.py → before_compute_logits → sampling eligibility → global-256 or full head → sampler`.
+The native test suite exercises the public hook as well as the numeric path;
+CPU tests cover default and fallback decisions without allocating GPU memory.
 
 ## Build
 
@@ -341,8 +502,49 @@ ordinary Radiance/libr4d iteration without rebuilding PyTorch and the compiler s
 Do not independently bump PyTorch, Triton, torchvision, or vLLM. The qualified versions are a compiler stack,
 and an earlier mismatched combination caused sustained TP hangs.
 
+After building, select the resulting image explicitly before starting Compose:
+
+```bash
+IMAGE="vllm-radiance:$(cat VERSION)" docker compose up -d
+```
+
+Keep that image selection in `.env` for subsequent starts. Runtime feature
+changes require container recreation so the worker imports the new defaults.
+
+## Verification
+
+For CPU dispatch tests, use an environment with NumPy and pytest:
+
+```bash
+python -m pytest -q tests
+```
+
+For native operator and hook tests, run from this checkout inside the pinned
+ROCm/PyTorch/Triton environment with NumPy, pytest and access to a test GPU:
+
+```bash
+RADIANCE_TEST_NATIVE=1 python -m pytest -q tests
+```
+
+These tests use public synthetic tensors and do not need a model checkpoint.
+The native implementation passed **135 tests with no skips** before the
+default-selection change. The current default change passes **117 CPU tests**
+and explicitly skips 19 native tests. Its numerical kernels and fallback
+predicates are unchanged; native tests were not repeated for this
+configuration change. Revision identities and source hashes are preserved in
+the [validation record](benchmarks/results/20260916-verify-head-global-topk/validation.json).
+
+The checks cover mixed/reordered batches, unset global-256 selection, explicit
+legacy selection, unsupported sampling transformations, clustered top-20
+tokens, target row counts 1/2/3/8/16/32, unchanged drafter output and switching
+between global and full-head execution. They establish these tested
+properties, not universal model equivalence. Use the
+[benchmark laboratory](benchmarks/README.md) for model-level throughput,
+tool-call and long-context qualification after operator checks pass.
+
 ## Documentation
 
+- [Global-256 target head: configuration, measurements and limitations](docs/VERIFY_HEAD_GLOBAL_TOPK.md)
 - [Upgrade and reproducibility history](https://gitlab.sayou.io/lance-wright/vllm-radiance/-/blob/main/docs/UPGRADE_PROGRESS.md)
 - [Stable vLLM v0.28 upgrade and qualification](https://gitlab.sayou.io/lance-wright/vllm-radiance/-/blob/main/docs/V028_UPGRADE.md)
 - [Radiance 0.9.3 / libr4d 0.5.0 qualification](https://gitlab.sayou.io/lance-wright/vllm-radiance/-/blob/main/docs/RADIANCE_093_R4D050_MXFP4.md)
@@ -356,8 +558,9 @@ and an earlier mismatched combination caused sustained TP hangs.
 - [Benchmark laboratory usage](https://gitlab.sayou.io/lance-wright/vllm-radiance/-/blob/main/benchmarks/README.md)
 - [Complete runtime knob reference](https://gitlab.sayou.io/lance-wright/vllm-radiance/-/blob/main/DOCKERHUB.md)
 
-The source repository is the canonical location for detailed qualification evidence. This landing page is
-intentionally concise so the same content can be published as the Docker Hub repository overview.
+The source repository holds the implementation and detailed qualification
+evidence. Recorded benchmark results retain their original workload and
+revision scope; changing a default does not retroactively qualify a new build.
 
 ## Upstream and attribution
 

@@ -1,0 +1,137 @@
+{
+  "schema": "radiance.verify-head.private-workload-summary.v1",
+  "date": "2026-09-16",
+  "workload": {
+    "kind": "private Pi coding-agent request",
+    "prompt_tokens": 61007,
+    "messages": 44,
+    "tool_definitions": 11,
+    "tools_executed": 0,
+    "temperature": 1,
+    "top_p": 0.95,
+    "top_k": 20,
+    "timed_seeds": [
+      0,
+      17,
+      42
+    ],
+    "capture_seed": 73,
+    "private_text_or_tensors_included": false
+  },
+  "hardware": {
+    "gpu": "AMD Radeon AI PRO R9700",
+    "tensor_parallel_size": 1,
+    "rocm": "7.14",
+    "torch": "2.12.0",
+    "triton": "3.7.1"
+  },
+  "head": {
+    "vocabulary": 248320,
+    "hidden_dimension": 5120,
+    "weight_dtype": "BF16",
+    "speculative_width": 7
+  },
+  "capture": {
+    "calls": 83,
+    "rows": 650,
+    "row_shapes": {
+      "1": 2,
+      "8": 81
+    },
+    "selection": "all consecutive calls; no failure filtering",
+    "full_reference_matches_in_model": true
+  },
+  "cold_request_first_token_seconds": 30.379765637000673,
+  "total_timed_response_tokens": 1732,
+  "total_timed_response_wall_seconds": 41.54227070900379,
+  "variants": {
+    "full": {
+      "head_m8_timing": {
+        "samples": 155,
+        "median_ms": 4.1857500076293945,
+        "mean_ms": 4.191274033823321,
+        "p95_ms": 4.247008800506592,
+        "min_ms": 4.09548807144165,
+        "max_ms": 4.316188812255859
+      },
+      "top1_argmax_matches": 650,
+      "top1_candidate_retained": 650,
+      "complete_reference_top20_retained": 650,
+      "total_rows": 650,
+      "retained_logit_mismatches": 0,
+      "max_retained_logit_difference": 0.0,
+      "measured_post_first_tokens_per_second": 68.46716236921087,
+      "fixed_acceptance_estimated_tokens_per_second": 68.46716236921087,
+      "three_response_wall_seconds": 10.666972619997978,
+      "three_response_decode_seconds": 6.280382961998839
+    },
+    "block80": {
+      "head_m8_timing": {
+        "samples": 155,
+        "median_ms": 1.1288559436798096,
+        "mean_ms": 1.1401246670753724,
+        "p95_ms": 1.2122559547424316,
+        "min_ms": 1.0452549457550049,
+        "max_ms": 1.2970860004425049
+      },
+      "top1_argmax_matches": 650,
+      "top1_candidate_retained": 650,
+      "complete_reference_top20_retained": 580,
+      "total_rows": 650,
+      "retained_logit_mismatches": 14,
+      "max_retained_logit_difference": 0.125,
+      "measured_post_first_tokens_per_second": 71.52726492694099,
+      "fixed_acceptance_estimated_tokens_per_second": 72.11058631226554,
+      "three_response_wall_seconds": 10.234716145001585,
+      "three_response_decode_seconds": 6.0116935890000605
+    },
+    "global128": {
+      "head_m8_timing": {
+        "samples": 155,
+        "median_ms": 1.1494050025939941,
+        "mean_ms": 1.1664364753230925,
+        "p95_ms": 1.2734960317611694,
+        "min_ms": 1.0364049673080444,
+        "max_ms": 1.4970959424972534
+      },
+      "top1_argmax_matches": 650,
+      "top1_candidate_retained": 650,
+      "complete_reference_top20_retained": 643,
+      "total_rows": 650,
+      "retained_logit_mismatches": 21,
+      "max_retained_logit_difference": 0.125,
+      "measured_post_first_tokens_per_second": 70.31842916844447,
+      "fixed_acceptance_estimated_tokens_per_second": 72.07751020572285,
+      "three_response_wall_seconds": 10.394137116003549,
+      "three_response_decode_seconds": 6.115039898999385
+    },
+    "global256": {
+      "head_m8_timing": {
+        "samples": 155,
+        "median_ms": 1.1646349430084229,
+        "mean_ms": 1.17787482430858,
+        "p95_ms": 1.2739050388336182,
+        "min_ms": 1.1177159547805786,
+        "max_ms": 1.3166459798812866
+      },
+      "top1_argmax_matches": 650,
+      "top1_candidate_retained": 650,
+      "complete_reference_top20_retained": 649,
+      "total_rows": 650,
+      "retained_logit_mismatches": 33,
+      "max_retained_logit_difference": 0.125,
+      "measured_post_first_tokens_per_second": 71.96445399400072,
+      "fixed_acceptance_estimated_tokens_per_second": 72.063140721205,
+      "three_response_wall_seconds": 10.246444828000676,
+      "three_response_decode_seconds": 5.975172132006264
+    }
+  },
+  "limitations": [
+    "Private workload is not a public reproducible corpus. Synthetic kernel regressions are provided separately.",
+    "Head timing is the prototype numeric path now used by the global implementation; integration eligibility checks are separate.",
+    "Top-20 retention includes boundary ties; it does not mean identical reranked logits or probabilities.",
+    "Top-1 and recall percentages describe 650 observed rows, not universal guarantees.",
+    "Three short timed responses per variant; no long-answer or multi-GPU qualification.",
+    "No certified adaptive native timing is available."
+  ]
+}

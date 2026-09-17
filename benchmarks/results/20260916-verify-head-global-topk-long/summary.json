@@ -1,0 +1,173 @@
+{
+  "schema": "radiance-private-head-natural-output-v1",
+  "workload": {
+    "source": "Intact private Pi coding request boundaries; no tools executed.",
+    "request_boundaries": 11,
+    "input_tokens_min": 57008,
+    "input_tokens_max": 65527,
+    "paired_comparisons": 115,
+    "minimum_measured_output_tokens_per_method": 60000,
+    "natural_eos": true,
+    "sampling": {
+      "temperature": 1,
+      "top_p": 0.95,
+      "top_k": 20
+    },
+    "speculation": "Fixed D7, TP1",
+    "warmup": "Entire first four-method comparison excluded; extension warmed all methods."
+  },
+  "capture": {
+    "output_tokens": 61561,
+    "requests": 111,
+    "identical_output_pairs_to_timed_reference": 54,
+    "head_invocations": 15191,
+    "prediction_rows": 119988,
+    "reference_matches_saved_in_model_digests": true,
+    "scope": "Every saved consecutive call, including prefill and rejected speculative rows."
+  },
+  "head_shape": [
+    248320,
+    5120
+  ],
+  "variants": {
+    "full": {
+      "requests": 115,
+      "output_tokens": 60598,
+      "natural_stops": 115,
+      "length_stops": 0,
+      "request_seconds": 1143.4527604890027,
+      "post_first_seconds": 946.2298901220347,
+      "measured_post_first_tps": 63.919984595075036,
+      "verification_calls": 15135,
+      "estimated_fixed_acceptance_tps": 63.919984595075036,
+      "emitted_tokens_per_verification_approx": 3.9962338949454907,
+      "wall_ms_per_verification_approx": 62.519318805552345,
+      "identical_output_pairs_to_timed_full_head": 115,
+      "head_m8_timing": {
+        "samples": 1265,
+        "median_ms": 4.122281074523926,
+        "mean_ms": 4.125603819835798,
+        "p95_ms": 4.151482105255127,
+        "min_ms": 4.044641017913818,
+        "max_ms": 4.252565860748291
+      },
+      "recall": {
+        "rows": 119988,
+        "argmax_retained": 119988,
+        "any_maximum_retained": 119988,
+        "top20_complete": 119988,
+        "argmax_equal": 119988,
+        "retained_logit_mismatches": 0,
+        "max_retained_logit_difference": 0.0
+      }
+    },
+    "block80": {
+      "requests": 115,
+      "output_tokens": 60075,
+      "natural_stops": 115,
+      "length_stops": 0,
+      "request_seconds": 1096.052057232053,
+      "post_first_seconds": 892.5482682100119,
+      "measured_post_first_tps": 67.17843968287409,
+      "verification_calls": 15019,
+      "estimated_fixed_acceptance_tps": 67.1856635795846,
+      "emitted_tokens_per_verification_approx": 3.9922764498302152,
+      "wall_ms_per_verification_approx": 59.42794248685078,
+      "identical_output_pairs_to_timed_full_head": 100,
+      "head_m8_timing": {
+        "samples": 1265,
+        "median_ms": 1.0853300094604492,
+        "mean_ms": 1.086740844146065,
+        "p95_ms": 1.1389130353927612,
+        "min_ms": 1.0058989524841309,
+        "max_ms": 1.2065019607543945
+      },
+      "recall": {
+        "rows": 119988,
+        "argmax_retained": 119958,
+        "any_maximum_retained": 119963,
+        "top20_complete": 98452,
+        "argmax_equal": 119956,
+        "retained_logit_mismatches": 2378,
+        "max_retained_logit_difference": 0.25
+      }
+    },
+    "global128": {
+      "requests": 115,
+      "output_tokens": 60348,
+      "natural_stops": 115,
+      "length_stops": 0,
+      "request_seconds": 1084.6778357879812,
+      "post_first_seconds": 892.2657342400562,
+      "measured_post_first_tps": 67.5056742499481,
+      "verification_calls": 15018,
+      "estimated_fixed_acceptance_tps": 67.1539020312497,
+      "emitted_tokens_per_verification_approx": 4.010720468770808,
+      "wall_ms_per_verification_approx": 59.41308657877588,
+      "identical_output_pairs_to_timed_full_head": 105,
+      "head_m8_timing": {
+        "samples": 1265,
+        "median_ms": 1.1143100261688232,
+        "mean_ms": 1.1148731092219297,
+        "p95_ms": 1.1547319889068604,
+        "min_ms": 1.0453310012817383,
+        "max_ms": 1.2096209526062012
+      },
+      "recall": {
+        "rows": 119988,
+        "argmax_retained": 119988,
+        "any_maximum_retained": 119988,
+        "top20_complete": 118254,
+        "argmax_equal": 119986,
+        "retained_logit_mismatches": 3550,
+        "max_retained_logit_difference": 0.25
+      }
+    },
+    "global256": {
+      "requests": 115,
+      "output_tokens": 60675,
+      "natural_stops": 115,
+      "length_stops": 0,
+      "request_seconds": 1103.267706843908,
+      "post_first_seconds": 906.8730497610013,
+      "measured_post_first_tps": 66.778916868199,
+      "verification_calls": 15251,
+      "estimated_fixed_acceptance_tps": 67.13865872599744,
+      "emitted_tokens_per_verification_approx": 3.9708871549406597,
+      "wall_ms_per_verification_approx": 59.463186004917794,
+      "identical_output_pairs_to_timed_full_head": 102,
+      "head_m8_timing": {
+        "samples": 1265,
+        "median_ms": 1.1276220083236694,
+        "mean_ms": 1.1283840668531275,
+        "p95_ms": 1.1681729555130005,
+        "min_ms": 1.0253709554672241,
+        "max_ms": 1.29927396774292
+      },
+      "recall": {
+        "rows": 119988,
+        "argmax_retained": 119988,
+        "any_maximum_retained": 119988,
+        "top20_complete": 119786,
+        "argmax_equal": 119986,
+        "retained_logit_mismatches": 6295,
+        "max_retained_logit_difference": 0.25
+      }
+    }
+  },
+  "total_timed_response_tokens": 241696,
+  "total_timed_request_seconds": 4427.450360352945,
+  "total_timed_post_first_seconds": 3637.916942333104,
+  "limitations": [
+    "Empirical measurements on one private coding workload; no universal recall guarantee.",
+    "Top-20 retention includes ties and does not imply equal logits or probabilities.",
+    "Global shortlist selection and selective BF16 reranking remain approximate.",
+    "Measured throughput pools post-first-output time; warmup and prefill are excluded.",
+    "Approximate heads may generate different continuations and speculative acceptance.",
+    "Paired output identity is reported separately from head recall on identical inputs.",
+    "Fixed-acceptance estimates replace head time only in the full-head measurements.",
+    "Head timing is per M8 invocation and excludes public eligibility checks.",
+    "This head replay does not certify upstream hidden-state computation."
+  ],
+  "exporter_sha256": "69e6539f262504518772e3c74fc03781c7df85f80d569e9699b3c5c3111768d4"
+}

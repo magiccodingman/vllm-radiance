@@ -1,57 +1,31 @@
-"""int2 TARGET verify head with an exact rerank, gated on the batch's sampling params.
+"""Experimental INT2 target head with BF16-weight reranking and full-head fallback.
 
-The decode profile of the shipped DFlash2 build shows exactly one 2.02 ms bf16 GEMM per step --
-`Cijk_..._MT16x32x256`, 5.9% of wall, one call per engine step. That is the target's `lm_head`:
-124160 x 5120 per rank, 1.18 GiB, and it runs at 613 GB/s, i.e. at the DRAM roofline. As with the
-draft head, the only lever is bytes.
+The default target method selects 256 candidates globally from the complete
+INT2 score row. RADIANCE_VERIFY_HEAD_GLOBAL_TOPK=128 selects a smaller global
+shortlist; setting 0 restores block selection with the sampled capacity gate
+top_k <= min(RERANK // 4, KCAND). That gate is necessary, not a recall proof.
 
-radiance_drafthead already has the machinery -- an int2 coarse pass that emits the top KCAND of each
-64-wide block, and an exact rerank of the best RERANK of those against the untouched bf16 weight.
-This module points it at the target's LogitsProcessor as well. Because DFlash2 shares one lm_head
-between the drafter and the target, the packing is literally the same buffers (see _HEAD_CACHE in
-radiance_drafthead): arming this costs no additional VRAM.
+Global candidate selection removes the per-tile
+cap. Every selected token is rescored using the original BF16 weights; the
+other logits become -inf. The drafter keeps its existing block-8 shortlist.
+The global path is limited to TP1, BF16, and at most 32 target rows per call.
 
-WHY THIS IS A DIFFERENT RISK CLASS FROM THE DRAFT HEAD, AND WHAT MAKES IT SAFE.
+Both paths are approximate. Greedy winner recall is not guaranteed, and
+reranking against BF16 weights does not imply bitwise equality to the full
+BF16 GEMM. A real 61K-token TP1 replay retained the full top-20 in 649/650
+rows with global-256 and also observed retained-logit differences. This is
+not a completeness certificate or a distribution-preserving target head.
 
-A drafter only chooses what is *proposed*; the target verifies every token, so a bad draft costs
-acceptance and cannot change what the model emits. This head IS the target. A token that the coarse
-pass fails to surface is a token the model can no longer produce, so the approximation has to be
-exact over everything the sampler can actually consume.
+Grammar, logprobs, unsupported sampled top-k/min-p and wide batches use the
+full head. Global selection additionally declines biases, penalties, bad-word
+masks, thinking-budget interventions and unsupported layouts. No certificate
+failure can be detected by this implementation: approximate recall misses can
+still pass the global path. Use RADIANCE_VERIFY_HEAD=0 for the full target head
+on every request.
 
-`_radiance_topk_only` makes the reranked set the ONLY eligible one (everything else is -inf), so a
-row carries exactly RERANK finite, exactly-scored entries. That is sufficient when, and only when,
-the sampler's support is a subset of those RERANK tokens:
-
-  * A GREEDY request (temperature 0) is always safe: only the argmax matters, which is this head's
-    original guarantee. Note that vLLM DISABLES top_k for greedy requests -- it is meaningless once
-    the sample is a max -- so top_k arrives as vocab_size, and a gate written only around top_k
-    rejects precisely the traffic that is safest. That mistake sent both arms of a GSM8K 500q A/B
-    down the bf16 fallback and produced a clean-looking result that gated nothing.
-  * A SAMPLED request needs `top_k <= RERANK // 4`. The same 4x margin the drafter needed:
-    selector_top_k=16 was correct at RERANK=64 and lossy at 32. top_k bounds the support, and its
-    truncation happens before top_p, so top_p and temperature ride along safely -- both are
-    monotonic and operate inside the kept set.
-  * `min_p == 0` on the sampled rows. min_p keeps every token within a ratio of the max
-    probability, which is a threshold on the FULL row, not a rank cut, so it can admit tokens past
-    RERANK. Greedy rows ignore min_p.
-  * no logprobs. A logprobs response needs the row's logsumexp over the whole vocabulary; ours is
-    the logsumexp of RERANK entries.
-  * no grammar bitmask. Structured output masks the full vocabulary to the grammar's allowed set,
-    which can be disjoint from our RERANK -- and a row of all -inf is not a distribution.
-
-Anything else falls back to the exact bf16 head for that step. The gate is evaluated per step over
-the requests actually in the batch, so one logprobs request slows that step down and changes
-nothing about it.
-
-**The rejection sampler is safe under the same condition, and it is worth saying why explicitly.**
-It needs the target's probability at each drafted token id, and on rejection it resamples from the
-target distribution. Both are taken AFTER top_k truncation, so their support is the top_k set. A
-drafted token outside the top_k set has target probability zero in the exact distribution too, so
-rejecting it is the correct outcome rather than an artefact -- provided the true top_k tokens are
-all present, which is the recall property the 4x margin buys and GSM8K gates.
-
-Off by default (`RADIANCE_VERIFY_HEAD=1`). Requires `RADIANCE_FAST_DRAFT=1`, which is what builds
-the int2 packing this reuses.
+RADIANCE_VERIFY_HEAD=1 requires RADIANCE_FAST_DRAFT=1 to build the shared INT2
+packing. Setting GLOBAL_TOPK alone does not enable target-head optimization.
+See docs/VERIFY_HEAD_GLOBAL_TOPK.md for measurements, scope and configuration.
 """
 import os
 import sys
@@ -66,6 +40,10 @@ except Exception as e:                  # pragma: no cover
     sys.stderr.write(f"[radiance.verifyhead] radiance_drafthead unavailable: {e!r}\n")
 
 ENABLED = os.environ.get("RADIANCE_VERIFY_HEAD", "0") == "1"
+GLOBAL_TOPK = int(os.environ.get("RADIANCE_VERIFY_HEAD_GLOBAL_TOPK", "256"))
+if GLOBAL_TOPK not in (0, 128, 256):
+    raise ValueError("RADIANCE_VERIFY_HEAD_GLOBAL_TOPK must be 0, 128 or 256")
+_GLOBAL_MAX_ROWS = 32
 # Rows above which the gate declines. NON-BINDING BY DEFAULT, deliberately.
 #
 # This knob was added at 32 because a BetterBench single pass showed conc 8 at -6.2%, and the theory
@@ -132,15 +110,17 @@ def _arm(model):
         sys.stderr.write(f"[radiance.verifyhead] quantisation declined: {status}; off\n")
         return
 
-    fast = lp._apply_head                    # the int2 path _quantize_head_now just bound
+    fast = (types.MethodType(_apply_head_global, lp) if GLOBAL_TOPK
+            else lp._apply_head)             # target-only; drafter binding is untouched
     lp._radiance_exact_head = exact
     lp._radiance_fast_head = fast
     lp._radiance_fast_ok = False
     lp._apply_head = types.MethodType(_apply_head_gated, lp)
     _state["lp"] = lp
     _state["armed"] = True
-    sys.stderr.write(f"[radiance.verifyhead] VERIFY_HEAD: {status} "
-                     f"(max top_k {_dh.RERANK // 4}, exact fallback otherwise)\n")
+    selection = f"global-{GLOBAL_TOPK} approximate TP1" if GLOBAL_TOPK else "block shortlist"
+    sys.stderr.write(f"[radiance.verifyhead] VERIFY_HEAD: {status}; target {selection} "
+                     f"(max top_k {_sampled_top_k_limit()}, full-head fallback otherwise)\n")
     sys.stderr.flush()
 
 
@@ -148,6 +128,74 @@ def _apply_head_gated(self, lm_head, hidden_states, embedding_bias=None):
     if getattr(self, "_radiance_fast_ok", False):
         return self._radiance_fast_head(lm_head, hidden_states, embedding_bias)
     return self._radiance_exact_head(lm_head, hidden_states, embedding_bias)
+
+
+def _sampled_top_k_limit():
+    # Retain the existing empirical 4x margin. It is not a recall certificate.
+    return GLOBAL_TOPK // 4 if GLOBAL_TOPK else min(_dh.RERANK // 4, _dh.KCAND)
+
+
+def _apply_head_global(self, lm_head, hidden_states, embedding_bias=None):
+    """Full-row INT2 top-N and BF16 rerank, with no per-vocabulary-tile quota."""
+    weight = lm_head.weight
+    if (embedding_bias is not None or getattr(lm_head, "tp_size", None) != 1
+            or hidden_states.dim() != 2 or weight.dim() != 2
+            or hidden_states.dtype != torch.bfloat16 or weight.dtype != torch.bfloat16
+            or not hidden_states.is_cuda or weight.device != hidden_states.device
+            or weight.stride(1) != 1 or hidden_states.shape[-1] != weight.shape[-1]
+            or hidden_states.shape[-1] % 512 != 0
+            or not 0 < hidden_states.shape[0] <= min(MAX_ROWS, _GLOBAL_MAX_ROWS)
+            or weight.shape[0] <= GLOBAL_TOPK
+            or getattr(self, "head_dtype", None) not in (None, torch.bfloat16)):
+        return self._radiance_exact_head(lm_head, hidden_states, embedding_bias)
+
+    rows, width = hidden_states.shape
+    padded = _dh._pow2_at_least(rows)
+    x = hidden_states
+    if padded != rows:
+        x = torch.cat((x, x.new_zeros(padded - rows, width)))
+    x = x.contiguous()
+    vocab, blocks = self._radiance_n, self._radiance_nblk
+    sums = x.reshape(padded, width // _dh.GROUP, _dh.GROUP).float().sum(-1).contiguous()
+    logits = torch.empty(padded, vocab, dtype=torch.bfloat16, device=x.device)
+    unused_scores = torch.empty(1, dtype=torch.float32, device=x.device)
+    unused_ids = torch.empty(1, dtype=torch.int32, device=x.device)
+    # KC=0 removes the tile's max/mask emission loop. The complete BF16 coarse
+    # row remains available for global selection. No draft setting is changed.
+    _dh._draft_head_int2[(blocks,)](
+        x, sums, self._radiance_wq, self._radiance_scale, self._radiance_zs,
+        logits, unused_scores, unused_ids, width, vocab,
+        self._radiance_wq.stride(0), self._radiance_scale.stride(0), sums.stride(0),
+        blocks, 0, G=_dh.GROUP, BLOCK_M=padded, BLOCK_N=_dh.BLOCK_N,
+        **_dh._cfg_for(padded),
+    )
+    ids = logits.topk(GLOBAL_TOPK, dim=-1).indices.to(torch.int32).contiguous()
+    rescored = torch.empty(padded, GLOBAL_TOPK, dtype=torch.float32, device=x.device)
+    _dh._rerank_exact[(padded, GLOBAL_TOPK)](
+        x, weight, ids, rescored, width, weight.stride(0),
+        R=GLOBAL_TOPK, BLOCK_K=512, num_warps=4,
+    )
+    logits.fill_(-float("inf"))
+    logits.scatter_(1, ids.long(), rescored.to(torch.bfloat16))
+    return logits[:rows]
+
+
+def _global_processors_supported(sampler, idx):
+    """Reject transformations that can promote tokens outside the shortlist."""
+    try:
+        if (sampler.penalties_state.use_penalty[idx].any()
+                or sampler.logit_bias_state.use_logit_bias[idx].any()
+                or (sampler.bad_words_state.num_bad_words.np[idx] != 0).any()
+                or (sampler.logprob_token_ids_state.num_token_ids.np[idx] != 0).any()):
+            return False
+        thinking = sampler.thinking_budget_state
+        if thinking.enabled and thinking.use_thinking_budget[idx].any():
+            return False
+        if getattr(sampler, "trace_replay_state", None) is not None:
+            return False
+    except (AttributeError, IndexError, TypeError):
+        return False  # Unknown sampler layouts must not silently use this path.
+    return True
 
 
 def _batch_is_safe(runner, input_batch, grammar_output) -> bool:
@@ -166,17 +214,16 @@ def _batch_is_safe(runner, input_batch, grammar_output) -> bool:
     # Decline a batch too wide for the int2 head to win on. logits_indices is one row per sampled
     # position, which is exactly the M the head is about to be called with.
     li = getattr(input_batch, "logits_indices", None)
-    if li is not None and li.shape[0] > MAX_ROWS:
+    limit = min(MAX_ROWS, _GLOBAL_MAX_ROWS) if GLOBAL_TOPK else MAX_ROWS
+    if li is not None and li.shape[0] > limit:
         return False
     try:
         if int(ss.num_logprobs[idx].max()) != _NO_LOGPROBS:
             return False
-        # A GREEDY request needs only the argmax, which is this head's original and
-        # best-validated guarantee (it matched the bf16 argmax on all 8192 captured inputs, and on
-        # 8/8 real completions here). vLLM DISABLES top_k for greedy -- it is meaningless once the
-        # sample is a max -- so top_k arrives as vocab_size and a top_k-only gate rejects exactly
-        # the traffic that is safest. That is not hypothetical: it silently sent both arms of a
-        # GSM8K 500q A/B down the bf16 fallback, so the run gated nothing.
+        if GLOBAL_TOPK and not _global_processors_supported(sampler, idx):
+            return False
+        # vLLM disables top_k for greedy requests. Preserve greedy dispatch,
+        # without treating observed argmax recall as a mathematical guarantee.
         greedy = ss.temperature.np[idx] == 0.0
         if greedy.all():
             return True
@@ -184,7 +231,11 @@ def _batch_is_safe(runner, input_batch, grammar_output) -> bool:
         # reranked set. min_p is a threshold on the full row rather than a rank cut, so it can
         # admit tokens past RERANK; it is irrelevant for the greedy rows, hence the mask.
         sampled = ~greedy
-        if int(ss.top_k.np[idx][sampled].max()) > _dh.RERANK // 4:
+        # Reranking cannot recover tokens already discarded by a per-block shortlist.
+        # This capacity check is necessary; it does not prove approximate-head recall.
+        if int(ss.top_k.np[idx][sampled].max()) > _sampled_top_k_limit():
+            return False
+        if GLOBAL_TOPK and int(ss.top_k.np[idx][sampled].min()) <= 0:
             return False
         if float(ss.min_p.np[idx][sampled].max()) != 0.0:
             return False

@@ -1,0 +1,31 @@
+{
+  "schema": "radiance-private-head-natural-output-validation-v1",
+  "scope": "Completed natural-output benchmark and same-hidden-state native head replay; empirical evidence, not a universal correctness proof.",
+  "public_numeric_implementation_revision": "d273653a2243fbd41f11b87f1fbbd3f925f1cc73",
+  "numeric_implementation_changed_for_benchmark_update": false,
+  "all_methods_at_least_60000_measured_output_tokens": true,
+  "all_timed_requests_ended_naturally": true,
+  "independent_capture_output_tokens": 61561,
+  "every_captured_head_invocation_replayed": 15191,
+  "prediction_rows": 119988,
+  "full_head_reproduces_all_saved_in_model_digests": true,
+  "head_time_m8_samples_per_method": 1265,
+  "warmup_policy": "Uniformly exclude the entire initial four-method pair; warm all methods before extension measurements.",
+  "topup_recovery": "An initial extension stopped before GPU acquisition on a string startup trial ID. Corrected trial accounting preserves startup records separately. The failed attempt and original measurements are retained.",
+  "benchmark_reporting_cpu_checks": {
+    "passed": 30,
+    "failed": 0,
+    "scope": "Per-method budgets, pair rotation, uniform warmup exclusion, complete replay validation, numeric-only public export, and startup trial ID regression."
+  },
+  "executed_initial_benchmark_source_sha256": {
+    "benchmark_private_head_long.py": "4e6128533c18930325faa677ede657fab3fb32fa69b58461c4ccc43ea75050b8",
+    "benchmark_private_head.py": "4450674826b86d0890bb772660598d7824beca999db31e7281ccd1ff33902718",
+    "private_head_probe.py": "e1b4b63adac27d3620cfdcec63e00531f8ac8d97a00ccfecd4189cd53b8e987a",
+    "benchmark_private_head_stage.py": "f9bc8dee46851b86f79d1c3f0b9279b4a17c0a66140ad4375aa76b8f295f18ae"
+  },
+  "executed_extension_source_sha256": "33d1be68a88ecbd2c79ed462eb526f44646ee13d80bb259d03b07373a2067aa5",
+  "public_exporter_sha256": "69e6539f262504518772e3c74fc03781c7df85f80d569e9699b3c5c3111768d4",
+  "aggregate_sha256": "5d568336e585d01b82812a0f5e87dba053bfc8547b8428b2678094c7f8ce3062",
+  "prior_public_dispatch_and_native_regressions": "../20260916-verify-head-global-topk/validation.json",
+  "private_text_token_ids_hidden_vectors_and_paths_published": false
+}

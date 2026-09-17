@@ -1,0 +1,39 @@
+{
+  "native": {
+    "tests": 135,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "cpu": {
+    "passed": 116,
+    "skipped_native": 19
+  },
+  "source_sha256": {
+    "radiance_verifyhead.py": "3746a5740d27e6c0d759c36ee8fcc25533e321aaf1fae067184b598e553b9f36",
+    "radiance_drafthead.py": "0de6f82cbf22d7ef6ac254748df60c72b329834fbc839cdb7d8f3cbf337bba92",
+    "tests/test_verify_head_global_topk.py": "83e68c7da6544262d2e932cc0d8a0ab2bfb3626468d441fddd8b80645fcc8d1d",
+    "tests/test_verify_head_sampling_capacity.py": "1fe09e37bc7e250b3dfc89e13fc6edd2abe9ea26b5eb3e552fa83151eb001dd2"
+  },
+  "scope": "Native and CPU results above describe the global implementation before changing its default; private replay measurements are in summary.json.",
+  "revision": "dc3487cc29c8319bb59fc089c892151d57940cb4",
+  "default_selection_change": {
+    "default_global_topk": 256,
+    "cpu": {
+      "passed": 117,
+      "skipped_native": 19,
+      "failures": 0,
+      "errors": 0
+    },
+    "native_rerun": false,
+    "runtime_functions_unchanged": true,
+    "regression": "Absent environment option must select global-256 and admit supported top_k=20; failed against default 0 and passed after change.",
+    "source_sha256": {
+      "radiance_verifyhead.py": "eba5cebe0e1234fde280156c228a623ff521179347bdcc7a80d91b8c65d14344",
+      "radiance_drafthead.py": "0de6f82cbf22d7ef6ac254748df60c72b329834fbc839cdb7d8f3cbf337bba92",
+      "tests/test_verify_head_global_topk.py": "e640aece91c0d8bf4c55c28ef5255a2c3891047f2f43e4d8a5d569c03498f08d",
+      "tests/test_verify_head_sampling_capacity.py": "7c2c731b94ff2704991fd7659fd8167ad564831de7e1c3f4e7973e0cf5f26bb5"
+    },
+    "scope": "Default selection, Compose setting, documentation and regression coverage; prior native evidence retained above."
+  }
+}
