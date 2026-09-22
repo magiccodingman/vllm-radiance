@@ -92,6 +92,14 @@ def main():
     with urlopen(a.url + "/metrics", timeout=10) as r:
         (a.out / "prefix-metrics-after.prom").write_bytes(r.read())
     assert prefix_results[0]["choices"][0]["token_ids"] == prefix_results[1]["choices"][0]["token_ids"]
+    def prefix_hits(path):
+        rows = [float(line.rsplit(" ", 1)[1]) for line in path.read_text().splitlines()
+                if line.startswith("vllm:prefix_cache_hits_total{")]
+        assert rows, "Missing actual prefix-hit metric"
+        return sum(rows)
+    hit_delta = prefix_hits(a.out / "prefix-metrics-after.prom") - prefix_hits(a.out / "prefix-metrics-0.prom")
+    assert hit_delta > 0, "Repeated prompt did not exercise actual prefix reuse"
+    (a.out / "prefix-proof.json").write_text(json.dumps({"cached_tokens_delta": hit_delta}))
     # Tokenize only the ORIGINAL prompt. Generated IDs come directly from API.
     original = call("tokenize", "/tokenize", {"model": a.model, "prompt": prompt})["tokens"]
     for step in range(min(3, len(rows[0]["ids"]))):
