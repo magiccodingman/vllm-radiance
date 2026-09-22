@@ -35,7 +35,13 @@ adaptation, not a new upstream base or native NVFP4 execution.
 ## Conversion contract
 
 `RADIANCE_NVFP4_MXFP4=1` opts into conversion of eligible compressed-tensors
-NVFP4 linear weights only. `RADIANCE_NVFP4_SOURCE_ID` must identify the original
+NVFP4 linear weights with quantized input only. NVFP4A16 (`input_quant is None`)
+fails closed: the native fixture qualified `use_a16=False`, not reinterpretation
+of A16 as dynamic FP8 activation quantization. Default-off upstream handling,
+unrelated FP8/BF16 layers and ignored `lm_head` remain untouched. Regression
+coverage now includes supported quantized-input selection and explicit A16
+rejection before backend construction (10 conversion tests total).
+`RADIANCE_NVFP4_SOURCE_ID` must identify the original
 checkpoint revision. Existing FP8/BF16 layers and `lm_head` retain upstream
 representation/selection. The donor's FP8/BF16/LM-head rewrites are not included;
 nondefault extra-conversion knobs fail explicitly.
