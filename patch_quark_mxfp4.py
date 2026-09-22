@@ -92,12 +92,20 @@ REGISTER_NEW = (
     "    # force the engine core to spawn instead of fork. It declines via is_supported() unless\n"
     "    # RADIANCE_MXFP4_W4A8=1 on gfx12x, so the list is unchanged everywhere else.\n"
     "    try:\n"
+    "        import os as _radiance_os\n"
     "        import radiance_mxfp4 as _radiance_mxfp4\n"
     "\n"
     "        _radiance_cls = _radiance_mxfp4.kernel_class()\n"
     "        if _radiance_cls is not None:\n"
-    "            possible.insert(0, _radiance_cls)\n"
-    "    except Exception as _radiance_exc:  # never block model load on our own kernel\n"
+    "            if _radiance_os.environ.get('RADIANCE_MXFP4_W4A8') == '1':\n"
+    "                possible = [_radiance_cls]  # explicitly required, never emulation\n"
+    "            else:\n"
+    "                possible.insert(0, _radiance_cls)\n"
+    "        elif _radiance_os.environ.get('RADIANCE_MXFP4_W4A8') == '1':\n"
+    "            raise RuntimeError('Required Radiance W4A8 extension is unavailable')\n"
+    "    except Exception as _radiance_exc:\n"
+    "        if _radiance_os.environ.get('RADIANCE_MXFP4_W4A8') == '1':\n"
+    "            raise\n"
     '        logger.warning_once("[radiance] MXFP4 W4A8 kernel unavailable: %r", _radiance_exc)\n'
 )
 
@@ -136,14 +144,14 @@ SUPPORTS_NEW = (
 IMPORT_ANCHOR = (
     "        from aiter.ops.triton.gemm_afp4wfp4 import (\n"
     "            gemm_afp4wfp4,\n"
-    "            gemm_afp4wfp4_preshuffled_weight_scales,\n"
+    "            gemm_afp4wfp4_preshuffle,\n"
     "        )\n"
 )
 IMPORT_NEW = (
     "        # --- radiance (patch_quark_mxfp4.py): aiter 0.1.17 moved this module ---\n"
     "        from aiter.ops.triton.gemm.basic.gemm_afp4wfp4 import (\n"
     "            gemm_afp4wfp4,\n"
-    "            gemm_afp4wfp4_preshuffled_weight_scales,\n"
+    "            gemm_afp4wfp4_preshuffled_weight_scales as gemm_afp4wfp4_preshuffle,\n"
     "        )\n"
     "\n"
     "        # aiter allowlists gfx950/gfx1250 for fp4; gfx1201 lowers tl.dot_scaled correctly\n"

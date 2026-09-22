@@ -163,7 +163,10 @@ def check_patches(
     known_runners = set(patches_doc.get("runner_values") or [])
     for stem, item in by_stem.items():
         path = repo / item["file"]
-        if not path.is_file():
+        removed = item.get("removed_at")
+        if removed and (item.get("active") or item.get("v030_disposition") != "UPSTREAM_OWNED"):
+            errors.append(f"patch {stem}: removed overlay must be inactive and upstream-owned")
+        if not path.is_file() and not removed:
             errors.append(f"patch {stem}: registered file does not exist: {item['file']!r}")
         if item.get("activation") not in known_activations:
             errors.append(f"patch {stem}: unknown activation {item.get('activation')!r}")
@@ -188,7 +191,8 @@ def check_patches(
                 errors.append(f"patch area_tests {area}: unknown test {test_id!r}")
 
     root_patch_stems = {path.stem for path in repo.glob("patch_*.py")}
-    registered_patch_stems = {stem for stem in by_stem if stem.startswith("patch_")}
+    registered_patch_stems = {stem for stem, item in by_stem.items()
+                             if stem.startswith("patch_") and not item.get("removed_at")}
     missing = sorted(root_patch_stems - registered_patch_stems)
     extra = sorted(registered_patch_stems - root_patch_stems)
     if missing:

@@ -153,13 +153,18 @@ def patch_shared_region() -> None:
         if self.is_pinned and self._base is not None:
             if current_platform.is_cuda_alike():
                 base_ptr = self._base.data_ptr()
-                result = torch.cuda.cudart().cudaHostUnregister(base_ptr)
-                if result.value != 0:
-                    logger.warning(
-                        "cudaHostUnregister failed for rank=%d (code=%d)",
-                        self.rank,
-                        result,
-                    )
+                addresses = self.pinned_addresses or [base_ptr]
+                for address in reversed(addresses):
+                    result = torch.cuda.cudart().cudaHostUnregister(address)
+                    if result.value != 0:
+                        logger.warning(
+                            "cudaHostUnregister failed for rank=%d, "
+                            "address=%#x (code=%d)",
+                            self.rank,
+                            address,
+                            result.value,
+                        )
+                self.pinned_addresses.clear()
             self.is_pinned = False
 ''',
         '''    def cleanup(self) -> None:

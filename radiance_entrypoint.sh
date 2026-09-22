@@ -5,6 +5,13 @@
 # `command:` / `docker run` args after the image become "$@" and are passed through verbatim.
 set -u
 
+# v0.30 owns Triton top-k dispatch for all eligible rows. Do not silently
+# ignore a former tuning choice after retiring its upstreamed overlay.
+if [ "${RADIANCE_TOPK_TRITON_MIN_ROWS:-1}" != "1" ]; then
+  echo "[radiance] ERROR RADIANCE_TOPK_TRITON_MIN_ROWS is retired in v0.30; remove the nondefault override (upstream owns dispatch)" >&2
+  exit 64
+fi
+
 # Fast path: help/version queries skip the GPU preamble entirely.
 case "${1:-}" in
   -h|--help|--version|--help-all) exec vllm serve "$@" ;;

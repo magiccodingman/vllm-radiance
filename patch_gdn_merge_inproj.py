@@ -32,9 +32,10 @@ TARGETS = [
      "                    vllm_config=self.vllm_config, model_config=self.model_config\n"
      "                )\n"),
     (SP / "vllm/v1/worker/gpu/model_runner.py",
-     "            self.model = model_loader.load_model(\n"
-     "                vllm_config=self.vllm_config, model_config=self.vllm_config.model_config\n"
-     "            )\n"),
+     "                self.model = model_loader.load_model(\n"
+     "                    vllm_config=self.vllm_config,\n"
+     "                    model_config=self.vllm_config.model_config,\n"
+     "                )\n"),
 ]
 
 applied = 0

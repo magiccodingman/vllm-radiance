@@ -44,8 +44,8 @@ ARG XGRAMMAR_VERSION=0.2.3
 # #52816 source hashes previously carried by this fork, so no DFlash source
 # backport is applied. Pin the immutable tag target rather than resolving it
 # during each build; VLLM_VERSION is the wheel stamp.
-ARG VLLM_COMMIT=2cf0a6915ce544dc493a0990f2ea38d81601128a
-ARG VLLM_VERSION=0.28.0
+ARG VLLM_COMMIT=ced6857afa0ea7b2e3f0846a62e1394e90f15607
+ARG VLLM_VERSION=0.30.0
 # rocm-bandwidth-test for the startup topology/bandwidth sweep. Pinned to the NEWEST tag that still
 # has a plain CMakeLists: the rocm-7.x tags moved to a cmake framework that demands clang>=19 on PATH
 # plus vendored boost/fmt/curl submodules, none of which this tool needs.
@@ -241,7 +241,7 @@ ENV ROCM_PATH=/opt/rocm HIP_PATH=/opt/rocm HIP_PLATFORM=amd \
 COPY radiance_amdsmi.py radiance_amdsmi.pth \
      radiance_kernels.py radiance_vit_attn.py radiance_allreduce.py \
      radiance_draft.py radiance_draft_gpu.py radiance_drafthead.py radiance_gemm.py radiance_w4.py \
-     radiance_r4d_attn.py radiance_gdn.py radiance_gdnmerge.py radiance_mxfp4.py \
+     radiance_r4d_attn.py radiance_gdn.py radiance_gdnmerge.py radiance_mxfp4.py radiance_nvfp4.py \
      radiance_arnq.py radiance_topk.py radiance_verifyhead.py radiance_kv_offload.py \
      radiance_kv_calibration.py radiance_tunableop.py ${SP}/
 COPY fp8-configs/ ${SP}/vllm/model_executor/layers/quantization/utils/configs/
@@ -260,15 +260,13 @@ RUN set -eu; cd /opt/patches; \
              patch_gdn_wmma patch_gdn_aiter_prefill patch_preshuffle install_radiance_hooks \
              patch_unpad patch_mtp_mm_mask patch_mtp_loopbreak patch_qwen3_toolparse patch_from_json_filter \
              patch_dynamo_metrics patch_conv1d_blockn patch_r4d patch_dflash_base \
-             patch_dflash_fused_kv_fp8 patch_dflash_logits_cache_stride patch_dflash_w4 \
+             patch_dflash_fused_kv_fp8 patch_dflash_w4 \
              patch_dflash_selector_topk patch_gdn_metadata patch_gdn_shared_build \
-             patch_topk_triton_rows patch_topk_composite patch_rocm_cudagraph_current_stream \
-             patch_quark_mxfp4 patch_quark_bf16_mtp patch_ar_maxbytes patch_ar_geometry \
+             patch_topk_composite \
+             patch_quark_mxfp4 patch_nvfp4_mxfp4 patch_quark_bf16_mtp patch_ar_maxbytes patch_ar_geometry \
              patch_kv_group_size patch_gdn_merge_inproj patch_dynwidth patch_verify_head \
              patch_kv_offload_registration patch_kv_offload_lifecycle patch_kv_offload_restore \
              patch_fp8_kv_sidecar \
-             patch_xgrammar_spec_termination \
-             patch_xgrammar_spec_reasoning patch_parser_shared_engine \
              patch_qwen_open_object_schema; do \
       echo "== applying $p =="; python "$p.py"; \
     done; \
@@ -414,7 +412,7 @@ RUN printf '%s\n' \
  && rm -f /tmp/_jit_probe.hip /tmp/_jit_probe.so \
  && echo "runtime JIT toolchain OK (hipcc + libstdc++ headers + Python.h + pybind11)"
 
-ARG RADIANCE_VERSION=0.9.3-dev.vllm0.28.0-r4d0.5.0-mxfp4.rx4.dflash2.xgrammar.openobj.kvoffload.restore2
+ARG RADIANCE_VERSION=1.1.0-rc1.vllm0.30.0
 ENV RADIANCE_VERSION=${RADIANCE_VERSION}
 COPY VERSION /opt/radiance_version
 COPY radiance_preamble.py /opt/radiance_preamble.py

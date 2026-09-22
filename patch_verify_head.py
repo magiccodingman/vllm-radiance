@@ -21,18 +21,15 @@ from _patchlib import apply
 F = (Path(sysconfig.get_paths()["purelib"])
      / "vllm/v1/worker/gpu/model_runner.py")
 
-OLD = """        sample_hidden_states = hidden_states[input_batch.logits_indices]
-        logits = self.model.compute_logits(sample_hidden_states)
+OLD = """            sample_hidden_states = hidden_states[input_batch.logits_indices]
+            logits = self.model.compute_logits(sample_hidden_states)
 """
 
-NEW = """        sample_hidden_states = hidden_states[input_batch.logits_indices]
-        # --- RADIANCE int2 verify head (patch_verify_head.py) ---
-        try:
+NEW = """            sample_hidden_states = hidden_states[input_batch.logits_indices]
+            # --- RADIANCE int2 verify head (patch_verify_head.py) ---
             import radiance_verifyhead as _radiance_vh
             _radiance_vh.before_compute_logits(self, input_batch, grammar_output)
-        except Exception:
-            pass
-        logits = self.model.compute_logits(sample_hidden_states)
+            logits = self.model.compute_logits(sample_hidden_states)
 """
 
 
