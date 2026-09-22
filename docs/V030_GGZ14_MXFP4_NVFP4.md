@@ -85,3 +85,10 @@ fixture. That includes native scratch/repack, not CPU arithmetic. The earlier
 403,902,464byte process-highwater increment included later reference operations
 and must not be reported as conversion-only RSS; the fixture now samples host
 highwater immediately after conversion and labels whole-fixture RSS separately.
+On the final-image rerun the conversion/install highwater increments were
+2,621,440/2,703,360B and whole-fixture peaks1,824,616,448/1,780,584,448B. The
+successful conversion follows the injected-failure attempt, so these are warmed
+highwater increments, not a cold process RSS bound. The fixture explicitly
+constructs the conversion scheme (its default-off environment remains visible
+in the receipt); opt-in selection/policy rejection is separately tested in the
+CPU/source gate. No default-on conversion is implied.

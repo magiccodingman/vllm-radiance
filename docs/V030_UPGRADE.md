@@ -190,3 +190,30 @@ new-candidate qualification still requires it. Old warm rates48.220/48.200tok/s
 versus new52.209/52.293 show no material regression in this bounded sample.
 All six requests have the same output-ID hash. Do not describe this as an
 isolated kernel speedup: runner/version changes and short-run noise remain.
+
+Final-image FP8 resident qualification also passed: actual V2, original R4D,
+Radiance preshuffled FP8, FULL_AND_PIECEWISE, exact three32-token trajectories,
+three independent exact-ID next-token checks, positive1568-token cache reuse,
+strict nested JSON, nested tool call and two identical red-image answers. The
+existing deferred/open-object wire suite passed8/8 (four schemas, streaming and
+nonstreaming), including two parallel calls and preserved nested arguments.
+Short rates were34.288/37.846/38.000tok/s; first request includes lazy runtime
+effects. The separate eight-token observation executed FP8 preshuffle, R4D GDN,
+attention and `r4d_ar_oneshot_2rank_exact_kernel` on both ranks. Unquantized
+linears remain original ROCm ops where the checkpoint/owner requires them;
+they are not mislabeled as FP8. Profile timing is not a throughput result.
+
+Pre-request snapshots (both ranks equal within each lane): FP8 allocated
+26,810,180,608B, reserved28,043,116,544B, raw free4,644,143,104B; Quark allocated
+26,798,494,208B, reserved28,047,310,848B, raw free4,677,697,536B. These are scopes,
+not additive memory categories or a capacity qualification. Both use85% budget,
+TP2/C1/8192 context and2048 batch-token cap, FP8 main KV and prefix alignment.
+
+Warnings retained: upstream erased-FX-node and Triton block-pointer deprecations,
+Transformers video-processor documentation messages, and unavailable NVIDIA
+DeepSelect. No AMD backend is replaced by DeepSelect. The generic Quark
+"simulated dequantization" warning precedes the Radiance selector; actual owner
+objects and native W4A8 kernel activity establish the executed path. Short
+profiler duplicate-flow warnings limit timing attribution but not observed
+kernel names. Source unittest runs have no warning summary; no historical
+MR37 pytest count is claimed for this different main-derived test suite.

@@ -1,5 +1,20 @@
 # RDNA4 upgrade progress
 
+## 2026-09-22 — vLLM0.30 platform candidate (MR !42)
+
+New main-derived branch `codex/vllm-030-platform-upgrade`; MR !37 is frozen as
+the v0.28 research reference, still Draft/open/unmerged. The platform candidate
+pins `ced6857afa0ea7b2e3f0846a62e1394e90f15607`, retains the coherent AMD stack,
+selectively imports credited GGZ14 conversion/TP1-shape deltas, and removes
+upstream-owned backports with regressions retained. Actual resident Runner V2,
+native FP8/W4A8, prefix/exact-output, JSON/tools and ordinary vision have bounded
+hardware evidence. See [V030_UPGRADE.md](V030_UPGRADE.md) for final scope,
+identities, measurements and the deferred real-NVFP4-model gate. This is not
+release/performance/capacity publication qualification. No image deployment or
+merge is part of this task; production remains stopped at the owner's request.
+
+The earlier continuation and logs below remain historical, unchanged evidence.
+
 > Latest continuation: the qualified stack now uses stable vLLM v0.28.0 with
 > native DFlash2 and focused post-release parser, DFlash cache-stride,
 > speculative-XGrammar, and ROCm graph-capture fixes. See

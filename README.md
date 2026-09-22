@@ -13,6 +13,13 @@ FP8 GEMM and speculative-decoding paths.
 > hardware may work but have not received the same qualification. Speculative modes remain opt-in because
 > their strict cross-mode output-equivalence gate has not passed.
 
+The v0.30 upgrade is a **Draft MR candidate**, not a published replacement for
+production1.0.16. Its bounded native FP8 and Quark27B TP2/C1 resident evidence,
+actual Runner V2/kernel selection, ordinary vision and NVFP4 conversion limits
+are recorded in [V030_UPGRADE.md](docs/V030_UPGRADE.md). Historical performance
+tables below are not rerun v0.30 results. NVFP4→MXFP4 is default-off load-time
+requantization, not native NVFP4 execution or model-level quality qualification.
+
 This fork tracks and credits DeadCode's
 [vllm-radiance](https://codeberg.org/StillDeadcode/vllm-radiance) and libr4d work, with additional compiler
 pins, upstream v0.30 DFlash2 and structured-output ownership, native gfx1201 MXFP4/W4A8
