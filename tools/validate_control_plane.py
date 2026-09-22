@@ -164,8 +164,8 @@ def check_patches(
     for stem, item in by_stem.items():
         path = repo / item["file"]
         removed = item.get("removed_at")
-        if removed and (item.get("active") or item.get("v030_disposition") != "UPSTREAM_OWNED"):
-            errors.append(f"patch {stem}: removed overlay must be inactive and upstream-owned")
+        if removed and (item.get("active") or item.get("v030_disposition") not in ("UPSTREAM_OWNED", "OBSOLETE_DELETE")):
+            errors.append(f"patch {stem}: removed overlay must be inactive and upstream-owned/obsolete")
         if not path.is_file() and not removed:
             errors.append(f"patch {stem}: registered file does not exist: {item['file']!r}")
         if item.get("activation") not in known_activations:

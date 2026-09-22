@@ -74,6 +74,7 @@ patches:
     reason: Retain block-N compatibility for the qualified GDN/conv1d path.
     runner: both
   patch_dflash2_v0271_backport:
+    removed_at: v0.30; historical source at 285ac78e7f19bc1e1b5b09b25f865aea0c6d9754
     v030_disposition: OBSOLETE_DELETE
     areas: [dflash, historical]
     reason: Historical v0.27.1 DFlash2 source-copy backport; retained only for archaeology because v0.28 owns DFlash2 natively.
@@ -94,6 +95,7 @@ patches:
     reason: Preserve fused FP8 KV handling required by the qualified DFlash lane.
     runner: v2
   patch_dflash_logits_cache_stride:
+    removed_at: v0.30; historical source at 285ac78e7f19bc1e1b5b09b25f865aea0c6d9754
     v030_disposition: UPSTREAM_OWNED
     active: false
     activation: historical
@@ -249,6 +251,7 @@ patches:
     reason: Install Radiance FP8 dispatch selection and guarded fallbacks.
     runner: both
   patch_rocm_cudagraph_current_stream:
+    removed_at: v0.30; historical source at 285ac78e7f19bc1e1b5b09b25f865aea0c6d9754
     v030_disposition: UPSTREAM_OWNED
     active: false
     activation: historical
@@ -268,6 +271,7 @@ patches:
     reason: Install the bounded composite top-k path with exact fallback.
     runner: both
   patch_topk_triton_rows:
+    removed_at: v0.30; historical source at 285ac78e7f19bc1e1b5b09b25f865aea0c6d9754
     v030_disposition: UPSTREAM_OWNED
     active: false
     activation: historical
