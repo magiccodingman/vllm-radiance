@@ -21,6 +21,8 @@ def main():
     p.add_argument("--out", type=Path, required=True)
     p.add_argument("--vision", action="store_true")
     p.add_argument("--profile", action="store_true")
+    p.add_argument("--performance-only", action="store_true",
+                   help="Same three short requests only, for an old-image matched control")
     a = p.parse_args()
     a.out.mkdir(parents=True, exist_ok=False)
     def call(name, endpoint, body):
@@ -68,6 +70,10 @@ def main():
         assert done and usage and usage["completion_tokens"] == len(ids) and ids
         rows.append(record)
     assert rows[0]["ids"] == rows[1]["ids"] == rows[2]["ids"], "fresh/prefix trajectory mismatch"
+    if a.performance_only:
+        (a.out / "result.json").write_text(json.dumps({"status": "PERFORMANCE_CONTROL_ONLY",
+            "short_requests": [{k: row[k] for k in ("ttft_s", "steady_tps", "elapsed_s", "token_sha256", "usage")} for row in rows]}, indent=2))
+        return
     # The hybrid attention block is 1568 tokens on this lane; a five-token
     # repeated request cannot prove actual prefix reuse.
     prefix_ids = call("prefix-tokenize", "/tokenize", {"model": a.model,

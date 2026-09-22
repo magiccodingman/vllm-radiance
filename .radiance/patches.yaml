@@ -85,7 +85,10 @@ patches:
     provenance: {kind: historical-upstream-backport, evidence: docs/V028_UPGRADE.md}
     remove_when: null
   patch_dflash_base:
-    v030_disposition: RETAIN_UNCHANGED
+    v030_disposition: UPSTREAM_OWNED
+    active: false
+    activation: historical
+    removed_at: v0.30; historical source at 285ac78e7f19bc1e1b5b09b25f865aea0c6d9754
     areas: [dflash, speculative]
     reason: Install Radiance DFlash integration hooks on top of vLLM's native DFlash2 implementation.
     runner: v2
@@ -285,7 +288,10 @@ patches:
     reason: Retain the qualified broader ROCm LDS fit/tuning guard for unified attention.
     runner: both
   patch_unpad:
-    v030_disposition: RETAIN_UNCHANGED
+    v030_disposition: UPSTREAM_OWNED
+    active: false
+    activation: historical
+    removed_at: v0.30; historical source at 285ac78e7f19bc1e1b5b09b25f865aea0c6d9754
     areas: [runtime, tensor-shapes]
     reason: Carry Radiance's guarded unpadding compatibility behavior.
     runner: unknown

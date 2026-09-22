@@ -59,6 +59,7 @@ def main():
     rss_before = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * 1024
     scheme.process_weights_after_loading(layer)
     peak = torch.cuda.max_memory_allocated()
+    rss_after_conversion = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * 1024
     reference = torch.cat([nv.dequant_nvfp4(original[i*128:(i+1)*128].cpu(),
                           source_scales[i*128:(i+1)*128].cpu(), 2**i) for i in range(3)])
     converted_p, converted_s, _ = nv.convert(original, source_scales,
@@ -97,7 +98,8 @@ def main():
               "receipt": layer._radiance_nvfp4_receipt, "cases": cases,
               "reconstruction_relative_error": conversion_rel,
               "conversion_gpu_peak_increment": peak-before,
-              "host_peak_rss_increment": resource.getrusage(resource.RUSAGE_SELF).ru_maxrss*1024-rss_before,
+              "conversion_host_highwater_increment": rss_after_conversion-rss_before,
+              "fixture_process_peak_rss": resource.getrusage(resource.RUSAGE_SELF).ru_maxrss*1024,
               "rollback": "PASS", "kernel": type(scheme.kernel).__qualname__}
     result["tp1_wide_decode"] = {"shape": [1,34816,256], "relative_error": wide_error}
     (a.out / "result.json").write_text(json.dumps(result, indent=2))

@@ -66,7 +66,7 @@ upstream-owned implementation belongs to the immutable vLLM pin.
 | `patch_ar_maxbytes` | RETAIN_UNCHANGED | Retain exact-message size limits for the qualified Radiance TP2 collective path. |
 | `patch_conv1d_blockn` | RETAIN_UNCHANGED | Retain block-N compatibility for the qualified GDN/conv1d path. |
 | `patch_dflash2_v0271_backport` | OBSOLETE_DELETE | Historical v0.27.1 DFlash2 source-copy backport; retained only for archaeology because v0.28 owns DFlash2 natively. |
-| `patch_dflash_base` | RETAIN_UNCHANGED | Install Radiance DFlash integration hooks on top of vLLM's native DFlash2 implementation. |
+| `patch_dflash_base` | UPSTREAM_OWNED | Upstream owns inert rows, rejected-suffix/null-block guards and length clamping; source contracts retained. |
 | `patch_dflash_fused_kv_fp8` | RETAIN_UNCHANGED | Preserve fused FP8 KV handling required by the qualified DFlash lane. |
 | `patch_dflash_logits_cache_stride` | UPSTREAM_OWNED | Backport the post-v0.28 DFlash logits-cache stride/width correctness fix. |
 | `patch_dflash_selector_topk` | RETAIN_UNCHANGED | Expose the DFlash selector top-k experimental control while preserving the checkpoint default. |
@@ -101,7 +101,7 @@ upstream-owned implementation belongs to the immutable vLLM pin.
 | `patch_topk_composite` | RETAIN_UNCHANGED | Install the bounded composite top-k path with exact fallback. |
 | `patch_topk_triton_rows` | UPSTREAM_OWNED | Route small-row top-k work through the qualified Triton path. |
 | `patch_unified_attention_lds` | RETAIN_UNCHANGED | Retain the qualified broader ROCm LDS fit/tuning guard for unified attention. |
-| `patch_unpad` | RETAIN_UNCHANGED | Carry Radiance's guarded unpadding compatibility behavior. |
+| `patch_unpad` | UPSTREAM_OWNED | Installed unpadding preserves sliced CPU sequence bounds; behavioral regression retained. |
 | `patch_verify_head` | MECHANICAL_PORT | Install the sampling-aware target verification head with exact fallback. |
 | `patch_xgrammar_spec_reasoning` | UPSTREAM_OWNED | Backport reasoning-boundary validation for drafts generated before the grammar mask activates. |
 | `patch_xgrammar_spec_termination` | UPSTREAM_OWNED | Backport speculative grammar termination handling so draft batches cannot overrun a terminated FSM. |
@@ -126,7 +126,7 @@ upstream-owned implementation belongs to the immutable vLLM pin.
 ## Preliminary development evidence (not final image qualification)
 
 Source audit applied all retained overlays to a clean v0.30 tree and parsed it.
-Dev image `sha256:b1b88b18557991700a2132a2b7336663423a95dcf2d587c81babccd0c53258f8`
+Dev image `sha256:71fb273706cda58dc81d95cf737d060d5af524694770f3d6775c279abd83b5eb`
 built/imported with pip consistency. Complete PR source plan passed after fixing
 read-only bytecode placement and replacing obsolete string assertions with
 installed semantic tests. NVFP4 CPU tests: 8 passed.
@@ -144,3 +144,21 @@ Profiler emitted duplicate-flow warnings; its times are not performance scores.
 
 Artifacts: `/nvme/ediloca-1/scratch/v030-fp8-port01` (development candidate).
 Production remained stopped. No historical MR !37 result is counted here.
+
+The clean release-image build also passed import/pip checks. Its source changes
+do not replace Torch/Triton/AITER; actual final versions are Torch2.12.0+rocm7.14,
+Triton3.7.1+gitf0b55c07, vision0.27.1+df56172, AITER0.1.20 and R4D0.5.0.
+The first clean release image is
+`sha256:8bcb12e362ea0f29d9052f0bb7210d1913310cd960d85ae2eafeb7f2c6fdef8f`;
+its OCI config digest is `sha256:6caa7e46974f87569a8528674872c2c7fa2a5fed28be86e43e1a1f750172cbfc`.
+These are different identity types and must not be interchanged.
+
+Quark release-image resident gates passed at TP2/C1/8K, FP8KV, R4D and
+FULL_AND_PIECEWISE. Native W4A8 is selected for every eligible observed layer;
+all48 dense-model GDN input projection pairs merged per rank. Three short32-token
+trajectories matched; warm decode52.209/52.293tok/s is a sanity observation, not
+yet a matched speedup. The1600-token repeated prefix recorded1568 cache-hit tokens
+with identical generated IDs. JSON/tool/recompute and two vision requests passed.
+The separate eight-token kernel observation contains actual native
+`radiance_mxfp4_fp8_gemm_decode` activity, not emulation. This dense27B does not
+qualify routed MoE, QSA or giant-model PLE; those are not claimed.

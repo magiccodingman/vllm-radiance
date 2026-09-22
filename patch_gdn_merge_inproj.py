@@ -7,10 +7,10 @@ already run process_weights_after_loading (so weight_scale is [K/32, N] and radi
 folded), and it is before the drafter loads and before any CUDA graph is captured, so the
 torch.cat the merge does is a plain allocation rather than one inside capture.
 
-vLLM 0.27 ships TWO model runners -- the legacy `v1/worker/gpu_model_runner.py` and the newer
+vLLM 0.30 ships TWO model runners -- the legacy `v1/worker/gpu_model_runner.py` and the newer
 `v1/worker/gpu/model_runner.py` (GPUModelRunnerV2, selected in gpu_worker.py) -- with different
 `load_model` bodies. Patching only one is a silent no-op: the injected call simply never runs, and
-the merge reports nothing at all. Both are patched here, and at least one must take.
+the merge reports nothing at all. Both pinned-source anchors are required here.
 
 Inert unless RADIANCE_GDN_MERGE_INPROJ=1. Idempotent. Run once pre-serve / at image build."""
 import ast
@@ -28,9 +28,9 @@ CALL = (
 # (file, anchor). The two runners differ in indent and in how model_config is passed.
 TARGETS = [
     (SP / "vllm/v1/worker/gpu_model_runner.py",
-     "                self.model = model_loader.load_model(\n"
-     "                    vllm_config=self.vllm_config, model_config=self.model_config\n"
-     "                )\n"),
+     "                    self.model = model_loader.load_model(\n"
+     "                        vllm_config=self.vllm_config, model_config=self.model_config\n"
+     "                    )\n"),
     (SP / "vllm/v1/worker/gpu/model_runner.py",
      "                self.model = model_loader.load_model(\n"
      "                    vllm_config=self.vllm_config,\n"
@@ -42,16 +42,14 @@ applied = 0
 for path, anchor in TARGETS:
     label = path.relative_to(SP)
     if not path.exists():
-        print(f"  SKIP  {label}: not in this vLLM")
-        continue
+        raise RuntimeError(f"Required pinned runner missing: {label}")
     src = path.read_text()
     if SENTINEL in src:
         print(f"  NOOP  {label} already applied")
         applied += 1
         continue
     if src.count(anchor) != 1:
-        print(f"  SKIP  {label}: anchor matched {src.count(anchor)}x, expected 1")
-        continue
+        raise RuntimeError(f"{label}: anchor matched {src.count(anchor)}x, expected 1")
     indent = " " * (len(anchor) - len(anchor.lstrip(" ")))
     new = src.replace(anchor, anchor + CALL.format(i=indent), 1)
     ast.parse(new)          # never write a file that would not parse
@@ -59,12 +57,4 @@ for path, anchor in TARGETS:
     print(f"  OK    {label}")
     applied += 1
 
-if not applied:
-    # Only fatal when the feature is actually switched on. This patch runs on every container
-    # start; a vLLM upgrade that moves these anchors must not abort a production boot that was
-    # never going to use the merge anyway.
-    import os
-    msg = "gdn in_proj merge: no model runner matched -- NOT applied"
-    if os.environ.get("RADIANCE_GDN_MERGE_INPROJ", "0") == "1":
-        raise SystemExit(f"  FAIL  {msg} (RADIANCE_GDN_MERGE_INPROJ=1 cannot be honoured)")
-    print(f"  WARN  {msg} (inert: RADIANCE_GDN_MERGE_INPROJ is off)")
+assert applied == len(TARGETS)

@@ -38,6 +38,14 @@ profiles:
   upgrade: [control-plane-validate, python-compile, kv-offload-registration-cpu, kv-offload-rank-sharded-cpu, kv-offload-restore-cpu, parser-shared-engine-image, xgrammar-spec-image, qwen-open-object-image, fp8-kv-calibration-image, tunableop-preflight-image, r9700-tp2-smoke, tool-schema-live, open-object-tool-live, betterbench-standard, correctness-equivalence]
   release: [control-plane-validate, python-compile, kv-offload-registration-cpu, kv-offload-rank-sharded-cpu, kv-offload-restore-cpu, parser-shared-engine-image, xgrammar-spec-image, qwen-open-object-image, fp8-kv-calibration-image, tunableop-preflight-image, r9700-tp2-smoke, tool-schema-live, open-object-tool-live, betterbench-standard, correctness-equivalence, capacity-qualification]
 tests:
+- id: v030-upstream-contracts
+  class: contract
+  hardware: candidate-image
+  areas: [speculative, upgrade]
+  command: python benchmarks/bin/check_v030_upstream_contracts.py
+  automatic: false
+  ci: false
+  description: Installed unpadding behavior and upstream DFlash sentinel/null-block ownership.
 - id: nvfp4-conversion-image
   class: contract
   hardware: candidate-image
