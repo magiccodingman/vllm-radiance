@@ -23,6 +23,10 @@ class PlatformProbe:
         if type(runner).__module__ != "vllm.v1.worker.gpu.model_runner":
             raise RuntimeError(f"Expected Runner V2, got {type(runner)}")
         model = runner.get_model()
+        speculator = getattr(runner, "speculator", None)
+        spec_config = self.vllm_config.speculative_config
+        if spec_config is not None and speculator is None:
+            raise RuntimeError("Configured resident speculator was not instantiated")
         owners = []
         for name, module in model.named_modules():
             row = {"name": name, **identity(module)}
@@ -41,6 +45,9 @@ class PlatformProbe:
             if len(row) > 4 or "GatedDelta" in row["class"]:
                 owners.append(row)
         return {"runner": identity(runner), "model": identity(model),
+                "speculator": identity(speculator) if speculator is not None else None,
+                "speculative_method": spec_config.method if spec_config is not None else None,
+                "num_speculative_steps": getattr(runner, "num_speculative_steps", 0),
                 "rank": self.rank, "owners": owners,
                 "graph": str(self.vllm_config.compilation_config.cudagraph_mode),
                 "allocated": torch.cuda.memory_allocated(),

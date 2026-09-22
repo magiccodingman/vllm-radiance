@@ -1,6 +1,6 @@
 # vLLM 0.30 resident platform migration
 
-Status: **IN PROGRESS — NOT HARDWARE QUALIFIED**.
+Status: core resident hardware gates PASS; final compatibility/handback in progress.
 
 ## Source and scope
 
@@ -47,9 +47,9 @@ Native W4A8 and runtime AITER JIT passed; no whole-stack replacement was needed.
 ## Qualification ledger
 
 Build/import, overlay dispositions, Runner V2 path evidence, resident FP8 and
-Quark MXFP4 gates, NVFP4 conversion, parser/structured output, vision and bounded
-performance sanity are pending. No historical test count is attributed to this
-candidate. The existing full source/contract suite remains required; publication
+Quark MXFP4 gates, native NVFP4 conversion fixtures, parser/structured output,
+vision and bounded performance sanity PASS. Real NVFP4 model quality remains
+deferred. No historical test count is attributed to this candidate. Publication
 BetterBench and long-context qualification are excluded by this mission.
 
 ## Overlay migration matrix
@@ -217,3 +217,43 @@ objects and native W4A8 kernel activity establish the executed path. Short
 profiler duplicate-flow warnings limit timing attribution but not observed
 kernel names. Source unittest runs have no warning summary; no historical
 MR37 pytest count is claimed for this different main-derived test suite.
+
+## Bounded non-speculative performance sanity
+
+Same models/TP2/C1/8K/85%/2048-token batch cap, FP8KV and R4D. Each row uses
+three32-token requests: first fresh, repeat, independent fresh salt. The repeat
+five-token prompt does not itself form a cache block; the separate1600-token
+test proves prefix reuse. Steady rate excludes TTFT and uses31 visible output
+intervals; short SSE timing and fresh-cache JIT effects are limitations.
+
+| Lane/image | First TPS | Warm repeat TPS | Warm fresh TPS | TTFT first/repeat/fresh (s) |
+| --- | ---: | ---: | ---: | --- |
+| FP8, old1.0.16 | 26.996 | 35.321 | 35.356 | 0.572 / 0.064 / 0.064 |
+| FP8, final0.30 | 34.288 | 37.846 | 38.000 | 1.091 / 0.057 / 0.055 |
+| Quark, old1.0.16 | 35.546 | 48.220 | 48.200 | 0.564 / 0.036 / 0.035 |
+| Quark,0.30 release | 46.209 | 52.209 | 52.293 | 1.122 / 0.029 / 0.028 |
+
+No material decode regression is observed; this is not a statistically powered
+speedup claim or proof that cold TTFT improved. All12 output-ID hashes equal
+`20b490d92586d7ce3787238a95c8b320c5c8b07f4b9d6d2304580bbac23fb33f`.
+No forced EOS, retokenized output IDs, repeated-until-good sample selection,
+BetterBench, concurrency sweep or long-context capacity campaign was used.
+
+## Source/native gate accounting
+
+- Full PR plan:5/5 registered automatic gates, including all three KV-offload
+  source/host lifetime/layout contracts and compileall.
+- Eight additional installed/source scripts: NVFP4 (8 unit cases), XGrammar
+  termination/reasoning, open-object grammar, FP8KV calibration, TunableOp,
+  installed unpadding/DFlash ownership, tokenizer/parser and composite top-k
+  (21 cases), all PASS. These are13 script-level gates total, not a pytest total.
+- Registry validation:45 historical/current overlays,23 tests,5 upstreams.
+- Clean pinned-vLLM source application and repeat:35 release overlays twice,
+  70 successful operations, no syntax errors. Transitive patches remain registered.
+- Both GPUs: installed NVFP4 loader/native W4A8/rollback and TP1wide-shape
+  fixtures PASS; upstream DFlash stride/narrow guard, top-k rows1/2/8 and
+  changed-input fixed-address graph replay PASS.
+- Native conversion is fixture qualification, not a real NVFP4 model quality
+  claim. Dense resident models do not qualify routed MoE/QSA/giant PLE.
+- CPU KV integration is source/host-contract qualified here; destructive
+  registration and long-context offload pressure are intentionally NOT RUN.
