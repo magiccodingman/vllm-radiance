@@ -36,7 +36,7 @@ def main():
     with torch.no_grad():
         layer.weight_packed.copy_(torch.randint(0, 256, layer.weight_packed.shape,
                                                 device="cuda", dtype=torch.uint8))
-        layer.weight_scale.copy_(torch.ones(layer.weight_scale.shape, device="cuda"))
+        layer.weight_scale.copy_(torch.rand(layer.weight_scale.shape, device="cuda") + 0.25)
         layer.weight_global_scale.copy_(torch.tensor([1., 2., 4.], device="cuda"))
         layer.input_global_scale.fill_(1)
     original = layer.weight_packed.detach().clone()

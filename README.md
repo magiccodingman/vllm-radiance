@@ -4,7 +4,7 @@
 [![Docker Pulls](https://img.shields.io/docker/pulls/magiccodingman/vllm-radiance?logo=docker)](https://hub.docker.com/r/magiccodingman/vllm-radiance)
 
 A vLLM inference-server image for the **AMD Radeon AI PRO R9700 (gfx1201 / RDNA4)**. It combines a pinned
-vLLM v0.28.0 ROCm stack with [libr4d](https://codeberg.org/StillDeadcode/libr4d)'s hand-written RDNA4
+vLLM v0.30.0 ROCm candidate stack with [libr4d](https://codeberg.org/StillDeadcode/libr4d)'s hand-written RDNA4
 attention, gated-delta-net, vision, all-reduce, MXFP4, and DFlash kernels while retaining Radiance's tuned
 FP8 GEMM and speculative-decoding paths.
 
@@ -15,7 +15,7 @@ FP8 GEMM and speculative-decoding paths.
 
 This fork tracks and credits DeadCode's
 [vllm-radiance](https://codeberg.org/StillDeadcode/vllm-radiance) and libr4d work, with additional compiler
-pins, native v0.28 DFlash2 plus focused post-release correctness backports, native gfx1201 MXFP4/W4A8
+pins, upstream v0.30 DFlash2 and structured-output ownership, native gfx1201 MXFP4/W4A8
 support, reproducible benchmarks, and deployment qualification. Published images are at
 [`magiccodingman/vllm-radiance`](https://hub.docker.com/r/magiccodingman/vllm-radiance).
 
@@ -318,7 +318,7 @@ The published image is built entirely from pinned source commits:
 
 | Component | Version/pin |
 |---|---|
-| vLLM | 0.28.0, `2cf0a6915ce544dc493a0990f2ea38d81601128a`, plus reviewed DFlash/XGrammar/parser/ROCm-graph fixes |
+| vLLM | 0.30.0, `ced6857afa0ea7b2e3f0846a62e1394e90f15607`; qualification status in `docs/V030_UPGRADE.md` |
 | AMD PyTorch | 2.12 branch, `6bbd26020da1c6dc198625dfcdd968b1e4e6b1c5` |
 | AMD Triton | 3.7.1, `f0b55c07da61c71775bef6d1a15ebf846430ac75` |
 | AITER | 0.1.20, `fc2e5d57fb5b8ad8e7e23f7103071dde798ea618` |
