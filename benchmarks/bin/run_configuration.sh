@@ -195,6 +195,9 @@ server_args+=(
   "--tool-call-parser=${TOOL_CALL_PARSER}"
   --language-model-only
 )
+if [[ ${BENCH_PLATFORM_INSPECT:-0} == 1 ]]; then
+  server_args+=(--worker-extension-cls=radiance_platform_probe.PlatformProbe)
+fi
 
 printf '%q ' "${server_args[@]}" >"${CONFIG_DIR}/server-command.txt"
 printf '\n' >>"${CONFIG_DIR}/server-command.txt"
@@ -218,6 +221,9 @@ docker rm "$container" >/dev/null 2>&1 || true
 
 echo "[$(date -u +%FT%TZ)] Starting ${LABEL} (${IMAGE})"
 container_env=(-e "HIP_VISIBLE_DEVICES=${gpu_devices}")
+if [[ ${BENCH_PLATFORM_INSPECT:-0} == 1 ]]; then
+  container_env+=(-e VLLM_SERVER_DEV_MODE=1)
+fi
 if [[ -n ${VLLM_USE_V2_MODEL_RUNNER:-} ]]; then
   container_env+=(-e "VLLM_USE_V2_MODEL_RUNNER=${VLLM_USE_V2_MODEL_RUNNER}")
 fi
@@ -248,6 +254,12 @@ done
 ready_epoch=$(date +%s)
 printf '%s\n' "$((ready_epoch - start_epoch))" >"${CONFIG_DIR}/startup-seconds.txt"
 docker logs "$container" >"${CONFIG_DIR}/logs/server-ready.log" 2>&1 || true
+if [[ ${BENCH_PLATFORM_INSPECT:-0} == 1 ]]; then
+  curl --fail --silent --show-error --max-time 120 \
+    -H 'Content-Type: application/json' \
+    -d '{"method":"platform_snapshot"}' \
+    http://127.0.0.1:11435/collective_rpc >"${CONFIG_DIR}/runtime-owners.json"
+fi
 
 docker inspect --format '{{json .Config.Cmd}}' "$container" >"${CONFIG_DIR}/container-command.json"
 jq -e --arg expected "--kv-cache-dtype=${KV_CACHE_DTYPE}" 'index($expected) != null' \

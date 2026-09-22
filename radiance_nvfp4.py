@@ -229,6 +229,8 @@ def scheme_class():
 
     class RadianceNvfp4ToMxfp4(CompressedTensorsW4A4Fp4):
         def __init__(self, *, use_a16, source_id, metadata):
+            if use_a16:
+                raise ValueError("NVFP4A16 is not qualified for Radiance W4A8 conversion")
             from vllm.model_executor.kernels.linear.mxfp4.base import MxFp4LinearLayerConfig
             selected = kernel_class()
             if selected is None:
@@ -282,10 +284,12 @@ def select_scheme(weight_quant, input_quant, layer_name):
         raise ValueError("NVFP4 conversion requires an explicit layer identity")
     if layer_name.split(".")[-1] == "lm_head":
         return None
+    if input_quant is None:
+        raise ValueError("NVFP4A16 is not qualified for Radiance W4A8 conversion")
     source_id = os.environ.get("RADIANCE_NVFP4_SOURCE_ID", "").strip()
     if not source_id:
         raise ValueError("RADIANCE_NVFP4_SOURCE_ID must identify the checkpoint revision")
     metadata = {"weight": weight_quant.model_dump(mode="json"),
                 "input": input_quant.model_dump(mode="json") if input_quant else None,
                 "layer": layer_name}
-    return scheme_class()(use_a16=input_quant is None, source_id=source_id, metadata=metadata)
+    return scheme_class()(use_a16=False, source_id=source_id, metadata=metadata)

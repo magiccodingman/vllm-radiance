@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 import sys
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import torch
 
@@ -93,6 +93,27 @@ class ConversionTests(unittest.TestCase):
                            ("RADIANCE_NVFP4_LMHEAD", "bf16")):
             with patch.dict(os.environ, {key: value}, clear=True), self.assertRaises(ValueError):
                 nv.policy()
+
+    def test_a16_fails_closed_before_backend_selection(self):
+        with patch.dict(os.environ, {"RADIANCE_NVFP4_MXFP4": "1",
+                "RADIANCE_NVFP4_SOURCE_ID": "fixture@revision"}, clear=True), \
+                patch.object(nv, "scheme_class") as factory:
+            with self.assertRaisesRegex(ValueError, "NVFP4A16.*not qualified"):
+                nv.select_scheme(Mock(), None, "model.proj")
+            factory.assert_not_called()
+
+    def test_quantized_input_preserves_supported_conversion(self):
+        weight, activation = Mock(), Mock()
+        weight.model_dump.return_value = {"type": "float", "num_bits": 4}
+        activation.model_dump.return_value = {"type": "float", "num_bits": 4}
+        with patch.dict(os.environ, {"RADIANCE_NVFP4_MXFP4": "1",
+                "RADIANCE_NVFP4_SOURCE_ID": "fixture@revision"}, clear=True), \
+                patch.object(nv, "scheme_class") as factory:
+            result = nv.select_scheme(weight, activation, "model.proj")
+            factory.return_value.assert_called_once_with(use_a16=False,
+                source_id="fixture@revision", metadata={"weight": weight.model_dump.return_value,
+                "input": activation.model_dump.return_value, "layer": "model.proj"})
+            self.assertIs(result, factory.return_value.return_value)
 
     def test_e2m1_ties_use_even_codes(self):
         x = torch.tensor([0.25, 0.75, 1.25, 1.75, 2.5, 3.5, 5.0])

@@ -27,6 +27,23 @@ class PlatformProbe:
         spec_config = self.vllm_config.speculative_config
         if spec_config is not None and speculator is None:
             raise RuntimeError("Configured resident speculator was not instantiated")
+        def inventory(root):
+            return self._platform_inventory(root)
+        owners = inventory(model)
+        draft_model = getattr(speculator, "model", None)
+        return {"runner": identity(runner), "model": identity(model),
+                "speculator": identity(speculator) if speculator is not None else None,
+                "draft_model": identity(draft_model) if draft_model is not None else None,
+                "draft_owners": inventory(draft_model) if draft_model is not None else [],
+                "speculative_method": spec_config.method if spec_config is not None else None,
+                "num_speculative_steps": getattr(runner, "num_speculative_steps", 0),
+                "rank": self.rank, "owners": owners,
+                "graph": str(self.vllm_config.compilation_config.cudagraph_mode),
+                "allocated": torch.cuda.memory_allocated(),
+                "reserved": torch.cuda.memory_reserved(),
+                "free_total": torch.cuda.mem_get_info()}
+
+    def _platform_inventory(self, model):
         owners = []
         for name, module in model.named_modules():
             row = {"name": name, **identity(module)}
@@ -44,15 +61,7 @@ class PlatformProbe:
                             row[attr][nested] = identity(obj)
             if len(row) > 4 or "GatedDelta" in row["class"]:
                 owners.append(row)
-        return {"runner": identity(runner), "model": identity(model),
-                "speculator": identity(speculator) if speculator is not None else None,
-                "speculative_method": spec_config.method if spec_config is not None else None,
-                "num_speculative_steps": getattr(runner, "num_speculative_steps", 0),
-                "rank": self.rank, "owners": owners,
-                "graph": str(self.vllm_config.compilation_config.cudagraph_mode),
-                "allocated": torch.cuda.memory_allocated(),
-                "reserved": torch.cuda.memory_reserved(),
-                "free_total": torch.cuda.mem_get_info()}
+        return owners
 
     def platform_profile_start(self):
         import torch

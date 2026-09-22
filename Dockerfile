@@ -9,7 +9,7 @@
 # build toolchain nor the wheels, which is most of the reason it is far smaller than the base.
 #
 # stack: AMD torch 2.12, AMD Triton 3.7.1, torchvision 0.27.1, AITER 0.1.20,
-# pinned vLLM v0.28.0,
+# pinned vLLM v0.30.0,
 # all compiled for PYTORCH_ROCM_ARCH=gfx1201 against the base image's ROCm 7.14.
 ARG ROCM_BASE=rocm/dev-ubuntu-24.04:7.14.0-full@sha256:439edaa8f0c4be4a3728e528f87b8a2ea1f051f34cf10b27caa4bd94f562eda7
 ARG GFX_ARCH=gfx1201
@@ -33,16 +33,15 @@ ARG TRITON_VERSION=3.7.1
 ARG TORCHVISION_VERSION=0.27.1
 ARG AITER_COMMIT=fc2e5d57fb5b8ad8e7e23f7103071dde798ea618
 ARG AITER_VERSION=0.1.20
-# vLLM v0.28.0's ROCm qualification lock uses Transformers 5.15.0. Pin the
+# Radiance's qualified v0.30 ROCm stack retains Transformers 5.15.0. Pin the
 # exact tested release so rebuilds cannot silently change model-loading or
 # chat-template behavior.
 ARG TRANSFORMERS_VERSION=5.15.0
 # Structured-output qualification is specific to this grammar runtime. vLLM's
 # broad compatible range must not silently change the regression surface.
 ARG XGRAMMAR_VERSION=0.2.3
-# Stable vLLM release. v0.28.0 contains native DFlash2 at the exact reviewed
-# #52816 source hashes previously carried by this fork, so no DFlash source
-# backport is applied. Pin the immutable tag target rather than resolving it
+# Stable vLLM release with native DFlash2; no DFlash source backport is applied.
+# Pin the immutable tag target rather than resolving it
 # during each build; VLLM_VERSION is the wheel stamp.
 ARG VLLM_COMMIT=ced6857afa0ea7b2e3f0846a62e1394e90f15607
 ARG VLLM_VERSION=0.30.0
