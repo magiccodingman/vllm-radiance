@@ -1,6 +1,16 @@
 # vLLM 0.30 resident platform migration
 
-Status: **V030_PLATFORM_READY_WITH_DOCUMENTED_DEFERRED_GATE**.
+Status: **V030_CORE_QUALIFIED_WITH_OPTIONAL_SPECULATIVE_LIMITATIONS**.
+
+The subsequent [full publication pass](V030_PUBLICATION_20260922.md) is complete:
+non-spec/MTP K4/DFlash2 K5/K7 weighted TPS is 53.9/135.6/172.3/186.7. All standard
+performance requests succeeded. Non-spec and both DFlash lanes passed 30/30
+sampled tool checks; MTP failed one (29/30). All speculative lanes remain only
+1/8 strict-equivalent to non-spec. Thus this is **not an all-modes-qualified
+merge sign-off**. The failed MTP response is preserved, not retried away.
+NVFP4A16 conversion now fails closed; ten conversion regression cases pass.
+The bounded initial qualification below remains historical evidence, not the
+current publication table. Production promotion/deployment remains separate.
 
 The source platform is vLLM 0.30.0; publication and deployment are separate actions. The deferred
 gate is real NVFP4 checkpoint model quality/continuous-recompute qualification;
@@ -55,7 +65,8 @@ Build/import, overlay dispositions, Runner V2 path evidence, resident FP8 and
 Quark MXFP4 gates, native NVFP4 conversion fixtures, parser/structured output,
 vision and bounded performance sanity PASS. Real NVFP4 model quality remains
 deferred. No historical test count is attributed to this candidate. Publication
-BetterBench was excluded from that initial pass; it is now separately authorized.
+BetterBench was excluded from that initial pass; the separate publication pass
+is now complete and linked above, including its failed MTP tool gate.
 Long-context capacity qualification remains outside this task.
 
 ## Overlay migration matrix

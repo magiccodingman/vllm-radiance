@@ -1,5 +1,19 @@
 # RDNA4 upgrade progress
 
+## 2026-09-22 — v0.30 publication and merge-readiness cleanup
+
+Current source platform is vLLM 0.30.0; source merges do not publish or deploy an
+image. NVFP4A16 opt-in conversion is fail-closed, with ten conversion regressions.
+The standard 10-pass/category BetterBench campaign now covers non-spec, Fast MTP
+K4, and matched Fast DFlash2 K5/K7 at c1/c2/c4/c8 plus standard prefill. Weighted
+TPS: 53.9 / 135.6 / 172.3 / 186.7. All performance requests succeeded; MTP's
+tool gate failed 1/30, while the other lanes passed 30/30. All speculative lanes
+failed strict non-spec equivalence (1/8). These limits prevent an all-modes-qualified
+sign-off; no assertion or generation policy was weakened. See the
+[publication report](V030_PUBLICATION_20260922.md), current README tables and
+`benchmarks/results/20260922-v030-publication/`. The initial platform-sanity JSON
+and prior records are unchanged. Production stays stopped; MR !42 stays Draft.
+
 ## 2026-09-22 — vLLM0.30 platform candidate (MR !42)
 
 New main-derived branch `codex/vllm-030-platform-upgrade`; MR !37 is frozen as

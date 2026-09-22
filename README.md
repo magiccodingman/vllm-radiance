@@ -16,8 +16,8 @@ FP8 GEMM and speculative-decoding paths.
 The source platform is **vLLM 0.30.0**. Source merges do not publish or deploy a
 replacement for production 1.0.16. Its native FP8 and Quark27B TP2/C1 resident evidence,
 actual Runner V2/kernel selection, ordinary vision and NVFP4 conversion limits
-are recorded in [V030_UPGRADE.md](docs/V030_UPGRADE.md). Historical performance
-tables below are not rerun v0.30 results. NVFP4→MXFP4 is default-off load-time
+are recorded in [V030_UPGRADE.md](docs/V030_UPGRADE.md). Fresh v0.30 publication
+measurements and their qualification limits are below. NVFP4→MXFP4 is default-off load-time
 requantization, not native NVFP4 execution or model-level quality qualification.
 Unqualified NVFP4A16 conversion is explicitly rejected; quantized-input NVFP4
 remains eligible for the opt-in W4A8 conversion.
@@ -248,8 +248,62 @@ reproducible maintenance probe are documented in
 
 ## Measured performance
 
+### Current vLLM 0.30 publication — 2026-09-22
+
+BetterBench v0.2.2 / corpus v1, **10 measured passes/category**, two warmups/category,
+greedy cold nonce prompts, TP2, FP8 KV, 8K/C8, 85% GPU allocation, 4,096 batch tokens,
+PIECEWISE, prefix off, safe WPERM/decode-NT profile. Same Quark target and matched
+tcclaviger DFlash2 revisions throughout; fixed depths, no tuning. Each mode completed
+80/80 category measurements, 24/24 requests at each concurrency, and 12/12 prefill measurements.
+
+| Mode | Weighted TPS | ITL 1%-low TPS | TTFT p50 ms | c1 | c2 | c4 | c8 |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Non-spec — recommended | 53.9 | 51.7 | 64 | 53.3 | 101.8 | 181.4 | 304.1 |
+| Fast MTP K4 — **tool gate FAIL** | 135.6 | 109.7 | 67 | 128.7 | 227.3 | 360.2 | 463.9 |
+| Fast DFlash2 K5 — experimental | 172.3 | 139.0 | 65 | 154.2 | 281.3 | 414.6 | **610.4** |
+| Fast DFlash2 K7 — experimental | **186.7** | **143.5** | 64 | **173.5** | **293.7** | **446.6** | 510.2 |
+
+Concurrency columns are **aggregate** TPS, not per-request TPS. All speculative modes
+matched only **1/8** strict non-spec fixed outputs; K5/K7 matched 6/8 each other.
+Non-spec and both DFlash lanes passed **30/30** sampled required-tool checks.
+MTP passed **29/30**: one unfinished tool JSON entered a whitespace loop and hit its
+1,024-token limit. Its numbers are retained as experimental measurements, **not
+successful tool-serving qualification**. No gate was relaxed. Non-spec is the safe
+recommendation; K7 is the fastest measured single-stream option only when these
+speculative limitations are acceptable. K5 performed better at c8.
+
+Category medians for the recommended control and fastest experimental lane:
+
+| Category | Non-spec TPS | Non-spec ITL low | Non-spec TTFT ms | K7 TPS | K7 ITL low | K7 TTFT ms |
+|---|---:|---:|---:|---:|---:|---:|
+| Chat | 53.7 | 45.7 | 64.8 | 134.3 | 105.9 | 66.6 |
+| Code | 53.9 | 52.2 | 63.2 | 190.5 | 116.1 | 63.1 |
+| File edit | 53.9 | 51.8 | 66.0 | 222.1 | 175.5 | 67.4 |
+| JSON | 53.9 | 52.0 | 64.8 | 249.1 | 220.6 | 64.3 |
+| Math | 54.0 | 51.9 | 63.0 | 238.9 | 189.8 | 62.4 |
+| Prose | 54.0 | 51.9 | 63.6 | 130.5 | 104.6 | 63.2 |
+| Reasoning | 53.7 | 51.7 | 64.4 | 144.7 | 112.3 | 63.5 |
+| Summarization | 54.0 | 52.6 | 67.7 | 210.3 | 187.8 | 68.4 |
+
+Standard cold-prefill throughput (prompt tokens / TTFT):
+
+| Mode | nominal 2K | nominal 4K | nominal 7K |
+|---|---:|---:|---:|
+| Non-spec | 4,056.4 | 4,480.0 | 4,367.2 |
+| MTP K4 — tool gate failed | 4,239.0 | 4,531.3 | 4,348.2 |
+| DFlash2 K5 — experimental | 4,040.9 | 4,458.4 | 4,283.7 |
+| DFlash2 K7 — experimental | 4,044.1 | 4,456.5 | 4,280.8 |
+
+Actual median prompt lengths were **1,556 / 3,023.5 / 5,226**, not exact 2K/4K/7K.
+See the [publication report](docs/V030_PUBLICATION_20260922.md) for every mode's category
+table, acceptance, per-request concurrency TPS, caveats and immutable artifacts.
+These are current platform results; older source/profile results below are historical
+context, not an isolated “v0.30 improved by X%” experiment.
+
+### Historical v0.28 / prior Radiance results
+
 BetterBench v0.2.2 used its v1 corpus, ten measured passes per category, greedy decoding, cold nonce-prefixed
-prompts, and c1/c2/c4/c8 on two R9700s. The current recommended MXFP4 kernel
+prompts, and c1/c2/c4/c8 on two R9700s. The historical safe RX5 MXFP4 kernel
 profile adds `RADIANCE_MXFP4_WPERM=1` and `RADIANCE_MXFP4_DECODE_NT=1` while
 keeping full RX5 (`A_TILED`, `GDN_NORM_QUANT`, `NORMQUANT_FUSION`, and
 `FP8_STREAM`) disabled. The measured serving lane used the matched DFlash K7
@@ -276,7 +330,7 @@ Cold prefill measured **4,031.8 / 4,444.7 / 4,268.6 TPS** at the 2K/4K/7K target
 arm completed 24/24 requests. These are the standard 8K/C8 laboratory results at 85% GPU allocation with
 prefix caching and CPU offload disabled; the 128K/C4 production profile above intentionally has a different
 capacity/latency contract. Exact category TTFT, ITL, prefill, run metadata, and immutable raw results are in
-the [current safe-subset BetterBench report](benchmarks/results/20260908T1905Z_safe-rx5-final/safe-wperm-nt-betterbench-standard/betterbench/report.md)
+the [historical safe-subset BetterBench report](benchmarks/results/20260908T1905Z_safe-rx5-final/safe-wperm-nt-betterbench-standard/betterbench/report.md)
 and [RX5 continuation report](docs/MXFP4_RX5_FP8KV_CONTINUATION.md).
 
 DFlash remains experimental and opt-in because strict speculative/non-spec greedy equivalence has not passed,
@@ -295,8 +349,8 @@ For historical mode-to-mode context, the earlier Radiance 0.9.3/libr4d 0.5.0 mat
 | Fast DFlash K5 | 136.2 | 123.0 | 216.4 | 343.0 | **435.7** |
 | Fast DFlash K7 | **145.4** | **132.4** | **234.6** | **343.3** | 416.9 |
 
-This older table is retained because non-spec, MTP, K5, and K7 have not all been rerun on the current RX4-dark
-image. Do not treat it as the current K7 performance ceiling. Its per-category TPS, acceptance, TTFT/TPOT,
+This older table predates the current v0.30 publication above and uses a different source/profile.
+Do not treat it as the current K7 performance ceiling. Its per-category TPS, acceptance, TTFT/TPOT,
 prefill, telemetry, confidence intervals, negative results, and immutable run IDs are in the
 [Radiance 0.9.3 qualification report](https://gitlab.sayou.io/lance-wright/vllm-radiance/-/blob/main/docs/RADIANCE_093_R4D050_MXFP4.md).
 

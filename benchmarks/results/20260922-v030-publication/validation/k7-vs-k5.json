@@ -1,0 +1,9 @@
+{
+  "common_cases": 1,
+  "compared_requests": 8,
+  "mismatches": [
+    "correctness_fixed.json: generated text differs for 2 request(s)"
+  ],
+  "missing_candidate_cases": [],
+  "status": "failed"
+}
