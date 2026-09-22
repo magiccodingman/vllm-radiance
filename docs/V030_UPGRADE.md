@@ -1,6 +1,10 @@
 # vLLM 0.30 resident platform migration
 
-Status: core resident hardware gates PASS; final compatibility/handback in progress.
+Status: **V030_PLATFORM_READY_WITH_DOCUMENTED_DEFERRED_GATE**.
+
+Draft MR !42 is ready for review, not merged or production-promoted. The deferred
+gate is real NVFP4 checkpoint model quality/continuous-recompute qualification;
+both core resident FP8/Quark lanes and the bounded compatibility checks passed.
 
 ## Source and scope
 
@@ -155,7 +159,7 @@ Production remained stopped. No historical MR !37 result is counted here.
 
 The clean release-image build also passed import/pip checks. Its source changes
 do not replace Torch/Triton/AITER; actual final versions are Torch2.12.0+rocm7.14,
-Triton3.7.1+gitf0b55c07, vision0.27.1+df56172, AITER0.1.20 and R4D0.5.0.
+Triton3.7.1 (pinned source `f0b55c07`), vision0.27.1+df56172, AITER0.1.20 and R4D0.5.0.
 The first clean release image is
 `sha256:8bcb12e362ea0f29d9052f0bb7210d1913310cd960d85ae2eafeb7f2c6fdef8f`;
 its OCI config digest is `sha256:6caa7e46974f87569a8528674872c2c7fa2a5fed28be86e43e1a1f750172cbfc`.
@@ -257,3 +261,43 @@ BetterBench, concurrency sweep or long-context capacity campaign was used.
   claim. Dense resident models do not qualify routed MoE/QSA/giant PLE.
 - CPU KV integration is source/host-contract qualified here; destructive
   registration and long-context offload pressure are intentionally NOT RUN.
+
+## Speculative compatibility and cleanup
+
+One existing local FP8 MTP head was loaded with `method=mtp`, two speculative
+tokens, original R4D and fresh cache. Both ranks reported actual V2
+`vllm.v1.worker.gpu.spec_decode.mtp.speculator.MTPSpeculator`. One16-token
+completion matched the non-speculative exact-ID prefix. Metrics recorded7
+drafts,14 proposed tokens and9 accepted tokens. This proves bounded integration
+compatibility, not full speculative equivalence or performance qualification.
+DFlash stride/null-block/config/source regressions passed; a new DFlash model
+campaign was not run. Existing speculative modes remain opt-in.
+
+The optional read-only worker extension was mounted from the qualification
+checkout; its final addition only reports the original speculator object and
+does not replace methods, change graph boundaries or perform model arithmetic.
+The image's production runtime remains the source977c919ef identity above.
+
+All lab containers were stopped after completed requests, with120-second maximum
+graceful-stop bounds. No running experiment remains. Production1.0.16 is **stopped**,
+image `sha256:83a9dc02a8f8e75aabe81366d36ebaa2e35fcbe181cacf8e8e0a4cef4ebccbcc`,
+original `unless-stopped` policy preserved. It was never replaced by a candidate.
+MR !37 remains Draft/open/unmerged; its historical freeze note is retained.
+No tiered-v2/device-pool work has begun. The next phase is the separate
+[continuation plan](V030_FLASH_NEXT_CONTINUATION_PLAN.md), only after review/merge.
+
+Compact machine-readable evidence is in
+[`benchmarks/results/20260922-v030-platform.json`](../benchmarks/results/20260922-v030-platform.json).
+Raw bounded request/native/kernel/source records are attached to MR !42; full
+build logs and caches remain in the local `/nvme/ediloca-1/scratch/v030-*` runs.
+
+The228,631-byte archive is split only to fit the connector's upload limit:
+[part00](https://gitlab.sayou.io/-/project/9/uploads/58793777297329d0a45507d073533725/v030-platform-evidence.tar.gz.part00),
+[part01](https://gitlab.sayou.io/-/project/9/uploads/950a5c0e8d7ab455147451836e8cd46f/v030-platform-evidence.tar.gz.part01),
+[part02](https://gitlab.sayou.io/-/project/9/uploads/a01780e94213dc8a908e8854a6eb2bc6/v030-platform-evidence.tar.gz.part02),
+[part03](https://gitlab.sayou.io/-/project/9/uploads/324aa20e2ad8dc11d696d8cdfbe70c4c/v030-platform-evidence.tar.gz.part03).
+Concatenate in numeric order, then extract as gzip tar. Combined SHA256:
+`39e4830192cb58d200834b922663e935c5fbd38616565cb10e4f4def7f9dfc6d`.
+It contains no model weights or checkpoint archive. Original failed development
+attempts remain locally preserved; the packet includes the old-runner inspection
+failure and the corrected timing-only scope rather than concealing that change.
