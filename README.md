@@ -4,7 +4,7 @@
 [![Docker Pulls](https://img.shields.io/docker/pulls/magiccodingman/vllm-radiance?logo=docker)](https://hub.docker.com/r/magiccodingman/vllm-radiance)
 
 A vLLM inference-server image for the **AMD Radeon AI PRO R9700 (gfx1201 / RDNA4)**. It combines a pinned
-vLLM v0.30.0 ROCm candidate stack with [libr4d](https://codeberg.org/StillDeadcode/libr4d)'s hand-written RDNA4
+vLLM v0.30.0 ROCm stack with [libr4d](https://codeberg.org/StillDeadcode/libr4d)'s hand-written RDNA4
 attention, gated-delta-net, vision, all-reduce, MXFP4, and DFlash kernels while retaining Radiance's tuned
 FP8 GEMM and speculative-decoding paths.
 
@@ -13,12 +13,14 @@ FP8 GEMM and speculative-decoding paths.
 > hardware may work but have not received the same qualification. Speculative modes remain opt-in because
 > their strict cross-mode output-equivalence gate has not passed.
 
-The v0.30 upgrade is a **Draft MR candidate**, not a published replacement for
-production1.0.16. Its bounded native FP8 and Quark27B TP2/C1 resident evidence,
+The source platform is **vLLM 0.30.0**. Source merges do not publish or deploy a
+replacement for production 1.0.16. Its native FP8 and Quark27B TP2/C1 resident evidence,
 actual Runner V2/kernel selection, ordinary vision and NVFP4 conversion limits
 are recorded in [V030_UPGRADE.md](docs/V030_UPGRADE.md). Historical performance
 tables below are not rerun v0.30 results. NVFP4→MXFP4 is default-off load-time
 requantization, not native NVFP4 execution or model-level quality qualification.
+Unqualified NVFP4A16 conversion is explicitly rejected; quantized-input NVFP4
+remains eligible for the opt-in W4A8 conversion.
 
 This fork tracks and credits DeadCode's
 [vllm-radiance](https://codeberg.org/StillDeadcode/vllm-radiance) and libr4d work, with additional compiler

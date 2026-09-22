@@ -1,15 +1,15 @@
 # vllm-radiance
 
 vLLM inference server for the AMD Radeon AI PRO R9700 (gfx1201 / RDNA4), combining pinned stable
-vLLM v0.30.0 candidate with libr4d's hand-written RDNA4 kernels and Radiance's FP8/speculative paths.
+vLLM v0.30.0 with libr4d's hand-written RDNA4 kernels and Radiance's FP8/speculative paths.
 
 > **Status: experimental.** This fork publishes as `magiccodingman/vllm-radiance`.
 > `stilldeadcode/vllm-radiance:0.9.3` is DeadCode's separate upstream release
 > and the external comparison baseline. Current pins and qualification evidence
 > are in `docs/UPGRADE_PROGRESS.md` and `docs/RADIANCE_093_R4D050_MXFP4.md`.
 
-The1.1.0-rc1.vllm0.30.0 branch is a Draft platform-upgrade candidate; no Docker
-Hub production promotion is implied. See `docs/V030_UPGRADE.md` for its actual
+The source version is 1.1.0-rc1.vllm0.30.0; merging source does not publish a Docker
+Hub image or replace the separately controlled deployment. See `docs/V030_UPGRADE.md` for its actual
 bounded FP8/Quark27B TP2/C1, Runner V2, tools/prefix/vision and native-conversion
 evidence. Existing publication tables remain historical. NVFP4→MXFP4 conversion
 is explicit/default-off and still needs a suitable real NVFP4 model quality gate.
@@ -22,7 +22,7 @@ sequences; it deliberately leaves VRAM headroom instead of finding the largest
 batch that fits. Earlier 0.5.8 performance numbers below remain useful history,
 but are not claims about the new compiler stack.
 
-## Candidate stack (`1.1.0-rc1.vllm0.30.0`)
+## Source stack (`1.1.0-rc1.vllm0.30.0`)
 
 This branch is not a production promotion. See `docs/V030_UPGRADE.md` for actual
 qualification. Performance tables below remain historical unless explicitly rerun.

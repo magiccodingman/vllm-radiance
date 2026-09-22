@@ -15,7 +15,7 @@ merge is part of this task; production remains stopped at the owner's request.
 
 The earlier continuation and logs below remain historical, unchanged evidence.
 
-> Latest continuation: the qualified stack now uses stable vLLM v0.28.0 with
+> Historical v0.28 continuation: that qualified stack used stable vLLM v0.28.0 with
 > native DFlash2 and focused post-release parser, DFlash cache-stride,
 > speculative-XGrammar, and ROCm graph-capture fixes. See
 > [V028_UPGRADE.md](V028_UPGRADE.md). The preceding stable-v0.27.1 investigation

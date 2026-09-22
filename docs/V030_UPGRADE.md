@@ -2,13 +2,13 @@
 
 Status: **V030_PLATFORM_READY_WITH_DOCUMENTED_DEFERRED_GATE**.
 
-Draft MR !42 is ready for review, not merged or production-promoted. The deferred
+The source platform is vLLM 0.30.0; publication and deployment are separate actions. The deferred
 gate is real NVFP4 checkpoint model quality/continuous-recompute qualification;
 both core resident FP8/Quark lanes and the bounded compatibility checks passed.
 
 ## Source and scope
 
-This branch starts from main `285ac78e7f19bc1e1b5b09b25f865aea0c6d9754`.
+The platform upgrade started from main `285ac78e7f19bc1e1b5b09b25f865aea0c6d9754`.
 MR !37 remains Draft/open/unmerged at research report
 `b5208d32b8c024181a182b7e8fbdf5dff368bcf2`; its freeze note is
 [note 2990](https://gitlab.sayou.io/lance-wright/vllm-radiance/-/merge_requests/37#note_2990).
@@ -21,7 +21,8 @@ from https://github.com/GGZ14/vllm-mxfp4 on 2026-09-22.
 
 Production remains stopped under the owner's standing instruction. This work
 uses separate candidate images and isolated resident-model validation. No merge,
-tiered-v2 implementation, device-managed pool or publication benchmark is included.
+tiered-v2 implementation or device-managed pool is included. The initial bounded
+qualification below precedes the separately authorized publication benchmark pass.
 
 ## Release semantics and expected impact
 
@@ -54,7 +55,8 @@ Build/import, overlay dispositions, Runner V2 path evidence, resident FP8 and
 Quark MXFP4 gates, native NVFP4 conversion fixtures, parser/structured output,
 vision and bounded performance sanity PASS. Real NVFP4 model quality remains
 deferred. No historical test count is attributed to this candidate. Publication
-BetterBench and long-context qualification are excluded by this mission.
+BetterBench was excluded from that initial pass; it is now separately authorized.
+Long-context capacity qualification remains outside this task.
 
 ## Overlay migration matrix
 
