@@ -208,6 +208,12 @@ cleanup() {
   if ((cleanup_done)); then
     return
   fi
+  # Preserve final counters even when a correctness/tool gate fails. Failure
+  # remains failure; collecting diagnostics must not hide the original exit.
+  if [[ ! -s ${CONFIG_DIR}/metrics-final.prom ]]; then
+    curl --fail --silent --max-time 10 http://127.0.0.1:11435/metrics \
+      >"${CONFIG_DIR}/metrics-final.prom" || true
+  fi
   docker logs "$container" >"${CONFIG_DIR}/logs/server.log" 2>&1 || true
   docker stop --time 30 "$container" >/dev/null 2>&1 || true
   docker rm "$container" >/dev/null 2>&1 || true
@@ -321,8 +327,10 @@ HIP_VISIBLE_DEVICES=$gpu_devices RADIANCE_IMAGE="$IMAGE" "${SCRIPT_DIR}/capture_
   --enforce-eager "$ENFORCE_EAGER" --disable-cudagraph "$DISABLE_CUDAGRAPH" --notes "$NOTES"
 
 if [[ $SUITE == betterbench ]]; then
+  curl --fail --silent http://127.0.0.1:11435/metrics >"${CONFIG_DIR}/metrics-benchmark-start.prom"
   MODEL_NAME="$MODEL_NAME" "${SCRIPT_DIR}/run_betterbench.sh" \
     --run-dir "$CONFIG_DIR" --config "$LABEL" --max-model-len "$MAX_MODEL_LEN"
+  curl --fail --silent http://127.0.0.1:11435/metrics >"${CONFIG_DIR}/metrics-benchmark-end.prom"
   # Keep the publication-grade performance suite and the strict output gate in
   # the same immutable run directory. Run this after BetterBench so fixed
   # prompts cannot warm or otherwise perturb the measured corpus.
