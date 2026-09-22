@@ -1,6 +1,8 @@
 # v0.30 GGZ14 delta and NVFP4 compatibility
 
-Status: implementation candidate; hardware and resident qualification pending.
+Status: CPU and both-R9700 native conversion fixtures PASS; real NVFP4 model
+quality/continuous-recompute qualification is deferred because no suitable local
+checkpoint was found. This is not broad production NVFP4-format qualification.
 
 ## Immutable donor and prior boundary
 
@@ -70,3 +72,16 @@ No suitable local NVFP4 checkpoint is currently identified; model-level
 continuous/recompute, quality, tools and structured-output gates remain required
 before broad production format qualification. No large download is authorized
 merely to fill this optional gate.
+
+Both gfx1201 devices passed the actual installed compressed-tensors loader,
+staged rollback after injected repack failure, and native W4A8 M1/M2/M17/M65
+changed-input/deterministic checks. Nontrivial group scales and separate merged
+divisors1/2/4 produce relative reconstruction RMS0.111355; native results against
+the converted BF16 reference have relative error0.0262–0.0278. These are measured
+requantization/activation errors, not a model-logit equivalence tolerance.
+The wider TP1 donor shape N34816/K256/M1 also passed native execution.
+GPU conversion/install peak increment was37,809,152bytes in the initial native
+fixture. That includes native scratch/repack, not CPU arithmetic. The earlier
+403,902,464byte process-highwater increment included later reference operations
+and must not be reported as conversion-only RSS; the fixture now samples host
+highwater immediately after conversion and labels whole-fixture RSS separately.

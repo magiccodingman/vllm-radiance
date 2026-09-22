@@ -40,8 +40,9 @@ The target's `docker/Dockerfile.rocm_base` pins the same AMD Torch
 `f0b55c07da61c71775bef6d1a15ebf846430ac75`, and torchvision 0.27.1
 lineages as Radiance. Preserve these unless an actual compatibility issue requires
 a change. Upstream uses ROCm 7.2.3 packaging and AITER `v0.1.21.post2`;
-Radiance starts from qualified ROCm 7.14 and AITER 0.1.20. AITER API comparison
-and native qualification are pending; no whole-stack replacement is assumed.
+Radiance retains qualified ROCm 7.14 and AITER 0.1.20. The only required AITER
+adaptation is the guarded preshuffled-function import alias described below.
+Native W4A8 and runtime AITER JIT passed; no whole-stack replacement was needed.
 
 ## Qualification ledger
 
@@ -56,8 +57,8 @@ BetterBench and long-context qualification are excluded by this mission.
 The machine-readable owner is `.radiance/patches.yaml`. Reasons describe the
 retained behavior, not a new hardware claim. UPSTREAM_OWNED rows are not applied;
 parser/XGrammar backport files were removed after installed behavior tests.
-Other inactive historical scripts remain recoverable reference pending their
-specific native/speculative gates. Every retained owner remains Radiance; every
+Retired scripts remain recoverable in Git history; installed/native regressions
+replace their old source-string assumptions. Every retained owner remains Radiance; every
 upstream-owned implementation belongs to the immutable vLLM pin.
 
 | Overlay | Disposition | Behavior / ownership decision |
@@ -107,6 +108,13 @@ upstream-owned implementation belongs to the immutable vLLM pin.
 | `patch_xgrammar_spec_termination` | UPSTREAM_OWNED | Backport speculative grammar termination handling so draft batches cannot overrun a terminated FSM. |
 | `install_radiance_hooks` | RETAIN_UNCHANGED | Install Radiance runtime hooks into the pinned vLLM tree. |
 | `patch_nvfp4_mxfp4` | SEMANTIC_PORT | Bounded NVFP4-only load-time conversion with per-partition scale provenance. |
+
+The final source audit reapplied every release overlay to the clean pinned vLLM
+tree, repeated each application, and parsed all resulting Python: PASS, no
+silently skipped vLLM anchors. Dependency copies (AITER/Transformers/Torch) come
+from the pinned image and can already contain Radiance changes: a dependency
+NOOP is **not** evidence that upstream owns that behavior. Those overlays were
+not retired on that basis. V1 and V2 GDN post-load anchors are both required.
 
 ## Integration details
 
@@ -162,3 +170,23 @@ with identical generated IDs. JSON/tool/recompute and two vision requests passed
 The separate eight-token kernel observation contains actual native
 `radiance_mxfp4_fp8_gemm_decode` activity, not emulation. This dense27B does not
 qualify routed MoE, QSA or giant-model PLE; those are not claimed.
+
+## Final candidate identity and matched-control scope
+
+Runtime source: `977c919ef2ab64ea96579b36ffef7d93d493db19`.
+Final release build image: `sha256:4c37eb5a935d79a6e0092cf527cda7581d24bf761e8a8ac90820859fc2738d00`.
+It was built through the release Dockerfile, not by replacing site-packages in
+a running server. The preceding Quark-tested release image differs only in
+retired no-op overlay files and the legacy V1 post-load anchor. Installed V2
+runner, MXFP4, GDN and R4D attention source hashes match exactly between them.
+The final FP8 qualification uses the final image directly.
+
+The same-host old1.0.16 Quark control used the same TP2/C1/8K, model, flags and
+three short32-token requests. Its actual runner was V1, as selected by that
+release; the new release is V2. An initial V2-only inspection assertion rejected
+the old runner before any generation; preserved as a harness-scope failure,
+not a model failure. Timing-only controls now explicitly skip that V2 assertion;
+new-candidate qualification still requires it. Old warm rates48.220/48.200tok/s
+versus new52.209/52.293 show no material regression in this bounded sample.
+All six requests have the same output-ID hash. Do not describe this as an
+isolated kernel speedup: runner/version changes and short-run noise remain.

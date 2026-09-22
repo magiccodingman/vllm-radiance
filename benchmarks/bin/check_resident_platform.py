@@ -33,7 +33,10 @@ def main():
         (a.out / f"{name}.json").write_text(json.dumps(
             {"request": body, "response": result, "elapsed_s": time.monotonic()-begin}, indent=2))
         return result
-    call("owners", "/collective_rpc", {"method": "platform_snapshot"})
+    # The old-image timing control may legitimately use Runner V1. Its
+    # installed runner is retained in server logs; it is not V2 qualification.
+    if not a.performance_only:
+        call("owners", "/collective_rpc", {"method": "platform_snapshot"})
     common = {"model": a.model, "temperature": 0, "seed": 0,
               "return_token_ids": True, "max_tokens": 32}
     prompt = "The capital of France is"
