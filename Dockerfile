@@ -414,6 +414,9 @@ RUN printf '%s\n' \
 ARG RADIANCE_VERSION=1.1.0-rc1.vllm0.30.0
 ENV RADIANCE_VERSION=${RADIANCE_VERSION}
 COPY VERSION /opt/radiance_version
+# Dormant worker-extension RPCs for explicit localhost-only qualification.
+# Not imported or enabled during normal serving.
+COPY radiance_platform_probe.py /opt/vllm/lib/python3.12/site-packages/
 COPY radiance_preamble.py /opt/radiance_preamble.py
 COPY radiance_entrypoint.sh /opt/radiance_entrypoint.sh
 RUN chmod +x /opt/radiance_entrypoint.sh
