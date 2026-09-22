@@ -659,6 +659,12 @@ def _make_kernel_class():
     class RadianceMxfp4W4A8LinearKernel(MxFp4LinearKernel):
         """MXFP4 weights x fp8 activations on gfx1201, via the hand-written fp8-WMMA GEMM."""
 
+        def input_quant_key(self):
+            # Compressed-tensors asks this at parameter creation. The original
+            # opaque W4A8 op owns activation quantization; do not advertise an
+            # upstream fusion contract that would quantize its BF16 input twice.
+            return None
+
         @classmethod
         def is_supported(cls, compute_capability=None):
             if not ENABLED or _ext is None:
@@ -700,13 +706,21 @@ def _make_kernel_class():
                     # from the env so the default (64) allocates exactly what it always has;
                     # a 16-concurrent serve sets RADIANCE_MXFP4_DECODE_MAX_M=128 and pays the
                     # extra 32 MiB only then.
+                    # GGZ14 3f542b7: TP1 gate/up can have N=34816. TP2's
+                    # qualified allocation remains unchanged.
+                    from vllm.distributed import get_tensor_model_parallel_world_size
+                    try:
+                        _tp = get_tensor_model_parallel_world_size()
+                    except AssertionError:
+                        _tp = 1  # Standalone native fixture, no distributed groups.
+                    _dec_max_n = 36864 if _tp == 1 else 32768
                     _decode_scratch[0] = torch.empty(
-                        4 * max(64, DECODE_MAX_M) * 32768, dtype=torch.float32,
+                        4 * max(64, DECODE_MAX_M) * _dec_max_n, dtype=torch.float32,
                         device=layer.weight.device)
                     # Block counter for the fused reduction, one int per n-block. MUST start
                     # zeroed; the kernel's last-arriving block resets it, so it stays that way.
                     _decode_scratch[1] = torch.zeros(
-                        32768 // 128 + 8, dtype=torch.int32, device=layer.weight.device)
+                        _dec_max_n // 128 + 8, dtype=torch.int32, device=layer.weight.device)
                     _ext.set_decode_scratch(_decode_scratch[0].data_ptr(),
                                             _decode_scratch[0].numel() * 4,
                                             _decode_scratch[1].data_ptr())

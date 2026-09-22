@@ -2,7 +2,7 @@
 """Opt-in rank-major layout for native mmap-backed CPU KV offload.
 
 The pinned vLLM v0.28.0 native CPU tier lays the shared mmap out block-major:
-each logical block row contains every model-parallel worker's CPU page. That
+each logical chunk row contains every model-parallel worker's CPU page. That
 preserves a convenient whole-buffer secondary-tier memoryview, but it forces
 every TP worker to host-register the complete shared mmap even though direct
 CPU<->GPU DMA only touches that worker's slot in each row.
@@ -57,15 +57,23 @@ def patch_shared_region() -> None:
         path,
         '''        cpu_page_size: int,
         barrier: Callable[[], None] | None = None,
+        *,
+        creator_memory_check: Callable[[int], None] | None = None,
+        populate_only_on_creator: bool = False,
     ) -> None:
-        self.page_size = mmap.PAGESIZE
+        if populate_only_on_creator and barrier is None:
 ''',
         '''        cpu_page_size: int,
         barrier: Callable[[], None] | None = None,
+        *,
+        creator_memory_check: Callable[[int], None] | None = None,
+        populate_only_on_creator: bool = False,
         rank_sharded: bool = False,
         world_size: int | None = None,
     ) -> None:
-        self.page_size = mmap.PAGESIZE
+        if rank_sharded and populate_only_on_creator:
+            raise ValueError("rank-major layout requires per-worker population")
+        if populate_only_on_creator and barrier is None:
 ''',
         "rank_sharded: bool = False",
         "kv-offload rank-sharded: constructor controls",
@@ -75,7 +83,7 @@ def patch_shared_region() -> None:
         '''        self._creator = False  # set True only if this worker creates the file
         self.rank = rank
         if rank is not None:
-            # byte offset to this worker's first slot within each block row
+            # byte offset to this worker's first slot within each chunk row
             self._worker_offset = rank * cpu_page_size
             # exclusive upper bound for this worker's area within each row
             self._worker_area_end = (rank + 1) * cpu_page_size
@@ -94,7 +102,7 @@ def patch_shared_region() -> None:
                 )
             layout = plan_rank_major_layout(
                 total_size=self.total_size_bytes,
-                num_blocks=self.num_blocks,
+                num_blocks=self.num_chunks,
                 world_size=world_size,
                 worker_page_size=cpu_page_size,
                 page_size=self.page_size,
@@ -110,7 +118,7 @@ def patch_shared_region() -> None:
             self._registration_row_stride = shard.row_stride
         elif rank is not None:
             # Legacy block-major layout: byte offset to this worker's first
-            # slot within each block row.
+            # slot within each chunk row.
             self._worker_offset = rank * cpu_page_size
             self._worker_area_end = (rank + 1) * cpu_page_size
 ''',
@@ -120,19 +128,19 @@ def patch_shared_region() -> None:
     apply(
         path,
         '''        if rank is not None:
-            # Populate only this worker's pages (one slot per block row).
+            # Populate only this worker's pages (one slot per chunk row).
             worker_offset = rank * cpu_page_size
             _t0 = time.perf_counter()
             page_size = self.page_size
-            for block in range(num_blocks):
-                raw_offset = block * self._row_stride + worker_offset
+            for chunk in range(num_chunks):
+                raw_offset = chunk * self._row_stride + worker_offset
                 aligned_offset = (raw_offset // page_size) * page_size
                 end = raw_offset + cpu_page_size
                 aligned_length = end - aligned_offset
                 populate_write_fn(self.mmap_obj, aligned_offset, aligned_length)
             logger.debug(
-                "MADV_POPULATE_WRITE loop: %d blocks in %.3f s",
-                num_blocks,
+                "MADV_POPULATE_WRITE loop: %d chunks in %.3f s",
+                num_chunks,
                 time.perf_counter() - _t0,
             )
 ''',
@@ -141,7 +149,7 @@ def patch_shared_region() -> None:
             if self._rank_sharded:
                 # The rank-major worker span is one page-aligned contiguous
                 # range, so prefault it in one call instead of touching a slot
-                # from every global block row.
+                # from every global chunk row.
                 populate_write_fn(
                     self.mmap_obj,
                     self._registration_offset,
@@ -154,18 +162,18 @@ def patch_shared_region() -> None:
                 )
             else:
                 # Legacy block-major layout: populate only this worker's pages
-                # (one slot per block row).
+                # (one slot per chunk row).
                 worker_offset = rank * cpu_page_size
                 page_size = self.page_size
-                for block in range(num_blocks):
-                    raw_offset = block * self._row_stride + worker_offset
+                for chunk in range(num_chunks):
+                    raw_offset = chunk * self._row_stride + worker_offset
                     aligned_offset = (raw_offset // page_size) * page_size
                     end = raw_offset + cpu_page_size
                     aligned_length = end - aligned_offset
                     populate_write_fn(self.mmap_obj, aligned_offset, aligned_length)
                 logger.debug(
-                    "MADV_POPULATE_WRITE loop: %d blocks in %.3f s",
-                    num_blocks,
+                    "MADV_POPULATE_WRITE loop: %d chunks in %.3f s",
+                    num_chunks,
                     time.perf_counter() - _t0,
                 )
 ''',
@@ -176,14 +184,14 @@ def patch_shared_region() -> None:
         path,
         '''        worker_layer_view = torch.as_strided(
             self._base,
-            size=(self.num_blocks, tensor_page_size),
+            size=(self.num_chunks, tensor_page_size),
             stride=(self._row_stride, 1),
             storage_offset=self._worker_offset,
         )
 ''',
         '''        worker_layer_view = torch.as_strided(
             self._base,
-            size=(self.num_blocks, tensor_page_size),
+            size=(self.num_chunks, tensor_page_size),
             stride=(self._worker_row_stride, 1),
             storage_offset=self._worker_offset,
         )
@@ -194,12 +202,12 @@ def patch_shared_region() -> None:
     apply(
         path,
         '''        Args:
-            tensor_page_size: Canonical bytes per block for this tensor.
+            tensor_page_size: Canonical bytes per chunk for this tensor.
         """
         new_offset = self._canonical_offset + tensor_page_size
 ''',
         '''        Args:
-            tensor_page_size: Canonical bytes per block for this tensor.
+            tensor_page_size: Canonical bytes per chunk for this tensor.
         """
         if self._rank_sharded:
             raise RuntimeError(
@@ -213,20 +221,20 @@ def patch_shared_region() -> None:
     )
     apply(
         path,
-        '''        Shape: (num_blocks, row_stride_bytes). Secondary tiers address
-        block *b* as ``view[b]``.
+        '''        Shape: (num_chunks, row_stride_bytes). Secondary tiers address
+        chunk *b* as ``view[b]``.
         """
-        kv_tensor = self._base.view(self.num_blocks, self._row_stride)
+        kv_tensor = self._base.view(self.num_chunks, self._row_stride)
 ''',
-        '''        Shape: (num_blocks, row_stride_bytes). Secondary tiers address
-        block *b* as ``view[b]``.
+        '''        Shape: (num_chunks, row_stride_bytes). Secondary tiers address
+        chunk *b* as ``view[b]``.
         """
         if self._rank_sharded:
             raise RuntimeError(
                 "rank-major layout cannot expose the legacy contiguous "
                 "block-major secondary-tier memoryview"
             )
-        kv_tensor = self._base.view(self.num_blocks, self._row_stride)
+        kv_tensor = self._base.view(self.num_chunks, self._row_stride)
 ''',
         "rank-major layout cannot expose the legacy contiguous",
         "kv-offload rank-sharded: protect secondary-tier memoryview",
@@ -248,7 +256,7 @@ from radiance_kv_offload import get_rank_sharded_enabled
     )
     apply(
         path,
-        '''        if self._uses_shared_region() and self.num_blocks > 0:
+        '''        if self._uses_shared_region() and self.num_chunks > 0:
             # Replicated layout puts all ranks on slot 0 (single MLA copy);
             # otherwise each rank takes its own slot by physical device index.
             if self.replicated_layout:
@@ -258,14 +266,14 @@ from radiance_kv_offload import get_rank_sharded_enabled
                 rank = torch.accelerator.current_device_index() % world_size
             mmap_region = SharedOffloadRegion(
                 engine_id=self.config.engine_id,
-                num_blocks=self.num_blocks,
+                num_chunks=self.num_chunks,
                 rank=rank,
-                kv_bytes_per_block=self.kv_bytes_per_chunk,
+                kv_bytes_per_chunk=self.kv_bytes_per_chunk,
                 cpu_page_size=self.cpu_page_size_per_worker,
                 barrier=_all_workers_barrier,
             )
 ''',
-        '''        if self._uses_shared_region() and self.num_blocks > 0:
+        '''        if self._uses_shared_region() and self.num_chunks > 0:
             world_size = self.config.parallel.world_size
             rank_sharded = get_rank_sharded_enabled() and world_size > 1
             # Replicated layout puts all ranks on slot 0 (single MLA copy). A
@@ -282,9 +290,9 @@ from radiance_kv_offload import get_rank_sharded_enabled
                 rank = torch.accelerator.current_device_index() % world_size
             mmap_region = SharedOffloadRegion(
                 engine_id=self.config.engine_id,
-                num_blocks=self.num_blocks,
+                num_chunks=self.num_chunks,
                 rank=rank,
-                kv_bytes_per_block=self.kv_bytes_per_chunk,
+                kv_bytes_per_chunk=self.kv_bytes_per_chunk,
                 cpu_page_size=self.cpu_page_size_per_worker,
                 barrier=_all_workers_barrier,
                 rank_sharded=rank_sharded,

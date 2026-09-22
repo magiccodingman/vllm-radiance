@@ -26,8 +26,8 @@ upstreams:
   - parser
   - kv-cache
   - serving
-  current_pin: 2cf0a6915ce544dc493a0990f2ea38d81601128a
-  last_audited_ref: v0.28.0 qualification plus focused post-release fixes documented in docs/V028_UPGRADE.md
+  current_pin: ced6857afa0ea7b2e3f0846a62e1394e90f15607
+  last_audited_ref: v0.30.0 migration in docs/V030_UPGRADE.md; qualification status is explicit there
   policy: Track stable releases; prefer upstream ownership when equivalent; selectively carry reviewed fixes.
 - id: aiter
   repository: https://github.com/ROCm/aiter.git
@@ -76,7 +76,7 @@ upstreams:
   last_audited_ref: Radiance 0.9.3 lineage documented in docs/RADIANCE_093_R4D050_MXFP4.md
   policy: Audit deltas rather than mechanically rebasing; preserve locally qualified behavior.
 - id: ggz14-radiance-vllm-mxfp4
-  repository: https://codeberg.org/ggz14/radiance-vllm-mxfp4
+  repository: https://github.com/GGZ14/vllm-mxfp4.git
   relationship:
   - selective-adaptation
   - conceptual-watch
@@ -88,5 +88,5 @@ upstreams:
   - decode
   - rdna4
   current_pin: null
-  last_audited_ref: RX3/RX4/RX5 import lineage and exact audited refs are recorded in the corresponding qualification reports
+  last_audited_ref: 31b9a94a7f74eeb3f59e66d16b1b27dfafcd0663; selective deltas in docs/V030_GGZ14_MXFP4_NVFP4.md
   policy: Preserve original authorship; import selectively because Radiance carries a different vLLM/libr4d base and correctness contract.

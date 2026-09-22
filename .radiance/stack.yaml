@@ -54,12 +54,12 @@ components:
   build: source
   notes: Built for gfx1201 with runtime JIT support and system Triton.
 - id: vllm
-  version: 0.28.0
+  version: 0.30.0
   repository: https://github.com/vllm-project/vllm.git
-  commit: 2cf0a6915ce544dc493a0990f2ea38d81601128a
+  commit: ced6857afa0ea7b2e3f0846a62e1394e90f15607
   docker_args:
-    VLLM_VERSION: 0.28.0
-    VLLM_COMMIT: 2cf0a6915ce544dc493a0990f2ea38d81601128a
+    VLLM_VERSION: 0.30.0
+    VLLM_COMMIT: ced6857afa0ea7b2e3f0846a62e1394e90f15607
   build: source
   policy: stable-release-plus-reviewed-focused-followups
 - id: transformers

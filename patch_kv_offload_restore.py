@@ -32,33 +32,10 @@ LIB = Path(sysconfig.get_paths()["purelib"])
 
 
 def patch_cache_group_annotation() -> None:
+    """Extend upstream's v0.30 annotation; keep its spec and DeepSeek handling."""
     path = LIB / "vllm/v1/core/kv_cache_utils.py"
-    apply(
-        path,
-        '''def _annotate_eagle_groups_deepseek_v4(
-    vllm_config: VllmConfig,
-    kv_cache_spec: dict[str, KVCacheSpec],
-    kv_cache_groups: list[KVCacheGroupSpec],
-) -> None:
-    spec_config = vllm_config.speculative_config
-    if spec_config is None or not spec_config.use_eagle():
-        return
-    # Detection uses the merged MLA spec's model_version.
-    if not any(
-        getattr(spec, "model_version", None) == "deepseek_v4"
-        for spec in kv_cache_spec.values()
-    ):
-        return
-    # DeepseekV4's MTP attention layer is always the last layer, and we flag whichever
-    # group contains it.
-    # FIXME(yifan): avoid/generalize this hacky check.
-    last_layer = next(reversed(kv_cache_spec))
-    for group in kv_cache_groups:
-        if last_layer in group.layer_names:
-            group.is_eagle_group = True
-            break
-''',
-        '''def _dflash_draft_layer_names(
+    apply(path, "def _annotate_eagle_groups(\n",
+          '''def _dflash_draft_layer_names(
     vllm_config: VllmConfig,
     kv_cache_spec: dict[str, KVCacheSpec],
 ) -> set[str]:
@@ -104,78 +81,30 @@ def _mtp_draft_layer_names(
         if "mtp" in name.split(".") and "layers" in name.split(".")
     }
 
-
-def _annotate_eagle_groups(
-    vllm_config: VllmConfig,
-    kv_cache_spec: dict[str, KVCacheSpec],
-    kv_cache_groups: list[KVCacheGroupSpec],
-    use_deepseek_v4_fallback: bool = False,
-) -> None:
-    """Flag only groups that contain volatile draft-attention state."""
-    spec_config = vllm_config.speculative_config
-    if spec_config is None or not spec_config.use_eagle():
-        return
-
-    # Qwen DFlash/DFlash2 has ordinary AttentionSpec objects, so the appended
-    # layer range is the only scheduler-visible distinction from target KV.
-    draft_layer_names = _dflash_draft_layer_names(vllm_config, kv_cache_spec)
-    draft_layer_names.update(_mtp_draft_layer_names(vllm_config, kv_cache_spec))
-    for group in kv_cache_groups:
-        # Upstream #52047 marker for DSpark-style MLA draft groups.
-        spec_marked = getattr(
-            group.kv_cache_spec, "non_causal_multi_token_decode", False
-        )
-        if spec_marked or draft_layer_names.intersection(group.layer_names):
-            group.is_eagle_group = True
-
-    if not use_deepseek_v4_fallback:
-        return
-    # DeepSeek-V4's MTP block has no spec marker and is registered last.
-    if not any(
-        getattr(spec, "model_version", None) == "deepseek_v4"
-        for spec in kv_cache_spec.values()
-    ):
-        return
-    last_layer = next(reversed(kv_cache_spec))
-    for group in kv_cache_groups:
-        if last_layer in group.layer_names:
-            group.is_eagle_group = True
-            break
-''',
-        "def _dflash_draft_layer_names(",
-        "kv-offload restore: identify draft cache groups",
-    )
+''' + "def _annotate_eagle_groups(\n",
+          "def _dflash_draft_layer_names(", "kv-offload restore: Qwen draft identities")
     apply(
         path,
-        '''        kv_cache_groups = _get_kv_cache_groups_uniform_groups(grouped_specs)
-        _annotate_eagle_groups_deepseek_v4(vllm_config, kv_cache_spec, kv_cache_groups)
-        return kv_cache_groups
-''',
-        '''        kv_cache_groups = _get_kv_cache_groups_uniform_groups(grouped_specs)
-        _annotate_eagle_groups(
-            vllm_config,
-            kv_cache_spec,
-            kv_cache_groups,
-            use_deepseek_v4_fallback=True,
-        )
-        return kv_cache_groups
-''',
-        "use_deepseek_v4_fallback=True",
-        "kv-offload restore: retain DeepSeek annotation",
-    )
-    apply(
-        path,
-        '''            groups.append(KVCacheGroupSpec([name], aligned))
+        """    spec_config = vllm_config.speculative_config
+    if spec_config is None or not spec_config.use_eagle_block_drop():
+        return
 
-    return groups
-''',
-        '''            groups.append(KVCacheGroupSpec([name], aligned))
+    for group in kv_cache_groups:
+""",
+        """    spec_config = vllm_config.speculative_config
+    if spec_config is None or not spec_config.use_eagle_block_drop():
+        return
 
-    _annotate_eagle_groups(vllm_config, kv_cache_spec, groups)
-    return groups
-''',
-        "_annotate_eagle_groups(vllm_config, kv_cache_spec, groups)",
-        "kv-offload restore: annotate hybrid general path",
+    # Radiance: preserve Qwen DFlash/MTP identity within upstream annotation.
+    draft_names = _dflash_draft_layer_names(vllm_config, kv_cache_spec)
+    draft_names.update(_mtp_draft_layer_names(vllm_config, kv_cache_spec))
+    for group in kv_cache_groups:
+        if draft_names.intersection(group.layer_names):
+            group.is_eagle_group = True
+    for group in kv_cache_groups:
+""",
+        "draft_names.intersection(group.layer_names)",
+        "kv-offload restore: extend upstream group annotation",
     )
 
 

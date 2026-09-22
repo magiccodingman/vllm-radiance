@@ -1,0 +1,73 @@
+{
+  "status": "V030_PLATFORM_READY_WITH_DOCUMENTED_DEFERRED_GATE",
+  "date": "2026-09-22",
+  "mr": 42,
+  "branch": "codex/vllm-030-platform-upgrade",
+  "main_base": "285ac78e7f19bc1e1b5b09b25f865aea0c6d9754",
+  "runtime_source": "977c919ef2ab64ea96579b36ffef7d93d493db19",
+  "candidate_image_id": "sha256:4c37eb5a935d79a6e0092cf527cda7581d24bf761e8a8ac90820859fc2738d00",
+  "quark_tested_release_image_id": "sha256:8bcb12e362ea0f29d9052f0bb7210d1913310cd960d85ae2eafeb7f2c6fdef8f",
+  "quark_image_scope": "V2 runner, MXFP4/GDN/R4D source and native libraries byte-identical; final difference is legacy V1 loader anchor and retired no-op scripts",
+  "vllm_commit": "ced6857afa0ea7b2e3f0846a62e1394e90f15607",
+  "ggz14_donor": "31b9a94a7f74eeb3f59e66d16b1b27dfafcd0663",
+  "native_mxfp4_sha256": "1370e6f3d722eca18b014f13c1d2f4fee371818603f8ececc5c1ce00181c5ae6",
+  "r4d_binary_sha256": "daa7a3bf79d2a1e0a7909a6ed9ddac2f0f3ac74b878569f4eabc2ccae839aecc",
+  "source_gates": {
+    "pr_plan": "5/5 PASS",
+    "additional_installed_scripts": "8/8 PASS",
+    "nvfp4_unit_cases": 8,
+    "composite_topk_cases": 21,
+    "overlay_applications_including_repeat": 70,
+    "overlay_failures": 0,
+    "syntax_errors": 0,
+    "pip_check": "PASS",
+    "warning_scope": "No pytest total or warning summary; runtime/import warnings retained in logs"
+  },
+  "native": {
+    "nvfp4_devices": [0, 1],
+    "nvfp4_status": "NATIVE_FIXTURE_PASS_NOT_MODEL_QUALITY",
+    "merged_divisors": [1, 2, 4],
+    "reconstruction_relative_rms": 0.11135508911862595,
+    "conversion_gpu_peak_increment_bytes": [37809152, 37809152],
+    "warmed_conversion_host_highwater_increment_bytes": [2621440, 2703360],
+    "fixture_process_peak_rss_bytes": [1824616448, 1780584448],
+    "upstream_stride_topk_graph_devices": "both PASS",
+    "tp1_wide_native_shape": [1, 34816, 256]
+  },
+  "resident_profile": {
+    "tp": 2, "concurrency": 1, "max_model_len": 8192,
+    "max_num_batched_tokens": 2048, "gpu_memory_utilization": 0.85,
+    "kv_dtype": "fp8", "attention": "R4D",
+    "runner": "vllm.v1.worker.gpu.model_runner.GPUModelRunner",
+    "graph": "FULL_AND_PIECEWISE", "speculative": false
+  },
+  "fp8": {
+    "checkpoint_revision": "017b9c7af6b5689d5dd426a76e0bc077eb5ca20a",
+    "correctness": "PASS", "vision_repeats": "2/2 PASS",
+    "prefix_cached_tokens": 1568, "exact_id_recomputations": "3/3 PASS",
+    "steady_tps": [34.288149989468856, 37.845760238959336, 38.000147879365414],
+    "old_image_control_tps": [26.996133423940528, 35.32059318628409, 35.355588201034934]
+  },
+  "quark": {
+    "checkpoint_revision": "156be69f9cac862a41d8b32e773ea2d2754341e8",
+    "correctness": "PASS", "vision_repeats": "2/2 PASS",
+    "prefix_cached_tokens": 1568, "exact_id_recomputations": "3/3 PASS",
+    "native_w4a8_selected_and_observed": true,
+    "steady_tps": [46.2091, 52.2091, 52.2929],
+    "old_image_control_tps": [35.546399536897155, 48.22025366776978, 48.200318958313666]
+  },
+  "all_short_output_id_sha256": "20b490d92586d7ce3787238a95c8b320c5c8b07f4b9d6d2304580bbac23fb33f",
+  "performance_scope": "Three short32-token requests/lane/image; no statistical or publication speedup claim; first-run cold TTFT not improved",
+  "open_object_wire": "8/8 PASS",
+  "mtp": {
+    "status": "BOUNDED_MTP_SMOKE_PASS_NOT_PERFORMANCE_QUALIFICATION",
+    "actual_speculator": "vllm.v1.worker.gpu.spec_decode.mtp.speculator.MTPSpeculator",
+    "output_tokens": 16, "non_speculative_prefix_equal": true,
+    "drafts": 7, "draft_tokens": 14, "accepted_tokens": 9
+  },
+  "deferred": ["Real NVFP4 checkpoint model quality, continuous/recompute, JSON/tools"],
+  "not_run": ["BetterBench", "capacity campaign", "giant tiered model", "new device expert pool", "routed-MoE/QSA/giant-PLE model qualification", "new DFlash performance campaign"],
+  "production": "STOPPED by standing user instruction; 1.0.16 image and unless-stopped policy preserved",
+  "mr37": "Frozen reference, Draft/open/unmerged",
+  "merge_or_deploy": false
+}

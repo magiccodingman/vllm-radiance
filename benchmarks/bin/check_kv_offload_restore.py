@@ -60,8 +60,8 @@ def check_wiring() -> None:
     for sentinel in (
         "def _dflash_draft_layer_names(",
         "def _mtp_draft_layer_names(",
-        "use_deepseek_v4_fallback=True",
-        "_annotate_eagle_groups(vllm_config, kv_cache_spec, groups)",
+        "draft_names.intersection(group.layer_names)",
+        "spec_config.use_eagle_block_drop()",
         "Skipping CPU hit for request %s since some of its",
     ):
         assert sentinel in patch
@@ -86,10 +86,41 @@ def check_wiring() -> None:
     assert "reset_external" in gate.read_text()
 
 
+def check_installed_annotation() -> None:
+    """Check installed semantics when running in the candidate image."""
+    import importlib.util
+    if importlib.util.find_spec("vllm") is None:
+        return  # Pure source CI; candidate-image qualification calls this too.
+    from types import SimpleNamespace as NS
+    from vllm.v1.core.kv_cache_utils import _annotate_eagle_groups
+    from vllm.v1.kv_cache_interface import FullAttentionSpec
+    spec = FullAttentionSpec(block_size=16, num_kv_heads=1, head_size=64,
+                             dtype=__import__("torch").float16)
+    names = ["model.layers.0.attn", "model.layers.64.attn", "model.layers.65.attn"]
+    config = NS(parallel_config=None, model_config=NS(get_num_layers=lambda _: 64),
+                speculative_config=NS(use_eagle_block_drop=lambda: True,
+                    use_eagle=lambda: True, use_dflash=lambda: True,
+                    draft_model_config=NS(get_num_layers=lambda _: 2)))
+    groups = [NS(layer_names=[n], kv_cache_spec=spec, is_eagle_group=False) for n in names]
+    _annotate_eagle_groups(config, dict.fromkeys(names, spec), groups)
+    assert [g.is_eagle_group for g in groups] == [False, True, True]
+    config.speculative_config.use_eagle_block_drop = lambda: False
+    for g in groups:
+        g.is_eagle_group = False
+    _annotate_eagle_groups(config, dict.fromkeys(names, spec), groups)
+    assert not any(g.is_eagle_group for g in groups)
+    config.speculative_config.use_eagle_block_drop = lambda: True
+    config.speculative_config.use_dflash = lambda: False
+    _annotate_eagle_groups(config, dict.fromkeys(names, spec), groups,
+                           use_deepseek_v4_fallback=True)
+    assert [g.is_eagle_group for g in groups] == [False, False, True]
+
+
 def main() -> None:
     check_layer_range()
     check_mtp_namespace()
     check_wiring()
+    check_installed_annotation()
     print("KV offload restore regression checks: PASS")
 
 

@@ -40,16 +40,14 @@ HUNK_A_ANCHOR = """                num_rejected = num_draft_tokens - num_accepte
 HUNK_A_ADD = """                self._radiance_dynw_observe(request, num_accepted, num_draft_tokens)
 """
 
-HUNK_B_ANCHOR = """            if self.structured_output_manager.should_advance(request):
-                metadata = request.structured_output_request
-                spec_token_ids = metadata.grammar.validate_tokens(spec_token_ids)  # type: ignore[union-attr]
-            request.spec_token_ids = spec_token_ids
+HUNK_B_ANCHOR = """            request.spec_token_ids = self.structured_output_manager.validate_tokens(
+                request, spec_token_ids
+            )
 
     def update_draft_token_ids_in_output("""
-HUNK_B_ADD = """            if self.structured_output_manager.should_advance(request):
-                metadata = request.structured_output_request
-                spec_token_ids = metadata.grammar.validate_tokens(spec_token_ids)  # type: ignore[union-attr]
-            request.spec_token_ids = spec_token_ids
+HUNK_B_ADD = """            request.spec_token_ids = self.structured_output_manager.validate_tokens(
+                request, spec_token_ids
+            )
             self._radiance_cap_spec_width(request)
 
     def update_draft_token_ids_in_output("""

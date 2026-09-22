@@ -1,0 +1,27 @@
+Radiance control-plane validation: PASS (45 overlays, 23 tests, 5 tracked upstreams)
+KV offload host-registration regression checks: PASS
+KV offload rank-sharded CPU layout checks: PASS
+INFO 09-22 17:49:55 [importing.py:74] Triton is installed but 0 active driver(s) found (expected 1). Disabling Triton to prevent runtime errors.
+INFO 09-22 17:49:55 [importing.py:98] Triton not installed or not compatible; certain GPU-related functions will not be available.
+KV offload restore regression checks: PASS
+Radiance test plan:
+- control-plane-validate [static / cpu / auto]
+    python tools/validate_control_plane.py
+- python-compile [static / cpu / auto]
+    python -m compileall -q _patchlib.py install_radiance_hooks.py patch_*.py radiance_*.py benchmarks/bin tools
+- kv-offload-registration-cpu [contract / cpu / auto]
+    python benchmarks/bin/check_kv_offload_registration.py
+- kv-offload-rank-sharded-cpu [contract / cpu / auto]
+    python benchmarks/bin/check_kv_offload_rank_sharded.py
+- kv-offload-restore-cpu [contract / cpu / auto]
+    python benchmarks/bin/check_kv_offload_restore.py
+RUN  control-plane-validate: python tools/validate_control_plane.py
+PASS control-plane-validate
+RUN  python-compile: python -m compileall -q _patchlib.py install_radiance_hooks.py patch_*.py radiance_*.py benchmarks/bin tools
+PASS python-compile
+RUN  kv-offload-registration-cpu: python benchmarks/bin/check_kv_offload_registration.py
+PASS kv-offload-registration-cpu
+RUN  kv-offload-rank-sharded-cpu: python benchmarks/bin/check_kv_offload_rank_sharded.py
+PASS kv-offload-rank-sharded-cpu
+RUN  kv-offload-restore-cpu: python benchmarks/bin/check_kv_offload_restore.py
+PASS kv-offload-restore-cpu

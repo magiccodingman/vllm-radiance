@@ -141,7 +141,7 @@ services:
       - seccomp=unconfined
 
     ports:
-      - "11435:8000"
+      - "127.0.0.1:11435:8000"
 
     volumes:
       - /nvme/lexar-2/ai/models:/models:ro
