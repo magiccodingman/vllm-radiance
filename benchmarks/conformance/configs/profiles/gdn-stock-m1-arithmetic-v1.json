@@ -1,0 +1,152 @@
+{
+  "schema": "urn:qwen:gdn-arithmetic-contract:v1",
+  "id": "stock-packed-gdn-m1-gfx1201-v1",
+  "scope": "GDN core from raw convolution Q/K/V and gate projections to output plus recurrent state; other operators have separate contracts.",
+  "status": "DECLARED; native cross-mode equivalence UNPROVED",
+  "selection": "Pinned stock vLLM packed single-token GDN, applied causally to each materialized token. R4D and NumPy remain separately identified implementations.",
+  "domain": {
+    "query_heads": 16,
+    "value_heads": 48,
+    "key_width": 128,
+    "value_width": 128,
+    "batch_sequences": 1,
+    "qkv_width": 10240,
+    "state_order": [
+      "head",
+      "value",
+      "key"
+    ],
+    "state_elements": 786432,
+    "inputs": "Finite BF16 Q/K/V, a, b, dt_bias; finite FP32 A_log and initial state. Invalid geometry, aliasing, nonfinite output/state or incomplete evidence fails closed."
+  },
+  "precision": {
+    "qkv": "BF16 widened exactly to FP32",
+    "a_b_dt_bias": "BF16 widened exactly to FP32",
+    "A_log": "FP32",
+    "qk_normalization": "FP32 throughout; no intermediate BF16 cast",
+    "beta": "sigmoid in the pinned FP32 kernel, then BF16 round-to-nearest ties-even, then exact FP32 widening",
+    "decay_gate": "FP32",
+    "recurrent_state": "FP32 on every read, update and committed write",
+    "output": "BF16 round-to-nearest ties-even"
+  },
+  "operations": [
+    {
+      "name": "normalize",
+      "formula": "n(x) = x / sqrt(sum(x_i*x_i) + float32(1e-6))",
+      "arithmetic": "Pinned compiled reduction, square root and division. No replacement with a differently rounded reciprocal-square-root multiply."
+    },
+    {
+      "name": "scale_query",
+      "formula": "q = float32(n(Q) * float32(128**-0.5)); k = n(K)",
+      "arithmetic": "Scale q before the output dot product; not after it."
+    },
+    {
+      "name": "gates",
+      "formula": "x = float32(a + dt_bias); softplus = x if x > 20 else log(1 + exp(x)); g = -exp(A_log)*softplus; beta = widen(BF16_RNE(sigmoid(b)))",
+      "arithmetic": "The pinned kernel intrinsics and their compiled implementations define rounding. No cumulative-gate reconstruction or future-dependent fallback."
+    },
+    {
+      "name": "decay",
+      "formula": "D = float32(exp(g)*S)"
+    },
+    {
+      "name": "prediction",
+      "formula": "p = dot_stock(D,k)"
+    },
+    {
+      "name": "residual",
+      "formula": "r = float32(float32(v-p)*beta)"
+    },
+    {
+      "name": "state",
+      "formula": "S_next = update_stock(D,r,k)",
+      "arithmetic": "Retain the compiled multiply-add contraction; separate multiply/add is a different numerical path."
+    },
+    {
+      "name": "output",
+      "formula": "o = BF16_RNE(dot_stock(S_next,q))"
+    }
+  ],
+  "arithmetic_authority": {
+    "kind": "pinned-native-executable",
+    "note": "Real-number formulae describe dataflow. Exact finite-precision results are defined by the retained kernel artifact and packing below, under the declared compiler/hardware assumptions. Source inspection or matching hashes is not proof of runtime dispatch or functional correctness.",
+    "kernel": "fused_recurrent_gated_delta_rule_packed_decode_kernel",
+    "source": {
+      "fused_recurrent.py": "00a3b971b0dbb6ed26e246970a0e1a21a9a174030974685bdd3f0c8ab5fb4bfe",
+      "fla_op.py": "456da84fd12411cf53c96a90dd4f78f49afb454c3d51d2c524ea8e7106fe8ae5"
+    },
+    "cache_entry": "XW6RXQHLHKDBX2FF2LE7HICYZGQCSR5L4HJZ7USZF4L2FZQULJTQ",
+    "files": {
+      "fused_recurrent_gated_delta_rule_packed_decode_kernel.source": "f47615b4e3c0a4136cb3d5f7e526f222c8609e73dff2d89111c34ba1745ac1a7",
+      "fused_recurrent_gated_delta_rule_packed_decode_kernel.ttir": "0333349d4ff544078a5d35354a5ca42d7fe37360af7ce188d9778dba7887aabf",
+      "fused_recurrent_gated_delta_rule_packed_decode_kernel.ttgir": "889064969acdafd8931d3d7ae02e5b0ce98fdb80ac1f9df9fb919b5259c2645c",
+      "fused_recurrent_gated_delta_rule_packed_decode_kernel.llir": "eb6f3975ed77e9f0b53975d1d1c0739abdba06813e64bea8aa6f66baeadd19f2",
+      "fused_recurrent_gated_delta_rule_packed_decode_kernel.amdgcn": "f07d71ae362c0e87633253a85c2571e0ac626ff8b520034e16b554687ec4e1a1",
+      "fused_recurrent_gated_delta_rule_packed_decode_kernel.hsaco": "9feeb930b8635122c552ad727fbe897d0854332f9a7880468662b9ed83350135",
+      "fused_recurrent_gated_delta_rule_packed_decode_kernel.json": "de1084d3b9e844ded01cd70f866eda11618a6e95e1471b0ccc0f295921c96fad"
+    },
+    "target": {
+      "backend": "hip",
+      "arch": "gfx1201",
+      "warp_size": 32
+    },
+    "compiler": {
+      "triton_version": "3.7.1",
+      "num_warps": 1,
+      "num_stages": 3,
+      "enable_fp_fusion": true,
+      "allow_flush_denorm": false,
+      "sanitize_overflow": true
+    },
+    "environment": {
+      "FLA_USE_FAST_OPS": "0"
+    },
+    "packing": {
+      "query_heads": 16,
+      "value_heads": 48,
+      "K": 128,
+      "V": 128,
+      "BK": 128,
+      "BV": 32,
+      "state_token_stride": 802816,
+      "a_token_stride": 96,
+      "b_token_stride": 96,
+      "index_stride": 1,
+      "state_slot": 1,
+      "grid": [
+        4,
+        48
+      ],
+      "scale_fp32_hex": "f304b53d",
+      "note": "Single row makes the packed-QKV row stride irrelevant to this invocation. Reject or separately qualify other physical packing; physical block numbers are not semantic state."
+    }
+  },
+  "execution_modes": {
+    "m1": "One invocation F(S,u) with exactly one materialized input token.",
+    "prefill": "Ordered fold of that same F over tokens. Empty segment is the identity. Every intermediate prefix must match.",
+    "d7": "Verification rows are u[0]=previously emitted pending token, u[1:8]=seven proposals. For accepted proposal count k in 0..7, commit the state after rows 0..k (k+1 processed rows); the newly emitted correction/bonus token stays pending.",
+    "rollback": "Rejected rows cannot affect committed GDN state, convolution history, KV, positions or events. The GDN-only contract does not certify those other components.",
+    "snapshot": "Persist the contract identity with state; do not treat states created under a different arithmetic contract as interchangeable without checking or rebuilding."
+  },
+  "obligations": {
+    "partition": "fold(F,S,A+B) == fold(F,fold(F,S,A).state,B) for outputs and state, including empty segments",
+    "causal_prefix": "Changing inputs after prefix p leaves every output/state through p byte-identical.",
+    "accepted_prefix": "D7_commit(S,u,k) == fold(F,S,u[:k+1]).state with a separate pending-token field.",
+    "exactness": "Compare BF16 output bits and every FP32 logical-state bit; hashes and error tolerances alone do not establish equality."
+  },
+  "separate_targets": {
+    "numpy-serial-fp32-v1": "Independent canonical model. It rounds normalized Q/K to BF16, uses ordered non-fused reductions and scales the final output dot. It is not relabelled as this stock kernel.",
+    "r4d-unfused-m1": "Retains FP32 beta, uses its own reduction/normalization intrinsics, disables FMA and rounds output ties away. Existing prefill candidate targets this path, not this contract.",
+    "huggingface-fallback": "The pinned Transformers fallback also returns BF16 beta, but its normalization and framework reductions differ. Full bit equality with it is UNPROVED."
+  },
+  "required_qualification": [
+    "Reproduce the preserved stock first transition exactly with the selected invocation packing.",
+    "Compare repaired prefill/M1/D7 against this oracle from equal independent initial state.",
+    "Exercise every accepted width, all-prefix equality, future-suffix mutations, padding, nonzero state, extreme gates and BF16 halfway boundaries.",
+    "Then qualify graph execution, full-model logits/state, snapshots and long contexts; benchmark separately."
+  ],
+  "production_changed": false,
+  "existing_matrix_contract_changed": false,
+  "native_repair_qualified": false,
+  "sha256": "d8149b00210c94acfca4f1f66030de302dcaf8155894de6a23d3f4b76da61e00"
+}
