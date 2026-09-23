@@ -1,0 +1,84 @@
+schema_version: 1
+target:
+  primary_gpu: AMD Radeon AI PRO R9700
+  gfx_arch: gfx1201
+  primary_topology: TP2
+  qualification_note: Other geometries may work, but dual R9700 TP2 is the primary qualified environment.
+atomic_groups:
+- id: rocm-compiler-stack
+  members:
+  - rocm
+  - pytorch
+  - triton
+  - torchvision
+  - aiter
+  - vllm
+  policy: Treat as a coordinated compatibility stack; do not independently bump members without explicit
+    qualification.
+components:
+- id: rocm
+  version: 7.14.0
+  source: rocm/dev-ubuntu-24.04
+  docker_arg: ROCM_BASE
+  docker_value_contains: 7.14.0-full@sha256:439edaa8f0c4be4a3728e528f87b8a2ea1f051f34cf10b27caa4bd94f562eda7
+  build: base-image
+- id: pytorch
+  version: 2.12.0
+  repository: https://github.com/ROCm/pytorch.git
+  commit: 6bbd26020da1c6dc198625dfcdd968b1e4e6b1c5
+  docker_args:
+    TORCH_VERSION: 2.12.0
+    TORCH_COMMIT: 6bbd26020da1c6dc198625dfcdd968b1e4e6b1c5
+  build: source
+- id: triton
+  version: 3.7.1
+  repository: https://github.com/ROCm/triton.git
+  commit: f0b55c07da61c71775bef6d1a15ebf846430ac75
+  docker_args:
+    TRITON_VERSION: 3.7.1
+    TRITON_COMMIT: f0b55c07da61c71775bef6d1a15ebf846430ac75
+  build: source
+- id: torchvision
+  version: 0.27.1
+  repository: https://github.com/pytorch/vision.git
+  docker_args:
+    TORCHVISION_VERSION: 0.27.1
+  build: source
+- id: aiter
+  version: 0.1.20
+  repository: https://github.com/ROCm/aiter.git
+  commit: fc2e5d57fb5b8ad8e7e23f7103071dde798ea618
+  docker_args:
+    AITER_VERSION: 0.1.20
+    AITER_COMMIT: fc2e5d57fb5b8ad8e7e23f7103071dde798ea618
+  build: source
+  notes: Built for gfx1201 with runtime JIT support and system Triton.
+- id: vllm
+  version: 0.30.0
+  repository: https://github.com/vllm-project/vllm.git
+  commit: ced6857afa0ea7b2e3f0846a62e1394e90f15607
+  docker_args:
+    VLLM_VERSION: 0.30.0
+    VLLM_COMMIT: ced6857afa0ea7b2e3f0846a62e1394e90f15607
+  build: source
+  policy: stable-release-plus-reviewed-focused-followups
+- id: transformers
+  version: 5.15.0
+  repository: https://github.com/huggingface/transformers
+  docker_args:
+    TRANSFORMERS_VERSION: 5.15.0
+  build: pypi
+- id: xgrammar
+  version: 0.2.3
+  repository: https://github.com/mlc-ai/xgrammar
+  docker_args:
+    XGRAMMAR_VERSION: 0.2.3
+  build: pypi
+- id: libr4d
+  version: 0.5.0
+  repository: https://codeberg.org/StillDeadcode/libr4d.git
+  commit: e8de4bc1f3dbd608dcb8d3ffceb6b48acdf83bb7
+  docker_args:
+    R4D_VERSION: v0.5.0
+    R4D_COMMIT: e8de4bc1f3dbd608dcb8d3ffceb6b48acdf83bb7
+  build: source-plus-radiance-patch

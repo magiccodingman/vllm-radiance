@@ -1,0 +1,9 @@
+# Optional overlay for the experimental native CPU KV rank-major layout.
+# It is NOT loaded by ordinary `docker compose up` and keeps the feature off
+# unless RADIANCE_KV_OFFLOAD_RANK_SHARDED=1 is explicitly supplied.
+services:
+  vllm:
+    environment:
+      RADIANCE_KV_OFFLOAD_RANK_SHARDED: "${RADIANCE_KV_OFFLOAD_RANK_SHARDED:-0}"
+      # Needed only by the documented restore qualification gate; keep 0 for normal serving.
+      VLLM_SERVER_DEV_MODE: "${VLLM_SERVER_DEV_MODE:-0}"

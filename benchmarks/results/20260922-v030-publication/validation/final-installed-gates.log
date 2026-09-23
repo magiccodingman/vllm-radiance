@@ -1,0 +1,22 @@
+No broken requirements found.
+..........
+----------------------------------------------------------------------
+Ran 10 tests in 0.017s
+
+OK
+v0.30 installed unpadding behavior and DFlash source ownership: PASS
+INFO 09-22 18:54:50 [importing.py:74] Triton is installed but 0 active driver(s) found (expected 1). Disabling Triton to prevent runtime errors.
+INFO 09-22 18:54:50 [importing.py:98] Triton not installed or not compatible; certain GPU-related functions will not be available.
+xgrammar speculative termination regression check: PASS
+INFO 09-22 18:54:59 [importing.py:74] Triton is installed but 0 active driver(s) found (expected 1). Disabling Triton to prevent runtime errors.
+INFO 09-22 18:54:59 [importing.py:98] Triton not installed or not compatible; certain GPU-related functions will not be available.
+qwen open nested-object structural-tag regression check: PASS
+FP8-KV calibration CPU checks: PASS
+TunableOp manifest CPU checks: PASS
+INFO 09-22 18:55:13 [importing.py:74] Triton is installed but 0 active driver(s) found (expected 1). Disabling Triton to prevent runtime errors.
+INFO 09-22 18:55:13 [importing.py:98] Triton not installed or not compatible; certain GPU-related functions will not be available.
+RX4 composite top-k/top-p matches the full-sort reference on 21 cases
+INFO 09-22 18:55:24 [importing.py:74] Triton is installed but 0 active driver(s) found (expected 1). Disabling Triton to prevent runtime errors.
+INFO 09-22 18:55:24 [importing.py:98] Triton not installed or not compatible; certain GPU-related functions will not be available.
+INFO 09-22 18:55:25 [parser_manager.py:36] "auto" tool choice has been enabled.
+shared parser-engine structural-tag regression check: PASS

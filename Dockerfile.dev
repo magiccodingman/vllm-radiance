@@ -6,8 +6,8 @@
 # is for short compile/fix/benchmark cycles and is itself digest-pinned.
 ARG BASE_IMAGE=magiccodingman/vllm-radiance@sha256:c8e0bd43c040846eb765f4d2cd03802634150154fd6118e7012d51bdf62fe501
 ARG ROCM_BUILD_BASE=rocm/dev-ubuntu-24.04:7.14.0-full@sha256:439edaa8f0c4be4a3728e528f87b8a2ea1f051f34cf10b27caa4bd94f562eda7
-ARG VLLM_COMMIT=2cf0a6915ce544dc493a0990f2ea38d81601128a
-ARG VLLM_VERSION=0.28.0
+ARG VLLM_COMMIT=ced6857afa0ea7b2e3f0846a62e1394e90f15607
+ARG VLLM_VERSION=0.30.0
 ARG TRANSFORMERS_VERSION=5.15.0
 ARG XGRAMMAR_VERSION=0.2.3
 ARG R4D_VERSION=v0.5.0
@@ -45,7 +45,7 @@ ARG TRANSFORMERS_VERSION
 ARG XGRAMMAR_VERSION
 ARG R4D_VERSION
 ARG R4D_COMMIT
-ARG RADIANCE_VERSION=0.9.3-dev.vllm0.28.0-r4d0.5.0-mxfp4.rx4.dflash2.xgrammar.openobj.kvoffload.restore2
+ARG RADIANCE_VERSION=1.1.0-rc1.vllm0.30.0
 ENV RADIANCE_VERSION=${RADIANCE_VERSION} \
     RADIANCE_GDN_MERGE_INPROJ=1 RADIANCE_GDN_FUSED_UPDATE=1 RADIANCE_GDN_FUSED_MAX_ITEMS=32 RADIANCE_GDN_SHARED_BUILD=1 \
     RADIANCE_TOPK_COMPOSITE=1 RADIANCE_TOPK_COMPOSITE_KCAP=64 \
@@ -65,7 +65,7 @@ ENV SP=/opt/vllm/lib/python3.12/site-packages
 COPY radiance_amdsmi.py radiance_amdsmi.pth \
      radiance_kernels.py radiance_vit_attn.py radiance_allreduce.py \
      radiance_draft.py radiance_draft_gpu.py radiance_drafthead.py radiance_gemm.py radiance_w4.py \
-     radiance_r4d_attn.py radiance_gdn.py radiance_gdnmerge.py radiance_mxfp4.py \
+     radiance_r4d_attn.py radiance_gdn.py radiance_gdnmerge.py radiance_mxfp4.py radiance_nvfp4.py \
      radiance_arnq.py radiance_topk.py radiance_verifyhead.py radiance_kv_offload.py ${SP}/
 COPY fp8-configs/ ${SP}/vllm/model_executor/layers/quantization/utils/configs/
 COPY moe-configs/ ${SP}/vllm/model_executor/layers/fused_moe/configs/
@@ -74,16 +74,14 @@ COPY patch_*.py install_radiance_hooks.py _patchlib.py /opt/patches/
 RUN set -eu; cd /opt/patches; \
     for p in patch_gfx1201 patch_radiance_dispatch patch_skinny_gemm patch_unified_attention_lds \
              patch_gdn_wmma patch_gdn_aiter_prefill patch_preshuffle install_radiance_hooks \
-             patch_unpad patch_mtp_mm_mask patch_mtp_loopbreak patch_qwen3_toolparse patch_from_json_filter \
-             patch_dynamo_metrics patch_conv1d_blockn patch_r4d patch_dflash_base \
-             patch_dflash_fused_kv_fp8 patch_dflash_logits_cache_stride patch_dflash_w4 \
+             patch_mtp_mm_mask patch_mtp_loopbreak patch_qwen3_toolparse patch_from_json_filter \
+             patch_dynamo_metrics patch_conv1d_blockn patch_r4d \
+             patch_dflash_fused_kv_fp8 patch_dflash_w4 \
              patch_dflash_selector_topk patch_gdn_metadata patch_gdn_shared_build \
-             patch_topk_triton_rows patch_topk_composite patch_rocm_cudagraph_current_stream \
-             patch_quark_mxfp4 patch_quark_bf16_mtp patch_ar_maxbytes patch_ar_geometry \
+             patch_topk_composite \
+             patch_quark_mxfp4 patch_nvfp4_mxfp4 patch_quark_bf16_mtp patch_ar_maxbytes patch_ar_geometry \
              patch_kv_group_size patch_gdn_merge_inproj patch_dynwidth patch_verify_head \
              patch_kv_offload_registration patch_kv_offload_lifecycle patch_kv_offload_restore \
-             patch_xgrammar_spec_termination \
-             patch_xgrammar_spec_reasoning patch_parser_shared_engine \
              patch_qwen_open_object_schema; do \
       echo "== applying $p =="; python "$p.py"; \
     done; \

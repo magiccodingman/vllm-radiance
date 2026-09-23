@@ -1,12 +1,19 @@
 # vllm-radiance
 
 vLLM inference server for the AMD Radeon AI PRO R9700 (gfx1201 / RDNA4), combining pinned stable
-vLLM v0.28.0 with libr4d's hand-written RDNA4 kernels and Radiance's FP8/speculative paths.
+vLLM v0.30.0 with libr4d's hand-written RDNA4 kernels and Radiance's FP8/speculative paths.
 
 > **Status: experimental.** This fork publishes as `magiccodingman/vllm-radiance`.
 > `stilldeadcode/vllm-radiance:0.9.3` is DeadCode's separate upstream release
 > and the external comparison baseline. Current pins and qualification evidence
 > are in `docs/UPGRADE_PROGRESS.md` and `docs/RADIANCE_093_R4D050_MXFP4.md`.
+
+The source version is 1.1.0-rc1.vllm0.30.0; merging source does not publish a Docker
+Hub image or replace the separately controlled deployment. See `docs/V030_UPGRADE.md` for its actual
+bounded FP8/Quark27B TP2/C1, Runner V2, tools/prefix/vision and native-conversion
+evidence and the new publication report `docs/V030_PUBLICATION_20260922.md`.
+NVFP4→MXFP4 conversion is explicit/default-off; A16 is rejected as unqualified,
+and real converted-model quality still needs a suitable NVFP4 checkpoint gate.
 
 The current fork is validated primarily with
 `Qwen3.8-27B-heretic-ara-fp8-magiccodingman` and
@@ -16,11 +23,17 @@ sequences; it deliberately leaves VRAM headroom instead of finding the largest
 batch that fits. Earlier 0.5.8 performance numbers below remain useful history,
 but are not claims about the new compiler stack.
 
-## Current fork stack (`0.9.3-dev.vllm0.28.0-r4d0.5.0-mxfp4.rx3.dflash2.xgrammar`)
+## Source stack (`1.1.0-rc1.vllm0.30.0`)
+
+This branch is not a production promotion. See `docs/V030_UPGRADE.md` for actual
+qualification. Performance tables below remain historical unless explicitly rerun.
+`RADIANCE_TOPK_TRITON_MIN_ROWS` is retired: upstream owns dispatch; nondefault
+overrides now fail explicitly. NVFP4 compatibility is opt-in requantization,
+not native NVFP4; see `docs/V030_GGZ14_MXFP4_NVFP4.md`.
 
 | Component | Exact version/pin |
 |---|---|
-| vLLM | `0.28.0` / `2cf0a6915ce544dc493a0990f2ea38d81601128a` plus focused post-release fixes |
+| vLLM | `0.30.0` / `ced6857afa0ea7b2e3f0846a62e1394e90f15607` |
 | PyTorch | AMD ROCm 2.12 commit `6bbd26020da1c6dc198625dfcdd968b1e4e6b1c5` |
 | Triton | AMD 3.7.1 commit `f0b55c07da61c71775bef6d1a15ebf846430ac75` |
 | torchvision | 0.27.1 |
@@ -124,7 +137,26 @@ native Qwen3.8 DFlash2; this image retains the reviewed fused-context FP8,
 W4-draft, INT2-head, and libr4d paths plus focused post-release correctness
 fixes.
 
-## Tested so far
+## Current v0.30 publication
+
+BetterBench v0.2.2/v1, ten measurements/category, cold greedy prompts, TP2/FP8 KV,
+8K/C8 at 85% allocation, safe WPERM/decode-NT, prefix off and PIECEWISE:
+
+| Mode | Weighted TPS | ITL 1%-low | TTFT ms | c1 | c2 | c4 | c8 |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Non-spec — recommended | 53.9 | 51.7 | 64 | 53.3 | 101.8 | 181.4 | 304.1 |
+| Fast MTP K4 — tool gate FAIL | 135.6 | 109.7 | 67 | 128.7 | 227.3 | 360.2 | 463.9 |
+| Fast DFlash2 K5 — experimental | 172.3 | 139.0 | 65 | 154.2 | 281.3 | 414.6 | 610.4 |
+| Fast DFlash2 K7 — experimental | 186.7 | 143.5 | 64 | 173.5 | 293.7 | 446.6 | 510.2 |
+
+All performance requests completed. Non-spec/K5/K7 passed 30/30 sampled tools;
+MTP passed 29/30 with one unfinished JSON/whitespace loop. All speculative lanes
+matched only 1/8 strict non-spec outputs. Do not treat their throughput as
+production-equivalence qualification or MTP as tool-qualified. Full categories,
+prefill, acceptance and immutable artifacts are in `docs/V030_PUBLICATION_20260922.md`.
+Source results do not imply Docker Hub image promotion.
+
+## Historical tested configurations (prior platforms)
 
 Four target setups have been run and measured:
 
@@ -138,7 +170,7 @@ Untested (may or may not work): any other model/quantization recipe, more than
 two GPUs, or non-R9700 hardware. Treat the defaults below as a starting point
 for these measured setups, not a general recommendation.
 
-**Qwen3.8 Quark MXFP4/W4A8.** The current RX3 K7 DFlash profile measured 171.0
+**Qwen3.8 Quark MXFP4/W4A8.** The historical RX3 K7 DFlash profile measured 171.0
 weighted BetterBench TPS and 152.5/269.5/432.6/570.4 aggregate TPS at
 c1/c2/c4/c8. Against the merged v0.28 baseline that is +12.1% weighted and
 +13.0%/+21.2%/+24.0%/+20.3% by concurrency. The eight category medians are
@@ -146,11 +178,11 @@ c1/c2/c4/c8. Against the merged v0.28 baseline that is +12.1% weighted and
 125.8 reasoning, and 196.2 summarization TPS. Three standard runs passed 90/90
 required multi-tool requests with zero XGrammar FSM errors and repeated the
 same fixed greedy outputs across restarts. Strict DFlash/non-spec equivalence
-still fails, so DFlash remains opt-in. Full current evidence is in
+still fails, so DFlash remains opt-in. Full historical evidence is in
 `docs/MXFP4_RX3_CONTINUATION.md`; the earlier non-spec/MTP/K5/K7 scoreboard is
 retained in `docs/RADIANCE_093_R4D050_MXFP4.md`.
 
-The recommended long-context MXFP4 profile is 128K/C4 at 90% GPU allocation,
+The historical long-context MXFP4 profile was 128K/C4 at 90% GPU allocation,
 FP8 KV, DFlash K7, `PIECEWISE` graphs, prefix caching, and GDN `align` state. It
 reported 576,001 KV tokens / 4.39x full-request capacity and completed four
 disjoint full-context requests with zero OOM or preemption and 5.17 GiB minimum

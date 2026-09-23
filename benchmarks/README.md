@@ -1,5 +1,32 @@
 # Radiance benchmark lab
 
+## Current v0.30 publication
+
+The [2026-09-22 report](../docs/V030_PUBLICATION_20260922.md) supersedes the
+bounded platform-sanity measurements for performance, without overwriting them.
+Raw results, manifests, category tables, telemetry and qualification failures are
+in [results/20260922-v030-publication](results/20260922-v030-publication/).
+Non-spec is recommended. DFlash2 remains experimental (strict equivalence 1/8);
+MTP additionally failed the required-tool gate (29/30), so its throughput is
+not successful tool-serving qualification.
+
+Reproduce one lane with the existing standard workload, without tuning:
+
+```bash
+bash benchmarks/bin/run_v030_publication.sh non-spec RUN_ROOT IMAGE
+bash benchmarks/bin/run_v030_publication.sh mtp-k4 RUN_ROOT IMAGE
+bash benchmarks/bin/run_v030_publication.sh dflash-k5 RUN_ROOT IMAGE
+bash benchmarks/bin/run_v030_publication.sh dflash-k7 RUN_ROOT IMAGE
+```
+
+The wrapper uses exact local Quark/tcclaviger paths, fixed K4/K5/K7, safe WPERM/NT,
+Runner V2, TP2/8K/FP8 KV, prefix off and the unchanged standard profile. Each lane
+has ten measurements/category, c1/c2/c4/c8 (24 requests each) and nominal 2K/4K/7K
+prefill (four measurements each). Actual prefill token counts are retained. It
+refuses existing output directories; failed gates remain failed. Inspection RPCs
+are opt-in and bound to localhost. Performance and qualification statuses are
+separate; never promote a lane from throughput alone.
+
 This directory holds the reusable online-serving benchmark harness and immutable
 run history for Radiance builds.  The suite measures stable, bounded concurrency
 rather than searching for maximum throughput.

@@ -1,6 +1,35 @@
 # RDNA4 upgrade progress
 
-> Latest continuation: the qualified stack now uses stable vLLM v0.28.0 with
+## 2026-09-22 — v0.30 publication and merge-readiness cleanup
+
+Current source platform is vLLM 0.30.0; source merges do not publish or deploy an
+image. NVFP4A16 opt-in conversion is fail-closed, with ten conversion regressions.
+The standard 10-pass/category BetterBench campaign now covers non-spec, Fast MTP
+K4, and matched Fast DFlash2 K5/K7 at c1/c2/c4/c8 plus standard prefill. Weighted
+TPS: 53.9 / 135.6 / 172.3 / 186.7. All performance requests succeeded; MTP's
+tool gate failed 1/30, while the other lanes passed 30/30. All speculative lanes
+failed strict non-spec equivalence (1/8). These limits prevent an all-modes-qualified
+sign-off; no assertion or generation policy was weakened. See the
+[publication report](V030_PUBLICATION_20260922.md), current README tables and
+`benchmarks/results/20260922-v030-publication/`. The initial platform-sanity JSON
+and prior records are unchanged. Production stays stopped; MR !42 stays Draft.
+
+## 2026-09-22 — vLLM0.30 platform candidate (MR !42)
+
+New main-derived branch `codex/vllm-030-platform-upgrade`; MR !37 is frozen as
+the v0.28 research reference, still Draft/open/unmerged. The platform candidate
+pins `ced6857afa0ea7b2e3f0846a62e1394e90f15607`, retains the coherent AMD stack,
+selectively imports credited GGZ14 conversion/TP1-shape deltas, and removes
+upstream-owned backports with regressions retained. Actual resident Runner V2,
+native FP8/W4A8, prefix/exact-output, JSON/tools and ordinary vision have bounded
+hardware evidence. See [V030_UPGRADE.md](V030_UPGRADE.md) for final scope,
+identities, measurements and the deferred real-NVFP4-model gate. This is not
+release/performance/capacity publication qualification. No image deployment or
+merge is part of this task; production remains stopped at the owner's request.
+
+The earlier continuation and logs below remain historical, unchanged evidence.
+
+> Historical v0.28 continuation: that qualified stack used stable vLLM v0.28.0 with
 > native DFlash2 and focused post-release parser, DFlash cache-stride,
 > speculative-XGrammar, and ROCm graph-capture fixes. See
 > [V028_UPGRADE.md](V028_UPGRADE.md). The preceding stable-v0.27.1 investigation

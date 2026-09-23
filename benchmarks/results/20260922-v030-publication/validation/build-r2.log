@@ -1,0 +1,165 @@
+#0 building with "default" instance using docker driver
+
+#1 [internal] load build definition from Dockerfile
+#1 transferring dockerfile: 26.70kB done
+#1 DONE 0.0s
+
+#2 resolve image config for docker-image://docker.io/docker/dockerfile:1.7
+#2 DONE 0.3s
+
+#3 docker-image://docker.io/docker/dockerfile:1.7@sha256:a57df69d0ea827fb7266491f2813635de6f17269be881f696fbfdf2d83dda33e
+#3 resolve docker.io/docker/dockerfile:1.7@sha256:a57df69d0ea827fb7266491f2813635de6f17269be881f696fbfdf2d83dda33e 0.0s done
+#3 CACHED
+
+#4 [internal] load metadata for docker.io/rocm/dev-ubuntu-24.04:7.14.0-full@sha256:439edaa8f0c4be4a3728e528f87b8a2ea1f051f34cf10b27caa4bd94f562eda7
+#4 DONE 0.0s
+
+#5 [internal] load metadata for docker.io/library/ubuntu:24.04@sha256:a08e551cb33850e4740772b38217fc1796a66da2506d312abe51acda354ff061
+#5 DONE 0.0s
+
+#6 [internal] load .dockerignore
+#6 transferring context: 490B done
+#6 DONE 0.0s
+
+#7 [builder  1/12] FROM docker.io/rocm/dev-ubuntu-24.04:7.14.0-full@sha256:439edaa8f0c4be4a3728e528f87b8a2ea1f051f34cf10b27caa4bd94f562eda7
+#7 resolve docker.io/rocm/dev-ubuntu-24.04:7.14.0-full@sha256:439edaa8f0c4be4a3728e528f87b8a2ea1f051f34cf10b27caa4bd94f562eda7 0.0s done
+#7 DONE 0.0s
+
+#8 [final  1/13] FROM docker.io/library/ubuntu:24.04@sha256:a08e551cb33850e4740772b38217fc1796a66da2506d312abe51acda354ff061
+#8 resolve docker.io/library/ubuntu:24.04@sha256:a08e551cb33850e4740772b38217fc1796a66da2506d312abe51acda354ff061 0.0s done
+#8 DONE 0.0s
+
+#9 [internal] load build context
+#9 transferring context: 9.81kB 0.0s done
+#9 DONE 0.0s
+
+#10 [assemble 12/16] COPY r4d_radiance_extras.patch /opt/patches/
+#10 CACHED
+
+#11 [builder 12/12] RUN git clone --depth 1 -b rocm-6.4.4 https://github.com/ROCm/rocm_bandwidth_test.git /src/rbt     && cmake -S /src/rbt -B /src/rbt/build -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=/opt/rocm          -DCMAKE_EXE_LINKER_FLAGS="-Wl,-rpath,/opt/rocm/core/lib:/opt/rocm/lib"     && cmake --build /src/rbt/build -j 2     && mkdir -p /artifacts && cp /src/rbt/build/rocm-bandwidth-test /artifacts/     && rm -rf /src/rbt
+#11 CACHED
+
+#12 [builder  2/12] RUN apt-get update && apt-get install -y --no-install-recommends       git python3.12-venv build-essential ccache pkg-config       libdrm-dev libnuma-dev libelf-dev     && rm -rf /var/lib/apt/lists/*
+#12 CACHED
+
+#13 [assemble  2/16] RUN apt-get update && apt-get install -y --no-install-recommends       python3.12-venv git     && rm -rf /var/lib/apt/lists/*
+#13 CACHED
+
+#14 [final  4/13] COPY --from=rocmprune /etc/alternatives /etc/alternatives
+#14 CACHED
+
+#15 [assemble  3/16] RUN python3 -m venv /opt/vllm
+#15 CACHED
+
+#16 [builder 10/12] RUN --mount=type=cache,id=radiance-ccache-gfx1201,target=/root/.cache/ccache     git clone --filter=blob:none --no-checkout https://github.com/vllm-project/vllm.git /src/vllm     && cd /src/vllm && git checkout --detach ced6857afa0ea7b2e3f0846a62e1394e90f15607     && test "$(git rev-parse HEAD)" = "ced6857afa0ea7b2e3f0846a62e1394e90f15607"     && python use_existing_torch.py     && pip install "setuptools-rust>=1.9.0"     && VLLM_TARGET_DEVICE=rocm VLLM_VERSION_OVERRIDE=0.30.0        pip wheel --no-build-isolation --no-deps . -w /wheels     && rm -rf /src/vllm
+#16 CACHED
+
+#17 [builder 11/12] RUN ls -la /wheels
+#17 CACHED
+
+#18 [final  5/13] COPY --from=assemble /opt/vllm /opt/vllm
+#18 CACHED
+
+#19 [final  7/13] RUN WANT_VLLM=0.30.0 WANT_AITER=0.1.20 WANT_TORCH=2.12.0     WANT_TRITON=3.7.1 WANT_VISION=0.27.1     python -c 'import os, torch, vllm._C, amdsmi, importlib.metadata as m; import r4d, radiance_mxfp4_fp8; assert all(hasattr(radiance_mxfp4_fp8, n) for n in ("launch", "launch_at", "set_decode_scratch", "launch_add_rms_quant", "launch_silu_mul_quant", "launch_gdn_norm_quant")); assert hasattr(r4d, "ar_oneshot_2rank_exact_nq"); v, a, t, r, tv = m.version("vllm"), m.version("amd-aiter"), m.version("torch"), m.version("triton"), m.version("torchvision"); assert v.startswith(os.environ["WANT_VLLM"]), "vllm wheel reports " + v + ", built tag is " + os.environ["WANT_VLLM"]; assert a.startswith(os.environ["WANT_AITER"]), "aiter wheel reports " + a + ", built tag is " + os.environ["WANT_AITER"]; assert t.startswith(os.environ["WANT_TORCH"]), "torch wheel reports " + t; assert r.startswith(os.environ["WANT_TRITON"]), "triton wheel reports " + r; assert tv.startswith(os.environ["WANT_VISION"]), "torchvision wheel reports " + tv; print("stack OK | vllm", v, "| torch", torch.__version__, "| aiter", a,       "| torchvision", m.version("torchvision"), "| triton", m.version("triton"), "| r4d", r4d.__version__)'  && pip check
+#19 CACHED
+
+#20 [final  2/13] RUN apt-get update && apt-get install -y --no-install-recommends       python3 python3.12 python3.12-dev g++ libnuma-dev numactl curl ca-certificates libgomp1     && rm -rf /var/lib/apt/lists/*
+#20 CACHED
+
+#21 [builder  4/12] RUN pip install -U pip wheel setuptools "setuptools-scm>=8.0" "cmake<4" ninja pybind11 numpy       pyyaml typing_extensions cffi requests
+#21 CACHED
+
+#22 [builder  6/12] RUN --mount=type=cache,id=radiance-ccache-gfx1201,target=/root/.cache/ccache     git clone --filter=blob:none --no-checkout https://github.com/ROCm/pytorch.git /src/pytorch     && cd /src/pytorch     && git checkout --detach 6bbd26020da1c6dc198625dfcdd968b1e4e6b1c5     && test "$(git rev-parse HEAD)" = "6bbd26020da1c6dc198625dfcdd968b1e4e6b1c5"     && git submodule update --init --recursive --depth 1     && pip install -r requirements.txt     && python tools/amd_build/build_amd.py     && USE_MAGMA=0 USE_MKLDNN=1 BUILD_TEST=0 USE_NCCL=1 USE_RCCL=1        USE_FLASH_ATTENTION=0 USE_MEM_EFF_ATTENTION=0 USE_AOTRITON=0        CC=gcc-13 CXX=g++-13        PYTORCH_BUILD_VERSION=2.12.0+rocm7.14 PYTORCH_BUILD_NUMBER=1        python setup.py bdist_wheel     && cp dist/*.whl /wheels/ && pip install dist/*.whl && rm -rf /src/pytorch
+#22 CACHED
+
+#23 [assemble  6/16] COPY radiance_amdsmi.py radiance_amdsmi.pth      radiance_kernels.py radiance_vit_attn.py radiance_allreduce.py      radiance_draft.py radiance_draft_gpu.py radiance_drafthead.py radiance_gemm.py radiance_w4.py      radiance_r4d_attn.py radiance_gdn.py radiance_gdnmerge.py radiance_mxfp4.py radiance_nvfp4.py      radiance_arnq.py radiance_topk.py radiance_verifyhead.py radiance_kv_offload.py      radiance_kv_calibration.py radiance_tunableop.py /opt/vllm/lib/python3.12/site-packages/
+#23 CACHED
+
+#24 [rocmprune 2/3] COPY prune_rocm.sh /tmp/prune_rocm.sh
+#24 CACHED
+
+#25 [rocmprune 3/3] RUN bash /tmp/prune_rocm.sh gfx1201 && rm -f /tmp/prune_rocm.sh
+#25 CACHED
+
+#26 [builder  8/12] RUN --mount=type=cache,id=radiance-ccache-gfx1201,target=/root/.cache/ccache     git clone --depth 1 -b v0.27.1 https://github.com/pytorch/vision.git /src/vision     && cd /src/vision && FORCE_CUDA=1 USE_ROCM=1 pip wheel --no-build-isolation --no-deps . -w /wheels     && rm -rf /src/vision
+#26 CACHED
+
+#27 [builder  9/12] RUN git clone --filter=blob:none --no-checkout https://github.com/ROCm/aiter.git /src/aiter     && cd /src/aiter     && git checkout --detach fc2e5d57fb5b8ad8e7e23f7103071dde798ea618     && test "$(git rev-parse HEAD)" = "fc2e5d57fb5b8ad8e7e23f7103071dde798ea618"     && git submodule update --init --recursive --depth 1     && GPU_ARCHS=gfx1201 PREBUILD_KERNELS=0 AITER_USE_SYSTEM_TRITON=1        SETUPTOOLS_SCM_PRETEND_VERSION=0.1.20        pip wheel --no-build-isolation --no-deps . -w /wheels     && pip install /wheels/*aiter-*.whl && rm -rf /src/aiter
+#27 CACHED
+
+#28 [assemble  5/16] RUN pip install --no-cache-dir -U pip wheel setuptools  && pip install --no-cache-dir --no-deps       /wheels/torch-*.whl /wheels/triton-*.whl /wheels/torchvision-*.whl /wheels/*aiter-*.whl  && pip install --no-cache-dir /wheels/vllm-*.whl       "transformers==5.15.0" "xgrammar==0.2.3"  && pip install --no-cache-dir flydsl==0.3.1  && pip install --no-cache-dir /opt/rocm/share/amd_smi pillow pybind11  && rm -rf /wheels /root/.cache
+#28 CACHED
+
+#29 [assemble 16/16] RUN find /opt/vllm -type f -name '*.so*' ! -name 'r4d.so' ! -name 'radiance_mxfp4_fp8.so'       -exec strip --strip-unneeded {} + 2>/dev/null || true;     find /opt/vllm -name '__pycache__' -type d -prune -exec rm -rf {} + || true;     echo "extensions stripped"
+#29 CACHED
+
+#30 [builder  3/12] RUN python3 -m venv /opt/py
+#30 CACHED
+
+#31 [assemble 11/16] RUN set -eu; cd /opt/patches;     for p in patch_gfx1201 patch_radiance_dispatch patch_skinny_gemm patch_unified_attention_lds              patch_gdn_wmma patch_gdn_aiter_prefill patch_preshuffle install_radiance_hooks              patch_mtp_mm_mask patch_mtp_loopbreak patch_qwen3_toolparse patch_from_json_filter              patch_dynamo_metrics patch_conv1d_blockn patch_r4d              patch_dflash_fused_kv_fp8 patch_dflash_w4              patch_dflash_selector_topk patch_gdn_metadata patch_gdn_shared_build              patch_topk_composite              patch_quark_mxfp4 patch_nvfp4_mxfp4 patch_quark_bf16_mtp patch_ar_maxbytes patch_ar_geometry              patch_kv_group_size patch_gdn_merge_inproj patch_dynwidth patch_verify_head              patch_kv_offload_registration patch_kv_offload_lifecycle patch_kv_offload_restore              patch_fp8_kv_sidecar              patch_qwen_open_object_schema; do       echo "== applying $p =="; python "$p.py";     done;     python -c "import ast,glob; [ast.parse(open(f).read()) for f in glob.glob('/opt/vllm/lib/python3.12/site-packages/radiance_*.py')]; print('radiance modules parse OK')"
+#31 CACHED
+
+#32 [assemble 15/16] RUN INC=$(python -m pybind11 --includes);     hipcc -O3 -std=c++17 -fPIC -shared --offload-arch=gfx1201 -Wno-unused-result       $INC /opt/patches/radiance_mxfp4_fp8.hip -o /opt/vllm/lib/python3.12/site-packages/radiance_mxfp4_fp8.so  && python -c "import torch, radiance_mxfp4_fp8 as m; assert all(hasattr(m, n) for n in ('launch', 'launch_at', 'set_decode_scratch', 'launch_add_rms_quant', 'launch_silu_mul_quant', 'launch_gdn_norm_quant')); import radiance_mxfp4; assert hasattr(torch.ops.radiance, 'mxfp4_linear_pq'); print('radiance MXFP4 W4A8 RX5 extension and pre-quantized op OK')"
+#32 CACHED
+
+#33 [builder  7/12] RUN --mount=type=cache,id=radiance-ccache-gfx1201,target=/root/.cache/ccache     git clone --filter=blob:none --no-checkout https://github.com/ROCm/triton.git /src/triton     && cd /src/triton     && git checkout --detach f0b55c07da61c71775bef6d1a15ebf846430ac75     && test "$(git rev-parse HEAD)" = "f0b55c07da61c71775bef6d1a15ebf846430ac75"     && TRITON_BUILD_PROTON=OFF pip wheel --no-build-isolation --no-deps . -w /wheels     && pip install /wheels/triton-*.whl && rm -rf /src/triton
+#33 CACHED
+
+#34 [assemble 10/16] COPY patch_*.py install_radiance_hooks.py _patchlib.py /opt/patches/
+#34 CACHED
+
+#35 [assemble  7/16] COPY fp8-configs/ /opt/vllm/lib/python3.12/site-packages/vllm/model_executor/layers/quantization/utils/configs/
+#35 CACHED
+
+#36 [assemble  4/16] COPY --from=builder /wheels /wheels
+#36 CACHED
+
+#37 [assemble 13/16] RUN git clone --filter=blob:none --no-checkout https://codeberg.org/StillDeadcode/libr4d.git /src/libr4d  && cd /src/libr4d  && git checkout --detach e8de4bc1f3dbd608dcb8d3ffceb6b48acdf83bb7  && test "$(git rev-parse HEAD)" = "e8de4bc1f3dbd608dcb8d3ffceb6b48acdf83bb7"  && git apply --check /opt/patches/r4d_radiance_extras.patch  && git apply /opt/patches/r4d_radiance_extras.patch  && GFX_ARCH=gfx1201 OUT=/opt/vllm/lib/python3.12/site-packages/r4d.so ./build.sh  && WANT=$(echo "v0.5.0" | sed 's/^v//')  && python -c "import sys, torch, r4d; assert r4d.__version__ == sys.argv[1]; assert hasattr(r4d, 'ar_oneshot_2rank_exact_nq'); print('r4d RX4', r4d.__version__, 'kernels', len(r4d.kernels()))" "$WANT"  && rm -rf /src/libr4d
+#37 CACHED
+
+#38 [final  8/13] RUN printf '%s\n'       '#include <hip/hip_runtime.h>'       '#include <cmath>'       '#include <pybind11/pybind11.h>'       '__global__ void k(float* o) { o[threadIdx.x] = 1.0f; }'       'PYBIND11_MODULE(_jit_probe, m) { m.def("f", [](double x) { return std::sqrt(x); }); }'       > /tmp/_jit_probe.hip  && hipcc -O3 -fPIC -shared -std=c++20 --offload-arch=gfx1201       $(python -m pybind11 --includes) /tmp/_jit_probe.hip -o /tmp/_jit_probe.so  && python -c "import torch, sys; sys.path.insert(0, '/tmp'); import _jit_probe; assert _jit_probe.f(4.0) == 2.0"  && rm -f /tmp/_jit_probe.hip /tmp/_jit_probe.so  && echo "runtime JIT toolchain OK (hipcc + libstdc++ headers + Python.h + pybind11)"
+#38 CACHED
+
+#39 [builder  5/12] RUN mkdir -p /wheels
+#39 CACHED
+
+#40 [final  6/13] COPY --from=builder /artifacts/rocm-bandwidth-test /usr/local/bin/rocm-bandwidth-test
+#40 CACHED
+
+#41 [final  3/13] COPY --from=rocmprune /opt/rocm /opt/rocm
+#41 CACHED
+
+#42 [assemble  9/16] COPY mxfp4-configs/ /opt/vllm/lib/python3.12/site-packages/aiter/ops/triton/configs/gemm/
+#42 CACHED
+
+#43 [assemble  8/16] COPY moe-configs/ /opt/vllm/lib/python3.12/site-packages/vllm/model_executor/layers/fused_moe/configs/
+#43 CACHED
+
+#44 [assemble 14/16] COPY radiance_mxfp4_fp8.hip /opt/patches/
+#44 CACHED
+
+#45 [final  9/13] COPY VERSION /opt/radiance_version
+#45 CACHED
+
+#46 [final 10/13] COPY radiance_platform_probe.py /opt/vllm/lib/python3.12/site-packages/
+#46 DONE 0.0s
+
+#47 [final 11/13] COPY radiance_preamble.py /opt/radiance_preamble.py
+#47 DONE 0.0s
+
+#48 [final 12/13] COPY radiance_entrypoint.sh /opt/radiance_entrypoint.sh
+#48 DONE 0.0s
+
+#49 [final 13/13] RUN chmod +x /opt/radiance_entrypoint.sh
+#49 DONE 0.1s
+
+#50 exporting to image
+#50 exporting layers
+#50 exporting layers 0.2s done
+#50 exporting manifest sha256:1e942eb2aa22c9038876e55bc2863d44d448d0e5aa1ce62c5606566b83fde200 done
+#50 exporting config sha256:5ccc9b770e332d417cda7b73ae0d652140d777b398b36bd9cbabf8bca4db5a0c done
+#50 exporting attestation manifest sha256:7f15d3c6abfa588a56c7b15c55ab5b01962d2f2630cea4bc214bb2f3fe7face2 0.0s done
+#50 exporting manifest list sha256:6e4f456ab8617ebad12de4da50d297b96828365cab02bfd38a85d5d6d4b536db done
+#50 naming to docker.io/library/vllm-radiance:v030-publication-r2 done
+#50 unpacking to docker.io/library/vllm-radiance:v030-publication-r2 0.0s done
+#50 DONE 0.3s

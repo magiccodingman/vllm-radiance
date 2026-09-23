@@ -3,8 +3,13 @@
 
 This allocates and pre-faults a large shared-memory mmap, maps it in one process
 per GPU, and measures whole/chunked ``hipHostRegister`` behavior under serial
-and simultaneous TP-like registration.  It must only run in a declared GPU
-maintenance window.  The production API guard is intentionally fail-closed.
+and simultaneous TP-like registration. The legacy ``shared`` layout registers
+the complete mmap in every worker. The experimental ``rank-sharded`` layout
+registers one disjoint contiguous rank span per worker while keeping the same
+combined physical allocation.
+
+It must only run in a declared GPU maintenance window. The production API guard
+is intentionally fail-closed.
 """
 
 from __future__ import annotations
@@ -40,10 +45,14 @@ from radiance_kv_offload import register_host_chunks, rollback_host_chunks
 class WorkerResult:
     rank: int
     gpu: int
+    layout: str
+    registration_offset: int
+    registration_size: int
     register_ok: bool
     register_error_code: int | None
     drained_error_code: int | None
     chunks: list[tuple[int, int]]
+    registered_bytes: int
     register_seconds: float
     post_register_runtime_ok: bool
     post_register_runtime_code: int
@@ -119,6 +128,25 @@ def api_port_is_open(host: str = "127.0.0.1", port: int = 8000) -> bool:
         return False
 
 
+def registration_range(
+    layout: str,
+    rank: int,
+    world_size: int,
+    total_size: int,
+) -> tuple[int, int]:
+    if layout == "shared":
+        return 0, total_size
+    if layout != "rank-sharded":
+        raise ValueError(f"unknown layout: {layout}")
+    if total_size % world_size:
+        raise ValueError("rank-sharded probe requires total_size divisible by world_size")
+    size = total_size // world_size
+    offset = rank * size
+    if offset % mmap.PAGESIZE or size % mmap.PAGESIZE:
+        raise ValueError("rank-sharded probe ranges must be page aligned")
+    return offset, size
+
+
 def worker(
     rank: int,
     gpu: int,
@@ -128,12 +156,16 @@ def worker(
     chunk_bytes: int,
     mode: str,
     prefault: str,
+    layout: str,
+    world_size: int,
     barrier: Any,
     barrier_timeout: float,
     result_queue: Any,
 ) -> None:
     mapped: mmap.mmap | None = None
     stage = "runtime-init"
+    registration_offset = 0
+    registration_size = 0
     try:
         runtime = HipRuntime()
         set_device_result = runtime.set_device(gpu)
@@ -152,17 +184,15 @@ def worker(
         finally:
             os.close(fd)
 
-        # Match vLLM's distributed pre-fault: each worker makes a disjoint part
-        # of the MAP_SHARED backing resident before either worker registers the
-        # entire virtual mapping.
+        # Match vLLM's distributed residency: each worker makes a disjoint part
+        # of the MAP_SHARED backing resident before registration.
         stage = "prefault"
         if prefault == "distributed":
-            workers = 2
-            start = (total_size * rank // workers // mmap.PAGESIZE) * mmap.PAGESIZE
+            start = (total_size * rank // world_size // mmap.PAGESIZE) * mmap.PAGESIZE
             end = (
                 total_size
-                if rank == workers - 1
-                else (total_size * (rank + 1) // workers // mmap.PAGESIZE)
+                if rank == world_size - 1
+                else (total_size * (rank + 1) // world_size // mmap.PAGESIZE)
                 * mmap.PAGESIZE
             )
             resident = np.frombuffer(mapped, dtype=np.uint8)
@@ -173,40 +203,62 @@ def worker(
 
         stage = "register"
         base_ptr = ctypes.addressof(ctypes.c_char.from_buffer(mapped))
+        registration_offset, registration_size = registration_range(
+            layout, rank, world_size, total_size
+        )
+        registration_ptr = base_ptr + registration_offset
         start = time.perf_counter()
         registration = None
         if mode == "simultaneous":
             barrier.wait(timeout=barrier_timeout)
             registration = register_host_chunks(
-                runtime, base_ptr, total_size, row_stride, chunk_bytes
+                runtime,
+                registration_ptr,
+                registration_size,
+                row_stride,
+                chunk_bytes,
             )
         else:
-            for turn in range(2):
+            for turn in range(world_size):
                 if rank == turn:
                     registration = register_host_chunks(
-                        runtime, base_ptr, total_size, row_stride, chunk_bytes
+                        runtime,
+                        registration_ptr,
+                        registration_size,
+                        row_stride,
+                        chunk_bytes,
                     )
                 barrier.wait(timeout=barrier_timeout)
         elapsed = time.perf_counter() - start
         assert registration is not None
 
-        # All successful registrations remain live until both ranks have
-        # completed, reproducing the shared-backing overlap at server startup.
+        # Convert local registration offsets to full-mmap offsets, matching the
+        # production overlay's ownership convention.
+        owned_chunks = [
+            (registration_offset + offset, size) for offset, size in registration.chunks
+        ]
+
+        # Successful registrations remain live until every rank has completed,
+        # reproducing the startup overlap/accounting behavior.
         stage = "post-register-barrier"
         barrier.wait(timeout=barrier_timeout)
         stage = "runtime-smoke"
         smoke_code = runtime.allocation_smoke()
         stage = "cleanup"
-        cleanup = rollback_host_chunks(runtime, base_ptr, registration.chunks)
+        cleanup = rollback_host_chunks(runtime, base_ptr, owned_chunks)
         result_queue.put(
             asdict(
                 WorkerResult(
                     rank=rank,
                     gpu=gpu,
+                    layout=layout,
+                    registration_offset=registration_offset,
+                    registration_size=registration_size,
                     register_ok=registration.ok,
                     register_error_code=registration.error_code,
                     drained_error_code=registration.drained_error_code,
-                    chunks=list(registration.chunks),
+                    chunks=owned_chunks,
+                    registered_bytes=sum(size for _, size in owned_chunks),
                     register_seconds=elapsed,
                     post_register_runtime_ok=smoke_code == 0,
                     post_register_runtime_code=smoke_code,
@@ -221,10 +273,14 @@ def worker(
                 WorkerResult(
                     rank=rank,
                     gpu=gpu,
+                    layout=layout,
+                    registration_offset=registration_offset,
+                    registration_size=registration_size,
                     register_ok=False,
                     register_error_code=None,
                     drained_error_code=None,
                     chunks=[],
+                    registered_bytes=0,
                     register_seconds=0.0,
                     post_register_runtime_ok=False,
                     post_register_runtime_code=-1,
@@ -245,6 +301,7 @@ def run_case(
     chunk_gib: float,
     mode: str,
     prefault: str,
+    layout: str,
     gpus: list[int],
     timeout: float,
 ) -> dict[str, Any]:
@@ -273,6 +330,8 @@ def run_case(
                 chunk_bytes,
                 mode,
                 prefault,
+                layout,
+                len(gpus),
                 barrier,
                 min(timeout, 120),
                 result_queue,
@@ -307,6 +366,7 @@ def run_case(
             "chunk_gib": chunk_gib,
             "mode": mode,
             "prefault": prefault,
+            "layout": layout,
             "elapsed_seconds": time.perf_counter() - started,
             "timed_out_ranks": [process.name for process in timed_out],
             "exit_codes": [process.exitcode for process in processes],
@@ -328,6 +388,13 @@ def parse_args() -> argparse.Namespace:
         nargs="+",
         choices=("sequential", "simultaneous"),
         default=["sequential", "simultaneous"],
+    )
+    parser.add_argument(
+        "--layouts",
+        nargs="+",
+        choices=("shared", "rank-sharded"),
+        default=["shared"],
+        help="shared preserves the historical full-mmap registration; rank-sharded registers one contiguous span per rank",
     )
     parser.add_argument(
         "--prefault",
@@ -361,7 +428,7 @@ def main() -> None:
         )
 
     document: dict[str, Any] = {
-        "schema": 1,
+        "schema": 2,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "gpus": args.gpus,
         "shm_dir": str(args.shm_dir),
@@ -370,23 +437,26 @@ def main() -> None:
     }
     for size_gib in args.sizes_gib:
         for chunk_gib in args.chunk_gib:
-            for mode in args.modes:
-                case = run_case(
-                    args.shm_dir,
-                    size_gib,
-                    chunk_gib,
-                    mode,
-                    args.prefault,
-                    args.gpus,
-                    args.timeout,
-                )
-                document["cases"].append(case)
-                args.output.parent.mkdir(parents=True, exist_ok=True)
-                args.output.write_text(json.dumps(document, indent=2) + "\n")
-                print(
-                    f"size={size_gib:g} GiB chunk={chunk_gib:g} GiB "
-                    f"mode={mode} prefault={args.prefault}: {case['workers']}"
-                )
+            for layout in args.layouts:
+                for mode in args.modes:
+                    case = run_case(
+                        args.shm_dir,
+                        size_gib,
+                        chunk_gib,
+                        mode,
+                        args.prefault,
+                        layout,
+                        args.gpus,
+                        args.timeout,
+                    )
+                    document["cases"].append(case)
+                    args.output.parent.mkdir(parents=True, exist_ok=True)
+                    args.output.write_text(json.dumps(document, indent=2) + "\n")
+                    print(
+                        f"size={size_gib:g} GiB chunk={chunk_gib:g} GiB "
+                        f"layout={layout} mode={mode} prefault={args.prefault}: "
+                        f"{case['workers']}"
+                    )
 
 
 if __name__ == "__main__":

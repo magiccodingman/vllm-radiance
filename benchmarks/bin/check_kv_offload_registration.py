@@ -117,6 +117,10 @@ def check_image_wiring() -> None:
         source = (REPO / name).read_text()
         assert "radiance_kv_offload.py" in source, name
         assert "patch_kv_offload_registration" in source, name
+        assert "patch_kv_offload_lifecycle" in source, name
+
+    lifecycle = (REPO / "patch_kv_offload_lifecycle.py").read_text()
+    assert "patch_kv_offload_rank_sharded" in lifecycle
 
     entrypoint = (REPO / "radiance_entrypoint.sh").read_text()
     assert '"--kv-offloading-size=${RADIANCE_KV_OFFLOADING_SIZE}"' in entrypoint
@@ -128,6 +132,11 @@ def check_image_wiring() -> None:
         "RADIANCE_KV_OFFLOAD_REGISTER_CHUNK_GIB",
     ):
         assert variable in compose
+
+    rank_sharded_compose = (
+        REPO / "docker-compose.kv-rank-sharded.example.yml"
+    ).read_text()
+    assert "RADIANCE_KV_OFFLOAD_RANK_SHARDED" in rank_sharded_compose
 
 
 def main() -> None:

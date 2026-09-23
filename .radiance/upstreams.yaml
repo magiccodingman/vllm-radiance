@@ -1,0 +1,92 @@
+schema_version: 1
+classification_values:
+- ignore
+- research-only
+- direct-import
+- selective-adaptation
+- conceptual-port
+- supersedes-local
+- tier3-decision
+commit_trailers:
+  Radiance-Upstream: repository or developer/fork identifier
+  Radiance-Upstream-Commit: exact upstream commit when known
+  Radiance-Import: cherry-pick|selective-port|conceptual-port
+upstreams:
+- id: vllm
+  repository: https://github.com/vllm-project/vllm.git
+  relationship:
+  - build-dependency
+  - selective-backport
+  - architectural-watch
+  areas:
+  - runner
+  - scheduler
+  - speculative
+  - rocm
+  - parser
+  - kv-cache
+  - serving
+  current_pin: ced6857afa0ea7b2e3f0846a62e1394e90f15607
+  last_audited_ref: v0.30.0 migration in docs/V030_UPGRADE.md; qualification status is explicit there
+  policy: Track stable releases; prefer upstream ownership when equivalent; selectively carry reviewed fixes.
+- id: aiter
+  repository: https://github.com/ROCm/aiter.git
+  relationship:
+  - build-dependency
+  - kernel-watch
+  areas:
+  - rocm
+  - gfx1201
+  - attention
+  - gdn
+  - gemm
+  - mxfp4
+  current_pin: fc2e5d57fb5b8ad8e7e23f7103071dde798ea618
+  last_audited_ref: 0.1.20 checkpoint and open-follow-up audit recorded in docs/UPGRADE_PROGRESS.md
+  policy: Audit material gfx1201 changes; upgrade independently only when compiler-stack compatibility is demonstrated.
+- id: stilldeadcode-libr4d
+  repository: https://codeberg.org/StillDeadcode/libr4d.git
+  relationship:
+  - build-dependency
+  - selective-adaptation
+  - kernel-watch
+  areas:
+  - gfx1201
+  - attention
+  - gdn
+  - allreduce
+  - vision
+  - mxfp4
+  - dflash
+  current_pin: e8de4bc1f3dbd608dcb8d3ffceb6b48acdf83bb7
+  last_audited_ref: libr4d v0.5.0 lineage documented in docs/RADIANCE_093_R4D050_MXFP4.md
+  policy: Build exact source pin, preserve authorship, adapt selectively, qualify against Radiance's production contract.
+- id: stilldeadcode-vllm-radiance
+  repository: https://codeberg.org/StillDeadcode/vllm-radiance
+  relationship:
+  - selective-adaptation
+  - conceptual-watch
+  areas:
+  - rdna4
+  - radiance-runtime
+  - dflash
+  - mxfp4
+  - kernel-integration
+  current_pin: null
+  last_audited_ref: Radiance 0.9.3 lineage documented in docs/RADIANCE_093_R4D050_MXFP4.md
+  policy: Audit deltas rather than mechanically rebasing; preserve locally qualified behavior.
+- id: ggz14-radiance-vllm-mxfp4
+  repository: https://github.com/GGZ14/vllm-mxfp4.git
+  relationship:
+  - selective-adaptation
+  - conceptual-watch
+  areas:
+  - mxfp4
+  - w4a8
+  - gdn
+  - prefill
+  - decode
+  - rdna4
+  current_pin: null
+  last_audited_ref: 31b9a94a7f74eeb3f59e66d16b1b27dfafcd0663; selective deltas in docs/V030_GGZ14_MXFP4_NVFP4.md
+  policy: Preserve original authorship; import selectively because Radiance carries a different vLLM/libr4d base and correctness contract.

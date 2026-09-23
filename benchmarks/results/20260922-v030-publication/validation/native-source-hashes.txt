@@ -1,0 +1,4 @@
+c1f766699f512f3b575ea1fa670031d22ab0a53fda33b4f0a91e0f68a080758b  /opt/vllm/lib/python3.12/site-packages/radiance_mxfp4.py
+03a0db955a70ccb580a8b0c8499898545086bc2adee9461b18e465207ece54c0  /opt/vllm/lib/python3.12/site-packages/radiance_nvfp4.py
+1370e6f3d722eca18b014f13c1d2f4fee371818603f8ececc5c1ce00181c5ae6  /opt/vllm/lib/python3.12/site-packages/radiance_mxfp4_fp8.so
+daa7a3bf79d2a1e0a7909a6ed9ddac2f0f3ac74b878569f4eabc2ccae839aecc  /opt/vllm/lib/python3.12/site-packages/r4d.so

@@ -90,7 +90,10 @@ LAYER_OLD = (
     "        forward_context = get_forward_context()\n"
     "        attn_metadata_raw = forward_context.attn_metadata\n"
     "\n"
-    "        if attn_metadata_raw is None:\n"
+    "        attn_metadata = None\n"
+    "        if isinstance(attn_metadata_raw, dict):\n"
+    "            attn_metadata = attn_metadata_raw.get(self.prefix)\n"
+    "        if attn_metadata is None:\n"
     "            self._warmup_prefill_kernels(mixed_qkv, 0)\n"
     "            return\n"
 )

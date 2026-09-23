@@ -195,6 +195,9 @@ server_args+=(
   "--tool-call-parser=${TOOL_CALL_PARSER}"
   --language-model-only
 )
+if [[ ${BENCH_PLATFORM_INSPECT:-0} == 1 ]]; then
+  server_args+=(--worker-extension-cls=radiance_platform_probe.PlatformProbe)
+fi
 
 printf '%q ' "${server_args[@]}" >"${CONFIG_DIR}/server-command.txt"
 printf '\n' >>"${CONFIG_DIR}/server-command.txt"
@@ -204,6 +207,12 @@ final_status=failed
 cleanup() {
   if ((cleanup_done)); then
     return
+  fi
+  # Preserve final counters even when a correctness/tool gate fails. Failure
+  # remains failure; collecting diagnostics must not hide the original exit.
+  if [[ ! -s ${CONFIG_DIR}/metrics-final.prom ]]; then
+    curl --fail --silent --max-time 10 http://127.0.0.1:11435/metrics \
+      >"${CONFIG_DIR}/metrics-final.prom" || true
   fi
   docker logs "$container" >"${CONFIG_DIR}/logs/server.log" 2>&1 || true
   docker stop --time 30 "$container" >/dev/null 2>&1 || true
@@ -218,6 +227,9 @@ docker rm "$container" >/dev/null 2>&1 || true
 
 echo "[$(date -u +%FT%TZ)] Starting ${LABEL} (${IMAGE})"
 container_env=(-e "HIP_VISIBLE_DEVICES=${gpu_devices}")
+if [[ ${BENCH_PLATFORM_INSPECT:-0} == 1 ]]; then
+  container_env+=(-e VLLM_SERVER_DEV_MODE=1)
+fi
 if [[ -n ${VLLM_USE_V2_MODEL_RUNNER:-} ]]; then
   container_env+=(-e "VLLM_USE_V2_MODEL_RUNNER=${VLLM_USE_V2_MODEL_RUNNER}")
 fi
@@ -248,6 +260,12 @@ done
 ready_epoch=$(date +%s)
 printf '%s\n' "$((ready_epoch - start_epoch))" >"${CONFIG_DIR}/startup-seconds.txt"
 docker logs "$container" >"${CONFIG_DIR}/logs/server-ready.log" 2>&1 || true
+if [[ ${BENCH_PLATFORM_INSPECT:-0} == 1 ]]; then
+  curl --fail --silent --show-error --max-time 120 \
+    -H 'Content-Type: application/json' \
+    -d '{"method":"platform_snapshot"}' \
+    http://127.0.0.1:11435/collective_rpc >"${CONFIG_DIR}/runtime-owners.json"
+fi
 
 docker inspect --format '{{json .Config.Cmd}}' "$container" >"${CONFIG_DIR}/container-command.json"
 jq -e --arg expected "--kv-cache-dtype=${KV_CACHE_DTYPE}" 'index($expected) != null' \
@@ -309,8 +327,10 @@ HIP_VISIBLE_DEVICES=$gpu_devices RADIANCE_IMAGE="$IMAGE" "${SCRIPT_DIR}/capture_
   --enforce-eager "$ENFORCE_EAGER" --disable-cudagraph "$DISABLE_CUDAGRAPH" --notes "$NOTES"
 
 if [[ $SUITE == betterbench ]]; then
+  curl --fail --silent http://127.0.0.1:11435/metrics >"${CONFIG_DIR}/metrics-benchmark-start.prom"
   MODEL_NAME="$MODEL_NAME" "${SCRIPT_DIR}/run_betterbench.sh" \
     --run-dir "$CONFIG_DIR" --config "$LABEL" --max-model-len "$MAX_MODEL_LEN"
+  curl --fail --silent http://127.0.0.1:11435/metrics >"${CONFIG_DIR}/metrics-benchmark-end.prom"
   # Keep the publication-grade performance suite and the strict output gate in
   # the same immutable run directory. Run this after BetterBench so fixed
   # prompts cannot warm or otherwise perturb the measured corpus.

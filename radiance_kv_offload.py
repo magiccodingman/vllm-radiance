@@ -1,17 +1,17 @@
-"""Host-registration helpers for mmap-backed KV offload.
+"""Host-registration and rank-local layout helpers for mmap-backed KV offload.
 
 The vLLM CPU KV-offload mmap is best-effort pinned with ``hipHostRegister`` on
-ROCm.  A failed registration leaves a pending, thread-local HIP runtime error;
+ROCm. A failed registration leaves a pending, thread-local HIP runtime error;
 if it is not consumed, the next unrelated torch operation can fail with
-``hipErrorInvalidValue``.  Tensor-parallel workers also map the same backing
+``hipErrorInvalidValue``. Tensor-parallel workers also map the same backing
 file independently, so registration must resolve to one coherent state across
 the model-parallel group.
 
-This module deliberately has no torch/vLLM imports.  The source overlay in
-``patch_kv_offload_registration.py`` owns distributed coordination while these
-helpers provide deterministic policy parsing, row-aligned chunk planning, and
-same-runtime-handle registration/rollback.  Keeping this layer pure makes the
-failure paths testable without a GPU.
+This module deliberately has no torch/vLLM imports. The source overlays own
+distributed coordination and mmap tensor construction while these helpers
+provide deterministic policy parsing, rank-major layout planning, row-aligned
+registration planning, and same-runtime-handle registration/rollback. Keeping
+this layer pure makes both layout and failure paths testable without a GPU.
 """
 
 from __future__ import annotations
@@ -23,7 +23,10 @@ from typing import Protocol
 
 PIN_POLICY_ENV = "RADIANCE_KV_OFFLOAD_PIN_POLICY"
 REGISTER_CHUNK_GIB_ENV = "RADIANCE_KV_OFFLOAD_REGISTER_CHUNK_GIB"
+RANK_SHARDED_ENV = "RADIANCE_KV_OFFLOAD_RANK_SHARDED"
 VALID_PIN_POLICIES = frozenset({"auto", "required", "disabled"})
+_TRUE_VALUES = frozenset({"1", "true", "yes", "on"})
+_FALSE_VALUES = frozenset({"0", "false", "no", "off", ""})
 
 
 class HostRuntime(Protocol):
@@ -65,13 +68,62 @@ class RegistrationResult:
         return self.rollback is None or self.rollback.ok
 
 
+@dataclass(frozen=True)
+class RankLocalRange:
+    """One rank's contiguous byte range in a rank-major shared mmap."""
+
+    rank: int
+    offset: int
+    size: int
+    row_stride: int
+
+    @property
+    def end(self) -> int:
+        return self.offset + self.size
+
+    def block_offset(self, block_id: int, byte_offset: int = 0) -> int:
+        """Return the mmap-relative byte offset for one logical block."""
+
+        if block_id < 0:
+            raise ValueError("block_id must be non-negative")
+        if byte_offset < 0 or byte_offset >= self.row_stride:
+            raise ValueError("byte_offset must fall within the rank-local row")
+        offset = self.offset + block_id * self.row_stride + byte_offset
+        if offset >= self.end:
+            raise ValueError("block_id exceeds the rank-local range")
+        return offset
+
+
+@dataclass(frozen=True)
+class RankMajorLayout:
+    """Physical layout for a rank-major shared mmap.
+
+    The logical block count is identical on every rank. Physical rows are
+    grouped by rank, so each worker owns one contiguous range that can be host
+    registered independently while the combined allocation stays unchanged.
+    """
+
+    total_size: int
+    num_blocks: int
+    world_size: int
+    global_row_stride: int
+    worker_row_stride: int
+    worker_page_size: int
+    ranges: tuple[RankLocalRange, ...]
+
+    def range_for_rank(self, rank: int) -> RankLocalRange:
+        if rank < 0 or rank >= self.world_size:
+            raise ValueError(f"rank must be in [0, {self.world_size}); got {rank}")
+        return self.ranges[rank]
+
+
 def get_pin_policy(environ: dict[str, str] | None = None) -> str:
     """Return the validated host-registration policy.
 
     ``auto`` is intentionally the default: use pinned DMA only when every
     model-parallel worker succeeds, otherwise fall back coherently to pageable
-    DMA.  ``required`` converts an ordinary registration failure into startup
-    failure.  ``disabled`` skips registration entirely.
+    DMA. ``required`` converts an ordinary registration failure into startup
+    failure. ``disabled`` skips registration entirely.
     """
 
     source = os.environ if environ is None else environ
@@ -96,6 +148,97 @@ def get_register_chunk_bytes(environ: dict[str, str] | None = None) -> int:
     if gib < 0:
         raise ValueError(f"{REGISTER_CHUNK_GIB_ENV} must be >= 0; got {raw!r}")
     return int(gib * 1024**3)
+
+
+def get_rank_sharded_enabled(environ: dict[str, str] | None = None) -> bool:
+    """Return whether experimental rank-major native CPU offload is enabled."""
+
+    source = os.environ if environ is None else environ
+    raw = source.get(RANK_SHARDED_ENV, "0").strip().lower()
+    if raw in _TRUE_VALUES:
+        return True
+    if raw in _FALSE_VALUES:
+        return False
+    raise ValueError(
+        f"{RANK_SHARDED_ENV} must be a boolean (0/1, false/true, no/yes, off/on); "
+        f"got {raw!r}"
+    )
+
+
+def plan_rank_major_layout(
+    total_size: int,
+    num_blocks: int,
+    world_size: int,
+    worker_page_size: int,
+    page_size: int,
+) -> RankMajorLayout:
+    """Plan equal contiguous rank spans without changing physical capacity.
+
+    ``total_size`` and ``num_blocks`` are the values already calculated by
+    vLLM from the requested external-cache capacity. The planner merely
+    transposes the physical placement from block-major to rank-major. It does
+    not create additional storage and does not change the logical block count.
+
+    Equal rank spans require the aligned global row to divide evenly across
+    workers. Each local row must also be page-aligned so rank registration and
+    chunk rollback never share a host page with another worker. Unsupported
+    geometries fail only when the opt-in layout is requested.
+    """
+
+    if total_size <= 0:
+        raise ValueError("total_size must be positive")
+    if num_blocks <= 0:
+        raise ValueError("num_blocks must be positive")
+    if world_size <= 0:
+        raise ValueError("world_size must be positive")
+    if worker_page_size <= 0:
+        raise ValueError("worker_page_size must be positive")
+    if page_size <= 0:
+        raise ValueError("page_size must be positive")
+    if total_size % num_blocks:
+        raise ValueError("num_blocks must divide total_size exactly")
+
+    global_row_stride = total_size // num_blocks
+    if global_row_stride % world_size:
+        raise ValueError(
+            "rank-major KV layout requires the global row stride to divide "
+            "evenly by world_size"
+        )
+    worker_row_stride = global_row_stride // world_size
+    if worker_row_stride < worker_page_size:
+        raise ValueError(
+            "rank-major worker row is smaller than the existing worker KV page"
+        )
+    if worker_row_stride % page_size:
+        raise ValueError(
+            "rank-major worker row must be page aligned so rank registration "
+            "ranges never share host pages"
+        )
+
+    rank_size = num_blocks * worker_row_stride
+    ranges = tuple(
+        RankLocalRange(
+            rank=rank,
+            offset=rank * rank_size,
+            size=rank_size,
+            row_stride=worker_row_stride,
+        )
+        for rank in range(world_size)
+    )
+    if sum(item.size for item in ranges) != total_size:
+        raise AssertionError("rank-major layout changed the physical allocation size")
+    if ranges and ranges[-1].end != total_size:
+        raise AssertionError("rank-major ranges do not exactly cover the mmap")
+
+    return RankMajorLayout(
+        total_size=total_size,
+        num_blocks=num_blocks,
+        world_size=world_size,
+        global_row_stride=global_row_stride,
+        worker_row_stride=worker_row_stride,
+        worker_page_size=worker_page_size,
+        ranges=ranges,
+    )
 
 
 def plan_registration_chunks(
@@ -174,7 +317,7 @@ def register_host_chunks(
     """Register all chunks or roll back every locally successful chunk.
 
     A failed runtime call is drained through the *same* library handle before
-    returning.  This is the key invariant that prevents the subsequent torch
+    returning. This is the key invariant that prevents the subsequent torch
     call from inheriting a stale HIP error.
     """
 

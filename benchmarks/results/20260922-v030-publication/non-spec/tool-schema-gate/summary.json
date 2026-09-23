@@ -1,0 +1,8 @@
+{
+  "run_id": "non-spec-tool-schema",
+  "completed_utc": "2026-09-22T18:17:00Z",
+  "attempts": 30,
+  "passes": 30,
+  "failures": 0,
+  "pass": true
+}
