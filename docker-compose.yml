@@ -176,6 +176,7 @@ services:
       # Experimental: raise DFlash's trained selector truncation. Unset/0
       # preserves the checkpoint value and is the qualified default.
       RADIANCE_DFLASH_SELECTOR_TOPK: "${RADIANCE_DFLASH_SELECTOR_TOPK:-}"
+      # Inert unless FAST_DRAFT=1. TP2 retains full head; TP1 shortlist is experimental.
       RADIANCE_VERIFY_HEAD: "${RADIANCE_VERIFY_HEAD:-1}"
       RADIANCE_VERIFY_HEAD_GLOBAL_TOPK: "${RADIANCE_VERIFY_HEAD_GLOBAL_TOPK:-256}"
       RADIANCE_DYNAMIC_WIDTH: "${RADIANCE_DYNAMIC_WIDTH:-1}"
