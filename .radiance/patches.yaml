@@ -19,12 +19,14 @@ area_tests:
   - r9700-tp2-smoke
   - betterbench-standard
   gdn:
+  - gdn-extreme-decay-native
   - r9700-tp2-smoke
   - correctness-equivalence
   attention:
   - r9700-tp2-smoke
   - betterbench-standard
   dflash:
+  - dflash-independent-noise-native
   - r9700-tp2-smoke
   - correctness-equivalence
   - betterbench-standard

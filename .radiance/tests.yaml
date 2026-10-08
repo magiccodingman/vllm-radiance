@@ -222,3 +222,25 @@ tests:
   automatic: false
   ci: false
   description: Long-context cache-placement pressure matrix with source counters and response equality.
+- id: gdn-extreme-decay-native
+  class: contract
+  hardware: r9700
+  areas:
+  - gdn
+  - libr4d
+  command: python benchmarks/bin/check_gdn_extreme_decay.py --output "$RUN_ROOT/gdn-extreme-decay.json"
+  automatic: false
+  ci: false
+  description: Synthetic FP64 recurrence, guards and graph replay; run both 48/16
+    and 24/8 geometries before promotion.
+- id: dflash-independent-noise-native
+  class: contract
+  hardware: r9700
+  areas:
+  - dflash
+  - sampling
+  command: python benchmarks/bin/check_dflash_sampling_rng.py --output "$RUN_ROOT/dflash-noise.json"
+  automatic: false
+  ci: false
+  description: Installed upstream independent proposal stream with biased negative
+    control.

@@ -832,3 +832,109 @@ index 0bd04ac..17ec780 100644
      {"gdn_recurrent_update_k128_v128_bf16_fp32state", "gdn", "gdn_recurrent_update",
       "gdn decode recurrent update: gating, qk l2norm, delta-rule state update, gated rms norm "
       "and output",
+diff --git a/r4d_gdn_chunk_scan_k128_v128_c64_bf16.hip b/r4d_gdn_chunk_scan_k128_v128_c64_bf16.hip
+--- a/r4d_gdn_chunk_scan_k128_v128_c64_bf16.hip
++++ b/r4d_gdn_chunk_scan_k128_v128_c64_bf16.hip
+@@ -856,6 +856,89 @@
+   }
+ }
+ 
++// The midpoint factorization above clamps positive exponents at 80. A chunk
++// decay span over 160 can therefore erase valid diagonal contributions or the
++// carried state while leaving all outputs finite. Use a conservative span of
++// 128 and recompute affected sequence/head pairs from the defining recurrence:
++// S <- exp(g_step) S; d <- beta (v - S k); S <- S + d k^T; o <- scale S q.
++// Per-token negative decay is bounded. Ordinary heads retain the fast result.
++// This runs on the same stream, with no host readback or synchronization.
++static __device__ __forceinline__ float r4d_gdn_reference_from_bf16(uint16_t value) {
++  return __uint_as_float(static_cast<uint32_t>(value) << 16);
++}
++
++static __device__ __forceinline__ uint16_t r4d_gdn_reference_to_bf16(float value) {
++  const uint32_t bits = __float_as_uint(value);
++  if ((bits & 0x7fffffffU) > 0x7f800000U)
++    return static_cast<uint16_t>((bits >> 16) | 0x40U);
++  return static_cast<uint16_t>((bits + 0x7fffU + ((bits >> 16) & 1U)) >> 16);
++}
++
++__global__ __launch_bounds__(256) void r4d_gdn_repair_extreme_decay(
++    const uint16_t *__restrict__ q, const uint16_t *__restrict__ k,
++    const uint16_t *__restrict__ v, const float *__restrict__ cumulative,
++    const float *__restrict__ beta, const float *__restrict__ initial,
++    uint16_t *__restrict__ output, float *__restrict__ final,
++    const int *__restrict__ cu, int heads, int query_heads, int chunk,
++    float scale, float threshold) {
++  const int sequence = blockIdx.x, head = blockIdx.y;
++  const int begin = cu[sequence], end = cu[sequence + 1];
++  const int thread = threadIdx.x;
++  __shared__ int required;
++  if (thread == 0) {
++    required = 0;
++    for (int first = begin; first < end; first += chunk) {
++      const int last = min(first + chunk, end) - 1;
++      const float span = fabsf(cumulative[(size_t)last * heads + head] -
++                               cumulative[(size_t)first * heads + head]);
++      if (span > threshold) {
++        required = 1;
++        break;
++      }
++    }
++  }
++  __syncthreads();
++  if (!required || begin == end)
++    return;
++  const int row = thread >> 1, half = thread & 1, start_k = half * 64;
++  const int query_head = head / (heads / query_heads);
++  const size_t state_offset = ((size_t)sequence * heads + head) * 128 * 128 +
++                              row * 128 + start_k;
++  float state[64];
++#pragma unroll
++  for (int j = 0; j < 64; ++j)
++    state[j] = initial[state_offset + j];
++  for (int token = begin; token < end; ++token) {
++    const size_t gate_offset = (size_t)token * heads + head;
++    const float previous = ((token - begin) % chunk == 0)
++                               ? 0.0f : cumulative[gate_offset - heads];
++    const float decay = expf(cumulative[gate_offset] - previous);
++    const size_t qk_offset = ((size_t)token * query_heads + query_head) * 128 + start_k;
++    float keys[64], prediction = 0.0f;
++#pragma unroll
++    for (int j = 0; j < 64; ++j) {
++      keys[j] = r4d_gdn_reference_from_bf16(k[qk_offset + j]);
++      state[j] *= decay;
++      prediction = fmaf(state[j], keys[j], prediction);
++    }
++    prediction += __shfl_xor(prediction, 1, 32);
++    const float residual = beta[gate_offset] *
++        (r4d_gdn_reference_from_bf16(v[gate_offset * 128 + row]) - prediction);
++    float value = 0.0f;
++#pragma unroll
++    for (int j = 0; j < 64; ++j) {
++      state[j] = fmaf(residual, keys[j], state[j]);
++      value = fmaf(state[j], r4d_gdn_reference_from_bf16(q[qk_offset + j]), value);
++    }
++    value += __shfl_xor(value, 1, 32);
++    if (half == 0)
++      output[gate_offset * 128 + row] = r4d_gdn_reference_to_bf16(value * scale);
++  }
++#pragma unroll
++  for (int j = 0; j < 64; ++j)
++    final[state_offset + j] = state[j];
++}
++
+ extern "C" int r4d_gdn_chunk_scan_k128_v128_c64_bf16(
+     const void* q, const void* k, const void* v, const void* A, const void* g,
+     const void* beta, const void* h0, void* o, void* ht, const void* cu,
+@@ -867,6 +950,12 @@
+       (const unsigned short*)q, (const unsigned short*)k, (const unsigned short*)v,
+       (const unsigned short*)A, (const float*)g, (const float*)beta, (const float*)h0,
+       (unsigned short*)o, (float*)ht, (const int*)cu, H, Hg, scale);
++  const hipError_t scan_error = hipGetLastError();
++  if (scan_error != hipSuccess) return (int)scan_error;
++  r4d_gdn_repair_extreme_decay<<<dim3(N, H), 256, 0, (hipStream_t)stream>>>(
++      (const uint16_t*)q, (const uint16_t*)k, (const uint16_t*)v,
++      (const float*)g, (const float*)beta, (const float*)h0,
++      (uint16_t*)o, (float*)ht, (const int*)cu, H, Hg, BT, scale, 128.0f);
+   return (int)hipGetLastError();
+ }
+ 
