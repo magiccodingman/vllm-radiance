@@ -90,3 +90,17 @@ upstreams:
   current_pin: null
   last_audited_ref: 31b9a94a7f74eeb3f59e66d16b1b27dfafcd0663; selective deltas in docs/V030_GGZ14_MXFP4_NVFP4.md
   policy: Preserve original authorship; import selectively because Radiance carries a different vLLM/libr4d base and correctness contract.
+- id: terrydaktal-qwen-r9700-lab
+  repository: https://github.com/Terrydaktal/qwen-r9700-lab
+  relationship:
+  - research-only
+  - selective-adaptation
+  areas:
+  - conformance
+  - gdn
+  - speculative
+  current_pin: null
+  last_audited_ref: 'PR #10 source-hash inventory in benchmarks/conformance/SOURCE_PROVENANCE.json;
+    origin commit unknown'
+  policy: Preserve source hashes and original authorship; experimental evidence tooling,
+    not a production dependency.

@@ -23,6 +23,9 @@ change_map:
   areas: [kv-offload]
 - pattern: '^(radiance_allreduce|patch_ar_|r4d_radiance_extras\.patch)'
   areas: [allreduce, libr4d]
+- pattern: ^benchmarks/conformance/
+  areas:
+  - conformance
 - pattern: '^(radiance_mxfp4|patch_quark_|mxfp4-configs/|docs/MXFP4)'
   areas: [mxfp4]
 - pattern: '^(radiance_nvfp4|patch_nvfp4|benchmarks/bin/.*nvfp4)'
@@ -91,6 +94,16 @@ tests:
   automatic: false
   ci: false
   description: Original installed loader, rollback, native W4A8, error and measured memory; not model quality.
+- id: conformance-support-cpu
+  class: contract
+  hardware: cpu
+  areas:
+  - conformance
+  command: uv run --project benchmarks/conformance --locked --group dev pytest benchmarks/conformance/tests
+    -q
+  automatic: true
+  ci: false
+  description: Synthetic numerical/state contracts; no model loading or GPU qualification.
 - id: v030-resident-platform
   class: live-serving
   hardware: r9700-tp2
