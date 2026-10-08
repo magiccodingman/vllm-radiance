@@ -177,6 +177,7 @@ services:
       # preserves the checkpoint value and is the qualified default.
       RADIANCE_DFLASH_SELECTOR_TOPK: "${RADIANCE_DFLASH_SELECTOR_TOPK:-}"
       RADIANCE_VERIFY_HEAD: "${RADIANCE_VERIFY_HEAD:-1}"
+      RADIANCE_VERIFY_HEAD_GLOBAL_TOPK: "${RADIANCE_VERIFY_HEAD_GLOBAL_TOPK:-256}"
       RADIANCE_DYNAMIC_WIDTH: "${RADIANCE_DYNAMIC_WIDTH:-1}"
       RADIANCE_DYNW_MIN_BATCH: "${RADIANCE_DYNW_MIN_BATCH:-5}"
       # Optional raw vLLM speculative-config JSON. The entrypoint appends it as

@@ -437,3 +437,10 @@ This fork exists on top of two unusually strong RDNA4 efforts:
 The continuation pins the exact audited ggz14 upstream commit in its qualification report. Changes are
 ported selectively because this fork carries a different vLLM/libr4d base and additional DFlash and
 correctness patches; attractive results from incompatible or failed experiments are not silently copied.
+
+### Experimental verify-head selection
+
+See [global candidate selection](docs/VERIFY_HEAD_GLOBAL_TOPK.md) for
+configuration, measured recall, numerical differences and qualification
+limits. Acceleration remains approximate; use `RADIANCE_VERIFY_HEAD=0`
+for the full target head.

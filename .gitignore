@@ -1,6 +1,7 @@
 # python
 __pycache__/
 *.pyc
+.pytest_cache/
 # local deploy state (mounted into the container; not source)
 .env
 docker-compose.dev.yml
