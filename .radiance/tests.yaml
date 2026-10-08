@@ -19,6 +19,9 @@ change_map:
   areas: [build, upgrade]
 - pattern: '^(patch_parser_shared_engine|patch_qwen3_toolparse|patch_qwen_open_object_schema|patch_from_json_filter|patch_xgrammar_)'
   areas: [parser, structured-output]
+- pattern: ^benchmarks/d7-repair/
+  areas:
+  - d7-repair
 - pattern: '^(radiance_kv_offload|patch_kv_offload_|docker-compose\.kv-rank-sharded|docs/ROCM_KV_OFFLOAD)'
   areas: [kv-offload]
 - pattern: '^(radiance_allreduce|patch_ar_|r4d_radiance_extras\.patch)'
@@ -120,6 +123,18 @@ tests:
   automatic: false
   ci: false
   description: Retired DFlash stride/narrow-cache guard, native top-k and changed-input graph checks.
+- id: d7-repair-cpu
+  class: contract
+  hardware: cpu
+  areas:
+  - d7-repair
+  - conformance
+  command: uv run --project benchmarks/conformance --locked --group dev --extra cpu-tests
+    pytest benchmarks/d7-repair/tests -q
+  automatic: true
+  ci: false
+  description: Experimental adapter contracts; retained compiler-artifact skip is
+    explicit and not native qualification.
 - id: control-plane-validate
   class: static
   hardware: cpu
