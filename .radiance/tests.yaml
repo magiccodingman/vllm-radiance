@@ -19,14 +19,24 @@ change_map:
   areas: [build, upgrade]
 - pattern: '^(patch_parser_shared_engine|patch_qwen3_toolparse|patch_qwen_open_object_schema|patch_from_json_filter|patch_xgrammar_)'
   areas: [parser, structured-output]
+- pattern: ^benchmarks/d7-repair/
+  areas:
+  - d7-repair
 - pattern: '^(radiance_kv_offload|patch_kv_offload_|docker-compose\.kv-rank-sharded|docs/ROCM_KV_OFFLOAD)'
   areas: [kv-offload]
 - pattern: '^(radiance_allreduce|patch_ar_|r4d_radiance_extras\.patch)'
   areas: [allreduce, libr4d]
+- pattern: ^benchmarks/conformance/
+  areas:
+  - conformance
 - pattern: '^(radiance_mxfp4|patch_quark_|mxfp4-configs/|docs/MXFP4)'
   areas: [mxfp4]
 - pattern: '^(radiance_nvfp4|patch_nvfp4|benchmarks/bin/.*nvfp4)'
   areas: [nvfp4, mxfp4]
+- pattern: ^(radiance_verifyhead\.py|tests/test_verify_head_)
+  areas:
+  - verify-head
+  - sampling
 - pattern: '^(radiance_gdn|patch_gdn_)'
   areas: [gdn]
 - pattern: '^(radiance_draft|patch_dflash_|patch_dynwidth|patch_verify_head)'
@@ -38,6 +48,31 @@ profiles:
   upgrade: [control-plane-validate, python-compile, kv-offload-registration-cpu, kv-offload-rank-sharded-cpu, kv-offload-restore-cpu, parser-shared-engine-image, xgrammar-spec-image, qwen-open-object-image, fp8-kv-calibration-image, tunableop-preflight-image, r9700-tp2-smoke, tool-schema-live, open-object-tool-live, betterbench-standard, correctness-equivalence]
   release: [control-plane-validate, python-compile, kv-offload-registration-cpu, kv-offload-rank-sharded-cpu, kv-offload-restore-cpu, parser-shared-engine-image, xgrammar-spec-image, qwen-open-object-image, fp8-kv-calibration-image, tunableop-preflight-image, r9700-tp2-smoke, tool-schema-live, open-object-tool-live, betterbench-standard, correctness-equivalence, capacity-qualification]
 tests:
+- id: verify-head-cpu
+  class: contract
+  hardware: cpu
+  areas:
+  - verify-head
+  - dflash
+  - sampling
+  command: python -m pytest tests/test_verify_head_sampling_capacity.py tests/test_verify_head_global_topk.py
+    -q
+  automatic: true
+  ci: false
+  description: CPU dispatch contracts; native opt-in cases are skipped explicitly.
+- id: verify-head-native
+  class: contract
+  hardware: r9700
+  areas:
+  - verify-head
+  - dflash
+  - sampling
+  command: RADIANCE_TEST_NATIVE=1 python -m pytest tests/test_verify_head_sampling_capacity.py
+    tests/test_verify_head_global_topk.py -q
+  automatic: false
+  ci: false
+  description: Synthetic GPU projection/reranking and fallback integration; TP2 guard
+    is not distributed qualification.
 - id: v030-upstream-contracts
   class: contract
   hardware: candidate-image
@@ -62,6 +97,16 @@ tests:
   automatic: false
   ci: false
   description: Original installed loader, rollback, native W4A8, error and measured memory; not model quality.
+- id: conformance-support-cpu
+  class: contract
+  hardware: cpu
+  areas:
+  - conformance
+  command: uv run --project benchmarks/conformance --locked --group dev pytest benchmarks/conformance/tests
+    -q
+  automatic: true
+  ci: false
+  description: Synthetic numerical/state contracts; no model loading or GPU qualification.
 - id: v030-resident-platform
   class: live-serving
   hardware: r9700-tp2
@@ -78,6 +123,18 @@ tests:
   automatic: false
   ci: false
   description: Retired DFlash stride/narrow-cache guard, native top-k and changed-input graph checks.
+- id: d7-repair-cpu
+  class: contract
+  hardware: cpu
+  areas:
+  - d7-repair
+  - conformance
+  command: uv run --project benchmarks/conformance --locked --group dev --extra cpu-tests
+    pytest benchmarks/d7-repair/tests -q
+  automatic: true
+  ci: false
+  description: Experimental adapter contracts; retained compiler-artifact skip is
+    explicit and not native qualification.
 - id: control-plane-validate
   class: static
   hardware: cpu
@@ -222,3 +279,25 @@ tests:
   automatic: false
   ci: false
   description: Long-context cache-placement pressure matrix with source counters and response equality.
+- id: gdn-extreme-decay-native
+  class: contract
+  hardware: r9700
+  areas:
+  - gdn
+  - libr4d
+  command: python benchmarks/bin/check_gdn_extreme_decay.py --output "$RUN_ROOT/gdn-extreme-decay.json"
+  automatic: false
+  ci: false
+  description: Synthetic FP64 recurrence, guards and graph replay; run both 48/16
+    and 24/8 geometries before promotion.
+- id: dflash-independent-noise-native
+  class: contract
+  hardware: r9700
+  areas:
+  - dflash
+  - sampling
+  command: python benchmarks/bin/check_dflash_sampling_rng.py --output "$RUN_ROOT/dflash-noise.json"
+  automatic: false
+  ci: false
+  description: Installed upstream independent proposal stream with biased negative
+    control.

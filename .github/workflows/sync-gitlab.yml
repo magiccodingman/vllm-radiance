@@ -1,0 +1,67 @@
+name: Sync main to GitLab
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gitlab-main-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    if: github.repository == 'magiccodingman/vllm-radiance' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      # No checkout or repository scripts: this job only transfers Git objects.
+      - name: Configure dedicated GitLab SSH identity
+        env:
+          SYNC_KEY: ${{ secrets.GITLAB_SYNC_SSH_KEY }}
+          SYNC_KNOWN_HOSTS: ${{ secrets.GITLAB_SYNC_KNOWN_HOSTS }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$SYNC_KEY"
+          test -n "$SYNC_KNOWN_HOSTS"
+          umask 077
+          mkdir -p "$RUNNER_TEMP/gitlab-sync-ssh"
+          printf '%s\n' "$SYNC_KEY" > "$RUNNER_TEMP/gitlab-sync-ssh/key"
+          printf '%s\n' "$SYNC_KNOWN_HOSTS" > "$RUNNER_TEMP/gitlab-sync-ssh/known_hosts"
+          echo "GIT_SSH_COMMAND=ssh -i $RUNNER_TEMP/gitlab-sync-ssh/key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$RUNNER_TEMP/gitlab-sync-ssh/known_hosts -o BatchMode=yes -o ConnectTimeout=15" >> "$GITHUB_ENV"
+      - name: Fast-forward GitLab main
+        shell: bash
+        run: |
+          set -euo pipefail
+          git init --bare "$RUNNER_TEMP/gitlab-main-sync.git"
+          cd "$RUNNER_TEMP/gitlab-main-sync.git"
+          git remote add github https://github.com/magiccodingman/vllm-radiance.git
+          git remote add gitlab git@gitlab.sayou.io:lance-wright/vllm-radiance.git
+          for attempt in 1 2 3; do
+            git fetch --no-tags github +refs/heads/main:refs/remotes/github/main
+            git fetch --no-tags gitlab +refs/heads/main:refs/remotes/gitlab/main
+            if git merge-base --is-ancestor refs/remotes/github/main refs/remotes/gitlab/main; then
+              echo 'GitLab already contains the latest GitHub main commits.'
+              exit 0
+            fi
+            if ! git merge-base --is-ancestor refs/remotes/gitlab/main refs/remotes/github/main; then
+              echo '::error::GitHub and GitLab main have diverged. Merge both histories, then rerun this workflow. No commits were overwritten.'
+              exit 1
+            fi
+            # Never force-push. Retry if another writer advances GitLab meanwhile.
+            if git push gitlab refs/remotes/github/main:refs/heads/main; then
+              echo 'GitLab main synchronized successfully.'
+              exit 0
+            fi
+            sleep 5
+          done
+          echo '::error::GitLab synchronization failed after three attempts.'
+          exit 1
+      - name: Remove SSH material
+        if: always()
+        shell: bash
+        run: rm -rf "$RUNNER_TEMP/gitlab-sync-ssh"

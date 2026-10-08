@@ -1,5 +1,14 @@
 # Radiance benchmark lab
 
+## Optional numerical research
+
+[Conformance support](conformance/README.md) and [D7 arithmetic research](d7-repair/README.md)
+are opt-in laboratory paths, isolated from serving defaults and container builds.
+Their locked combined CPU suite passes 428 tests with one retained-artifact skip;
+native D7 adapters remain source-bound to vLLM 0.28 and are not current-stack repairs.
+See the [2026-10-08 current-stack qualification](results/20261008-pr8-11-production-qualification/README.md)
+for GDN correctness, TP2/DFlash-7 serving checks, capacity and measured prefill cost.
+
 ## Current v0.30 publication
 
 The [2026-09-22 report](../docs/V030_PUBLICATION_20260922.md) supersedes the

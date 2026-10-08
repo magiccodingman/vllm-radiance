@@ -1,0 +1,9 @@
+{
+  "fixture": "1024x512 BF16; nuisance column fixes the INT2 range; true winner remains invisible to the coarse projection",
+  "global_topk": 256,
+  "reference_argmax": 256,
+  "approximate_argmax": 0,
+  "reference_winner_logit": 2.0,
+  "winner_retained": false,
+  "expected_approximation_failure_reproduced": true
+}

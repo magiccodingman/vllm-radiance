@@ -71,7 +71,8 @@ defaults. Do not substitute an unpinned `main` checkout or generic PyTorch
 | `RADIANCE_TOPK_TRITON_MIN_ROWS` | `1` | Triton top-k/top-p at small row counts |
 | `RADIANCE_FAST_DRAFT` | `0` | opt-in INT2 exact-rerank head for MTP/DFlash plus DFlash runtime W4 linears |
 | `RADIANCE_DRAFT_RERANK` | `64` | exact candidate rerank width for the INT2 draft head |
-| `RADIANCE_VERIFY_HEAD` | `1` | sampling-aware INT2 target verification head; exact fallback for unsafe requests |
+| `RADIANCE_VERIFY_HEAD` | `1` | inert unless FAST_DRAFT=1; approximate TP1 target head, full-head TP2 guard; 0 selects full head |
+| `RADIANCE_VERIFY_HEAD_GLOBAL_TOPK` | `256` | experimental TP1 shortlist; can omit the true winner; 0 selects legacy capacity-gated path |
 | `RADIANCE_DYNAMIC_WIDTH` | `1` | acceptance-adaptive DFlash verify width, active only at the configured batch floor |
 | `RADIANCE_DYNW_MIN_BATCH` | `5` | leave c1-c4 DFlash at full K7 verification |
 | `RADIANCE_FAST_DRAFT_CACHE_NAMESPACE` | `1` | isolate persistent vLLM/Inductor graph caches for packed fast-draft weights |
@@ -455,3 +456,13 @@ The portable Compose intentionally uses each checkpoint's native chat template.
 Pass `--chat-template file.jinja` in a private override only when a checkpoint
 needs a deployment-specific template. The image ships the `from_json` filter
 those templates often rely on.
+
+## Optional research tools
+
+Numerical conformance and source-bound D7 arithmetic tooling live in
+[`benchmarks/conformance`](benchmarks/conformance/README.md) and
+[`benchmarks/d7-repair`](benchmarks/d7-repair/README.md). They use a separate locked
+CPU environment, are not installed by the serving build, and have no Compose
+enablement flag. Native D7 adapters remain pinned to vLLM 0.28, not the current
+0.30 serving stack. See [current-stack qualification](benchmarks/results/20261008-pr8-11-production-qualification/README.md)
+for the merged GDN repair and tested TP2/DFlash-7 profile.

@@ -35,6 +35,18 @@ residual BLAS GEMMs. Neither is enabled until its exact model/profile passes
 the normal correctness and benchmark gates. See
 [FP8-KV calibration and persisted TunableOp](docs/FP8_KV_TUNABLEOP.md).
 
+## Runtime defaults and optional research
+
+Portable defaults remain non-speculative (`RADIANCE_FAST_DRAFT=0`, no speculative config).
+The native GDN extreme-decay correction is included; rebuild state computed under the old scan.
+Verify-head acceleration requires `RADIANCE_FAST_DRAFT=1`; TP2 keeps the full target head,
+while TP1's approximate shortlist remains experimental.
+
+[Runtime/research boundaries](docs/RUNTIME_AND_RESEARCH.md) explain optional conformance and
+D7 tooling, configuration and qualification. They do not alter serving defaults.
+[Current TP2/DFlash-7 qualification](benchmarks/results/20261008-pr8-11-production-qualification/README.md)
+records corrected-reference agreement, tool/capacity gates and the measured prefill cost.
+
 ## Quick start
 
 The portable Compose file contains no machine-local paths. Copy the environment template and point it at
@@ -406,6 +418,7 @@ and an earlier mismatched combination caused sustained TP hangs.
 
 ## Documentation
 
+- [DFlash sampling and GDN prefill numerical corrections](docs/NUMERICAL_CORRECTIONS.md)
 - [Upgrade and reproducibility history](https://gitlab.sayou.io/lance-wright/vllm-radiance/-/blob/main/docs/UPGRADE_PROGRESS.md)
 - [Stable vLLM v0.28 upgrade and qualification](https://gitlab.sayou.io/lance-wright/vllm-radiance/-/blob/main/docs/V028_UPGRADE.md)
 - [Radiance 0.9.3 / libr4d 0.5.0 qualification](https://gitlab.sayou.io/lance-wright/vllm-radiance/-/blob/main/docs/RADIANCE_093_R4D050_MXFP4.md)
@@ -436,3 +449,10 @@ This fork exists on top of two unusually strong RDNA4 efforts:
 The continuation pins the exact audited ggz14 upstream commit in its qualification report. Changes are
 ported selectively because this fork carries a different vLLM/libr4d base and additional DFlash and
 correctness patches; attractive results from incompatible or failed experiments are not silently copied.
+
+### Experimental verify-head selection
+
+See [global candidate selection](docs/VERIFY_HEAD_GLOBAL_TOPK.md) for
+configuration, measured recall, numerical differences and qualification
+limits. Acceleration remains approximate; use `RADIANCE_VERIFY_HEAD=0`
+for the full target head.

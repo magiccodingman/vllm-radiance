@@ -1,0 +1,223 @@
+{
+  "complete": true,
+  "reference": "independent FP64 sequential gated delta recurrence",
+  "r4d_sha256": "daa7a3bf79d2a1e0a7909a6ed9ddac2f0f3ac74b878569f4eabc2ccae839aecc",
+  "elapsed_seconds": 0.5092178960330784,
+  "all_within_one_percent": true,
+  "scan_library_sha256": "b46156cc749c122dab626f72955fcc9fbefe469982fdec8d3371bd0fa807a11a",
+  "graph_capture": {
+    "replays": 3,
+    "changed_query_inputs": true,
+    "output_relative_error": 0.003408335996166081,
+    "state_relative_error": 0.002441776999705826,
+    "within_one_percent": true
+  },
+  "cases": [
+    {
+      "tokens": 65,
+      "heads": 24,
+      "query_heads": 8,
+      "sequence_lengths": [
+        65
+      ],
+      "mixed_head_decay": false,
+      "value_amplitude": 1,
+      "negative_log_decay_per_token": 0.02,
+      "maximum_chunk_decay_span": 1.26,
+      "output_relative_error": 0.003419090388648462,
+      "state_relative_error": 0.0023734370009040407,
+      "finite": true,
+      "guards_intact": true,
+      "within_one_percent": true
+    },
+    {
+      "tokens": 128,
+      "heads": 24,
+      "query_heads": 8,
+      "sequence_lengths": [
+        128
+      ],
+      "mixed_head_decay": false,
+      "value_amplitude": 1,
+      "negative_log_decay_per_token": 1.0,
+      "maximum_chunk_decay_span": 63.0,
+      "output_relative_error": 0.0029174319329996297,
+      "state_relative_error": 0.0016777936896394865,
+      "finite": true,
+      "guards_intact": true,
+      "within_one_percent": true
+    },
+    {
+      "tokens": 128,
+      "heads": 24,
+      "query_heads": 8,
+      "sequence_lengths": [
+        128
+      ],
+      "mixed_head_decay": false,
+      "value_amplitude": 1,
+      "negative_log_decay_per_token": 2.5,
+      "maximum_chunk_decay_span": 157.5,
+      "output_relative_error": 0.0016632959881275227,
+      "state_relative_error": 3.5799034847325034e-08,
+      "finite": true,
+      "guards_intact": true,
+      "within_one_percent": true
+    },
+    {
+      "tokens": 128,
+      "heads": 24,
+      "query_heads": 8,
+      "sequence_lengths": [
+        128
+      ],
+      "mixed_head_decay": false,
+      "value_amplitude": 1,
+      "negative_log_decay_per_token": 3.2,
+      "maximum_chunk_decay_span": 201.60000000000002,
+      "output_relative_error": 0.0016603623087983646,
+      "state_relative_error": 1.346097324668338e-07,
+      "finite": true,
+      "guards_intact": true,
+      "within_one_percent": true
+    },
+    {
+      "tokens": 128,
+      "heads": 24,
+      "query_heads": 8,
+      "sequence_lengths": [
+        128
+      ],
+      "mixed_head_decay": false,
+      "value_amplitude": 1,
+      "negative_log_decay_per_token": 8.0,
+      "maximum_chunk_decay_span": 504.0,
+      "output_relative_error": 0.0016543724884231388,
+      "state_relative_error": 3.544657337821996e-08,
+      "finite": true,
+      "guards_intact": true,
+      "within_one_percent": true
+    },
+    {
+      "tokens": 257,
+      "heads": 24,
+      "query_heads": 8,
+      "sequence_lengths": [
+        257
+      ],
+      "mixed_head_decay": false,
+      "value_amplitude": 1,
+      "negative_log_decay_per_token": 0.02,
+      "maximum_chunk_decay_span": 1.26,
+      "output_relative_error": 0.0034367541117941215,
+      "state_relative_error": 0.0024973558568960456,
+      "finite": true,
+      "guards_intact": true,
+      "within_one_percent": true
+    },
+    {
+      "tokens": 257,
+      "heads": 24,
+      "query_heads": 8,
+      "sequence_lengths": [
+        257
+      ],
+      "mixed_head_decay": false,
+      "value_amplitude": 1,
+      "negative_log_decay_per_token": 3.2,
+      "maximum_chunk_decay_span": 201.60000000000002,
+      "output_relative_error": 0.0016570135599705026,
+      "state_relative_error": 3.624097566515097e-08,
+      "finite": true,
+      "guards_intact": true,
+      "within_one_percent": true
+    },
+    {
+      "tokens": 1024,
+      "heads": 24,
+      "query_heads": 8,
+      "sequence_lengths": [
+        1024
+      ],
+      "mixed_head_decay": false,
+      "value_amplitude": 1,
+      "negative_log_decay_per_token": 0.02,
+      "maximum_chunk_decay_span": 1.26,
+      "output_relative_error": 0.0034455666192448127,
+      "state_relative_error": 0.002501668141343721,
+      "finite": true,
+      "guards_intact": true,
+      "within_one_percent": true
+    },
+    {
+      "tokens": 128,
+      "heads": 24,
+      "query_heads": 8,
+      "sequence_lengths": [
+        128
+      ],
+      "mixed_head_decay": false,
+      "value_amplitude": 1,
+      "negative_log_decay_per_token": 32.0,
+      "maximum_chunk_decay_span": 2016.0,
+      "output_relative_error": 0.001665480191893173,
+      "state_relative_error": 1.2545356413749436e-14,
+      "finite": true,
+      "guards_intact": true,
+      "within_one_percent": true
+    },
+    {
+      "tokens": 128,
+      "heads": 24,
+      "query_heads": 8,
+      "sequence_lengths": [
+        128
+      ],
+      "mixed_head_decay": false,
+      "value_amplitude": 10000,
+      "negative_log_decay_per_token": 2.5,
+      "maximum_chunk_decay_span": 157.5,
+      "output_relative_error": 0.001654614647623404,
+      "state_relative_error": 3.597252641875375e-08,
+      "finite": true,
+      "guards_intact": true,
+      "within_one_percent": true
+    },
+    {
+      "tokens": 195,
+      "heads": 24,
+      "query_heads": 8,
+      "sequence_lengths": [
+        65,
+        130
+      ],
+      "mixed_head_decay": false,
+      "value_amplitude": 1,
+      "negative_log_decay_per_token": 0.02,
+      "maximum_chunk_decay_span": 1.26,
+      "output_relative_error": 0.003416467817096023,
+      "state_relative_error": 0.002438345359577895,
+      "finite": true,
+      "guards_intact": true,
+      "within_one_percent": true
+    },
+    {
+      "tokens": 195,
+      "heads": 24,
+      "query_heads": 8,
+      "sequence_lengths": [
+        65,
+        130
+      ],
+      "mixed_head_decay": true,
+      "value_amplitude": 1,
+      "negative_log_decay_per_token": 3.2,
+      "maximum_chunk_decay_span": 201.60000000000002,
+      "output_relative_error": 0.003408338624136927,
+      "state_relative_error": 0.002441776999705826,
+      "finite": true,
+      "guards_intact": true,
+      "within_one_percent": true
+    }
+  ]
+}
