@@ -120,6 +120,7 @@ patches:
     reason: Expose the DFlash selector top-k experimental control while preserving the checkpoint default.
     runner: v2
   patch_dflash_w4:
+    tests_add: [dflash-w4-stream-cpu]
     v030_disposition: RETAIN_UNCHANGED
     areas: [dflash, quantization, draft]
     reason: Integrate Radiance W4 draft-linears for the opt-in fast DFlash path.

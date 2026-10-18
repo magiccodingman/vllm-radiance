@@ -282,8 +282,10 @@ if ENABLED:
                 N: int, WV: int, SK: int, MB: int, NPW: int, NT: int) -> torch.Tensor:
         M, K = a.shape
         c = torch.empty((M, N), device=a.device, dtype=torch.bfloat16)
-        _GEMM(a.data_ptr(), wq.data_ptr(), wsz.data_ptr(), c.data_ptr(),
-              M, K, N, WV, SK, MB, NPW, NT, torch.cuda.current_stream().cuda_stream)
+        with torch.cuda.device(a.device):
+            _GEMM(a.data_ptr(), wq.data_ptr(), wsz.data_ptr(), c.data_ptr(),
+                  M, K, N, WV, SK, MB, NPW, NT,
+                  torch.cuda.current_stream(a.device).cuda_stream)
         return c
 
     @w4_gemm.register_fake
@@ -297,11 +299,12 @@ if ENABLED and _A8 is not None:
         M, K = a.shape
         q = torch.empty((M, K), device=a.device, dtype=torch.int8)
         sc = torch.empty(M, device=a.device, dtype=torch.float32)
-        st = torch.cuda.current_stream().cuda_stream
-        _QACT(a.data_ptr(), q.data_ptr(), sc.data_ptr(), M, K, st)
         c = torch.empty((M, N), device=a.device, dtype=torch.bfloat16)
-        _A8(q.data_ptr(), sc.data_ptr(), wq.data_ptr(), wsz.data_ptr(), c.data_ptr(),
-            M, K, N, WV, SK, MB, NPW, NT, st)
+        with torch.cuda.device(a.device):
+            st = torch.cuda.current_stream(a.device).cuda_stream
+            _QACT(a.data_ptr(), q.data_ptr(), sc.data_ptr(), M, K, st)
+            _A8(q.data_ptr(), sc.data_ptr(), wq.data_ptr(), wsz.data_ptr(), c.data_ptr(),
+                M, K, N, WV, SK, MB, NPW, NT, st)
         return c
 
     @w4a8_gemm.register_fake
