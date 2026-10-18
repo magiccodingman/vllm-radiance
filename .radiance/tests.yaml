@@ -46,9 +46,9 @@ change_map:
 - pattern: '^(radiance_r4d_attn|patch_r4d|patch_unified_attention_lds)'
   areas: [attention, libr4d]
 profiles:
-  pr: [control-plane-validate, python-compile, kv-offload-registration-cpu, kv-offload-rank-sharded-cpu, kv-offload-restore-cpu, qwen-tool-grammar-cpu, client-tool-gate-cpu]
-  upgrade: [control-plane-validate, python-compile, kv-offload-registration-cpu, kv-offload-rank-sharded-cpu, kv-offload-restore-cpu, parser-shared-engine-image, xgrammar-spec-image, qwen-open-object-image, qwen-tool-grammar-image, client-tool-gate-cpu, client-tool-live, fp8-kv-calibration-image, tunableop-preflight-image, r9700-tp2-smoke, tool-schema-live, open-object-tool-live, betterbench-standard, correctness-equivalence]
-  release: [control-plane-validate, python-compile, kv-offload-registration-cpu, kv-offload-rank-sharded-cpu, kv-offload-restore-cpu, parser-shared-engine-image, xgrammar-spec-image, qwen-open-object-image, qwen-tool-grammar-image, client-tool-gate-cpu, client-tool-live, fp8-kv-calibration-image, tunableop-preflight-image, r9700-tp2-smoke, tool-schema-live, open-object-tool-live, betterbench-standard, correctness-equivalence, capacity-qualification]
+  pr: [control-plane-validate, python-source-checks-cpu, python-compile, kv-offload-registration-cpu, kv-offload-rank-sharded-cpu, kv-offload-restore-cpu, qwen-tool-grammar-cpu, client-tool-gate-cpu]
+  upgrade: [control-plane-validate, python-compile, kv-offload-registration-cpu, kv-offload-rank-sharded-cpu, kv-offload-restore-cpu, parser-shared-engine-image, xgrammar-spec-image, qwen-open-object-image, fp8-kv-calibration-image, tunableop-preflight-image, r9700-tp2-smoke, tool-schema-live, open-object-tool-live, betterbench-standard, correctness-equivalence, qwen-tool-grammar-image, client-tool-gate-cpu, client-tool-live]
+  release: [control-plane-validate, python-compile, kv-offload-registration-cpu, kv-offload-rank-sharded-cpu, kv-offload-restore-cpu, parser-shared-engine-image, xgrammar-spec-image, qwen-open-object-image, fp8-kv-calibration-image, tunableop-preflight-image, r9700-tp2-smoke, tool-schema-live, open-object-tool-live, betterbench-standard, correctness-equivalence, capacity-qualification, qwen-tool-grammar-image, client-tool-gate-cpu, client-tool-live]
 tests:
 - id: client-tool-gate-cpu
   class: contract
@@ -66,6 +66,14 @@ tests:
   automatic: false
   ci: false
   description: Synthetic QA keypress and nested Int64 package regressions, auto/non-strict and strict, streaming and non-streaming.
+- id: python-source-checks-cpu
+  class: contract
+  hardware: cpu
+  areas: [control-plane]
+  command: python -m unittest discover -s tests -p test_python_source_checks.py -v
+  automatic: true
+  ci: true
+  description: Syntax errors in every source group and missing inputs must fail on all host shells.
 - id: qwen-tool-grammar-cpu
   class: contract
   hardware: cpu
@@ -181,7 +189,7 @@ tests:
   class: static
   hardware: cpu
   areas: [control-plane, patches, runtime, build]
-  command: python -m compileall -q _patchlib.py install_radiance_hooks.py patch_*.py radiance_*.py benchmarks/bin tools
+  command: python tools/check_python_sources.py
   automatic: true
   ci: true
   description: Compile Python sources without importing GPU/runtime dependencies.
