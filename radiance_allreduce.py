@@ -165,6 +165,8 @@ class RadianceAllreduce:
     def should_custom_ar(self, inp: torch.Tensor) -> bool:
         if self.disabled:
             return False
+        if not inp.is_cuda or inp.device != self.device:
+            return False
         if inp.dtype not in _DTYPE_CODE:
             return False
         nbytes = inp.numel() * inp.element_size()
@@ -172,7 +174,8 @@ class RadianceAllreduce:
             return False
         if nbytes > self.max_bytes:
             return False
-        return inp.is_contiguous()
+        # A contiguous slice may still start partway through a 16-byte word.
+        return inp.is_contiguous() and inp.data_ptr() % 16 == 0
 
     def _nblocks(self, n16: int) -> int:
         # PCIe saturates with few blocks; extra blocks only help the reduce. Scale with
@@ -208,26 +211,27 @@ class RadianceAllreduce:
     def custom_all_reduce(self, inp: torch.Tensor):
         if not self.should_custom_ar(inp):
             return None
-        out = torch.empty_like(inp)
-        nbytes = inp.numel() * inp.element_size()
-        stream = torch.cuda.current_stream().cuda_stream
-        if self._quant_ok(inp):
-            self._ar_wht6(
-                self._peer_scratch, self._scratch, self._peer_flags, self._flags,
-                self._seq.data_ptr(), self._locpk.data_ptr(),
-                self.max_bytes, self.max_bytes // 2,
-                inp.data_ptr(), out.data_ptr(), inp.numel(),
-                _DTYPE_CODE[inp.dtype], stream, self._nblocks_q(nbytes), self.qnt,
-                self.drain, self.acq,
-            )
-        else:
-            self._ar_exact(
-                self._peer_scratch, self._scratch, self._peer_flags, self._flags,
-                self._seq.data_ptr(), self.slot16,
-                inp.data_ptr(), out.data_ptr(), inp.numel(),
-                _DTYPE_CODE[inp.dtype], stream, self._nblocks(nbytes // 16), self.nt,
-                self.drain, self.acq,
-            )
+        with torch.cuda.device(self.device):
+            out = torch.empty_like(inp)
+            nbytes = inp.numel() * inp.element_size()
+            stream = torch.cuda.current_stream(self.device).cuda_stream
+            if self._quant_ok(inp):
+                self._ar_wht6(
+                    self._peer_scratch, self._scratch, self._peer_flags, self._flags,
+                    self._seq.data_ptr(), self._locpk.data_ptr(),
+                    self.max_bytes, self.max_bytes // 2,
+                    inp.data_ptr(), out.data_ptr(), inp.numel(),
+                    _DTYPE_CODE[inp.dtype], stream, self._nblocks_q(nbytes), self.qnt,
+                    self.drain, self.acq,
+                )
+            else:
+                self._ar_exact(
+                    self._peer_scratch, self._scratch, self._peer_flags, self._flags,
+                    self._seq.data_ptr(), self.slot16,
+                    inp.data_ptr(), out.data_ptr(), inp.numel(),
+                    _DTYPE_CODE[inp.dtype], stream, self._nblocks(nbytes // 16), self.nt,
+                    self.drain, self.acq,
+                )
         return out
 
     @contextmanager
@@ -261,7 +265,8 @@ def install_custom_ar():
         self.radiance_comm = None
         try:
             # only the TP group does custom AR (matches vLLM's own gating)
-            if "tp" in getattr(self, "unique_name", "") and getattr(self, "world_size", 1) == 2:
+            if (getattr(self, "unique_name", "").split(":")[0] == "tp"
+                    and getattr(self, "world_size", 1) == 2):
                 comm = RadianceAllreduce(self.cpu_group, self.device)
                 if not comm.disabled:
                     self.radiance_comm = comm
