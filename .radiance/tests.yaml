@@ -15,6 +15,8 @@ qualification_levels:
 change_map:
 - pattern: '^benchmarks/bin/(run_client_tool_gate|check_client_tool_gate|run_tool_schema_gate)'
   areas: [parser, structured-output]
+- pattern: '^(radiance_kv_calibration\.py$|tests/test_calibration_validation\.py$)'
+  areas: [fp8-kv, attention]
 - pattern: '^(\.radiance/|tools/|AGENTS\.md$|CONTRIBUTING\.md$|docs/maintenance/)'
   areas: [control-plane]
 - pattern: '^(Dockerfile|Dockerfile\.dev|Dockerfile\.patch|\.gitlab-ci\.yml|Makefile)$'
@@ -46,9 +48,9 @@ change_map:
 - pattern: '^(radiance_r4d_attn|patch_r4d|patch_unified_attention_lds)'
   areas: [attention, libr4d]
 profiles:
-  pr: [control-plane-validate, python-compile, kv-offload-registration-cpu, kv-offload-rank-sharded-cpu, kv-offload-restore-cpu, qwen-tool-grammar-cpu, client-tool-gate-cpu]
-  upgrade: [control-plane-validate, python-compile, kv-offload-registration-cpu, kv-offload-rank-sharded-cpu, kv-offload-restore-cpu, parser-shared-engine-image, xgrammar-spec-image, qwen-open-object-image, qwen-tool-grammar-image, client-tool-gate-cpu, client-tool-live, fp8-kv-calibration-image, tunableop-preflight-image, r9700-tp2-smoke, tool-schema-live, open-object-tool-live, betterbench-standard, correctness-equivalence]
-  release: [control-plane-validate, python-compile, kv-offload-registration-cpu, kv-offload-rank-sharded-cpu, kv-offload-restore-cpu, parser-shared-engine-image, xgrammar-spec-image, qwen-open-object-image, qwen-tool-grammar-image, client-tool-gate-cpu, client-tool-live, fp8-kv-calibration-image, tunableop-preflight-image, r9700-tp2-smoke, tool-schema-live, open-object-tool-live, betterbench-standard, correctness-equivalence, capacity-qualification]
+  pr: [control-plane-validate, calibration-validation-cpu, python-compile, kv-offload-registration-cpu, kv-offload-rank-sharded-cpu, kv-offload-restore-cpu, qwen-tool-grammar-cpu, client-tool-gate-cpu]
+  upgrade: [control-plane-validate, python-compile, kv-offload-registration-cpu, kv-offload-rank-sharded-cpu, kv-offload-restore-cpu, parser-shared-engine-image, xgrammar-spec-image, qwen-open-object-image, fp8-kv-calibration-image, tunableop-preflight-image, r9700-tp2-smoke, tool-schema-live, open-object-tool-live, betterbench-standard, correctness-equivalence, qwen-tool-grammar-image, client-tool-gate-cpu, client-tool-live]
+  release: [control-plane-validate, python-compile, kv-offload-registration-cpu, kv-offload-rank-sharded-cpu, kv-offload-restore-cpu, parser-shared-engine-image, xgrammar-spec-image, qwen-open-object-image, fp8-kv-calibration-image, tunableop-preflight-image, r9700-tp2-smoke, tool-schema-live, open-object-tool-live, betterbench-standard, correctness-equivalence, capacity-qualification, qwen-tool-grammar-image, client-tool-gate-cpu, client-tool-live]
 tests:
 - id: client-tool-gate-cpu
   class: contract
@@ -66,6 +68,14 @@ tests:
   automatic: false
   ci: false
   description: Synthetic QA keypress and nested Int64 package regressions, auto/non-strict and strict, streaming and non-streaming.
+- id: calibration-validation-cpu
+  class: contract
+  hardware: cpu
+  areas: [fp8-kv, attention]
+  command: python -m unittest discover -s tests -p test_calibration_validation.py -v
+  automatic: true
+  ci: true
+  description: Validate per-rank observations, finite FP32 scales and CPU preflight before importing vLLM.
 - id: qwen-tool-grammar-cpu
   class: contract
   hardware: cpu
