@@ -250,7 +250,17 @@ def _apply_head_lazy(self, lm_head, hidden_states, embedding_bias):
         # Still empty on a real call: something is wrong, but a coarse head would be silently
         # catastrophic, so fall back to the stock GEMM rather than guess.
         return type(self)._apply_head(self, lm_head, hidden_states, embedding_bias)
-    status = _quantize_head_now(self, lm_head)
+    try:
+        status = _quantize_head_now(self, lm_head)
+    except Exception as exc:
+        # Optional packing may fail after installing part of the fast path.
+        # Restore the processor's own implementation, including subclasses.
+        self._apply_head = types.MethodType(type(self)._apply_head, self)
+        status = f"packing failed; using native head: {exc}"
+    if getattr(self._apply_head, "__func__", None) is _apply_head_lazy:
+        # Unsupported shapes can decline packing without rebinding the method.
+        # Replace the lazy trampoline permanently rather than recursively retrying.
+        self._apply_head = types.MethodType(type(self)._apply_head, self)
     sys.stderr.write(f"[radiance] INT{BITS}_DRAFT_HEAD (lazy): {status}\n")
     sys.stderr.flush()
     return self._apply_head(lm_head, hidden_states, embedding_bias)
@@ -296,8 +306,11 @@ _HEAD_CACHE: dict = {}
 def _quantize_head_now(lp, lm_head):
     w = lm_head.weight
     n, k = w.shape
-    if k % (2 * GROUP):
-        return f"hidden size {k} not a multiple of {2 * GROUP}"
+    per_byte = 8 // BITS
+    # Each packed plane must contain whole groups: INT2 has four quarter planes,
+    # whereas INT4 has two halves. The kernel loops over K / planes / GROUP.
+    if k % (per_byte * GROUP):
+        return f"hidden size {k} not a multiple of {per_byte * GROUP}"
 
     cached = _HEAD_CACHE.get((w.data_ptr(), n, k))
     if cached is not None:
@@ -312,7 +325,6 @@ def _quantize_head_now(lp, lm_head):
     # Quantise in row chunks: a whole-tensor fp32 intermediate is 2.5 GiB here, and the caching
     # allocator keeps that reservation for the rest of the process, which comes straight out of
     # the VRAM the KV cache could have used.
-    per_byte = 8 // BITS
     lv = (1 << BITS) - 1
     packed = torch.empty(n, k // per_byte, dtype=torch.uint8, device=w.device)
     scale = torch.empty(n, k // GROUP, dtype=torch.bfloat16, device=w.device)
