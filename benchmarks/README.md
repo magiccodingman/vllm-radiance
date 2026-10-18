@@ -613,7 +613,11 @@ not executable reporting API definitions or customer prompts.
 
 The client gate and installed grammar compiler check are in the upgrade/release
 qualification plans. CPU negative controls run in PR CI and prove malformed
-first/second calls and truncated streams are rejected. Live gates remain manual
+first/second calls and truncated streams are rejected. Package comparisons use
+JSON types, so boolean `false` cannot substitute for integer `0` in version or
+coordinate fields. Confidence values that overflow the host float parser are
+rejected; finite values retain the fixture's existing unrestricted number schema.
+Live gates remain manual
 hardware qualification, not automatic Docker-publication CI. Run against the
 exact candidate image with the intended deployment flags (including both Qwen
 compatibility switches for the supported Int64 fixture). Preserve failures and
