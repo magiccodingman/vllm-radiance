@@ -59,9 +59,18 @@ def manifest_path(root: Path) -> Path:
 
 
 def write_manifest(root: Path, *, input_pattern: str, num_gpus: int) -> Path:
+    target = manifest_path(root)
+    if target.exists():
+        raise FileExistsError(f"immutable TunableOp manifest already exists: {target}")
+    if type(num_gpus) is not int or num_gpus < 1:
+        raise ValueError("num_gpus must be a positive integer")
     files = result_files(root)
     if not files:
         raise RuntimeError(f"TunableOp produced no non-empty results*.csv beneath {root}")
+    names = {path.name for path in files}
+    for ordinal in range(num_gpus):
+        if f"results{ordinal}.csv" not in names:
+            raise ValueError(f"TunableOp produced no non-empty results{ordinal}.csv")
     rocm, devices = _torch_runtime()
     data: dict[str, Any] = {
         "schema_version": SCHEMA_VERSION,
@@ -89,8 +98,8 @@ def write_manifest(root: Path, *, input_pattern: str, num_gpus: int) -> Path:
         },
         "device_names": devices,
     }
-    target = manifest_path(root)
-    target.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    with target.open("x", encoding="utf-8") as handle:
+        handle.write(json.dumps(data, indent=2, sort_keys=True) + "\n")
     return target
 
 
@@ -104,7 +113,9 @@ def verify(root: Path) -> dict[str, Any]:
     listed = data.get("results")
     if not isinstance(listed, list) or not listed:
         raise ValueError("TunableOp manifest has no result files")
-    expected_devices = int(data.get("num_gpus", 0))
+    expected_devices = data.get("num_gpus")
+    if type(expected_devices) is not int or expected_devices < 1:
+        raise ValueError("TunableOp manifest num_gpus must be a positive integer")
     names = {record["filename"] for record in listed}
     for ordinal in range(expected_devices):
         if f"results{ordinal}.csv" not in names:
@@ -133,6 +144,12 @@ def verify(root: Path) -> dict[str, Any]:
 def tune(args: argparse.Namespace) -> None:
     root = Path(args.root).resolve()
     root.mkdir(parents=True, exist_ok=True)
+    if type(args.num_gpus) is not int or args.num_gpus < 1:
+        raise ValueError("num_gpus must be a positive integer")
+    if manifest_path(root).exists() or any(root.glob("results*.csv")):
+        raise FileExistsError(
+            f"TunableOp output already exists beneath {root}; preserve it and select a fresh namespace"
+        )
     pattern = str(root / args.input_pattern)
     inputs = sorted(Path(path) for path in glob.glob(pattern))
     if not inputs:

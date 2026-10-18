@@ -124,6 +124,12 @@ important possible secondary effect.
 This uses PyTorch's standard two-stage offline workflow rather than tuning
 inside model loading or production requests.
 
+Tuning requires a namespace with no existing `results*.csv` or manifest.
+Completed and partial results, including empty output files from failed runs,
+are preserved: select a fresh namespace to retry. A manifest cannot be
+overwritten to bless modified results. It is created only when every requested
+GPU ordinal has a non-empty result, and its GPU count must be a positive integer.
+
 ### 1. Collect signatures
 
 Choose a fresh, explicit namespace and start the candidate with:
