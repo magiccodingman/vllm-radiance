@@ -251,6 +251,7 @@ patches:
     reason: Preserve open nested-object schemas used by deferred-tool wrappers instead of flattening/restricting arguments.
     runner: independent
   patch_r4d:
+    tests_add: [vit-dispatch-cpu]
     v030_disposition: MECHANICAL_PORT
     areas: [libr4d, attention, gdn]
     reason: Integrate libr4d operators with the pinned vLLM model/runtime paths.
