@@ -24,6 +24,26 @@ def load(path: Path) -> dict[str, object]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def evidence_errors(result: dict[str, object], label: str) -> list[str]:
+    """Reject absent or incomplete evidence before comparing equal values."""
+    errors = []
+    texts = result.get("generated_texts")
+    if not isinstance(texts, list) or not texts or not all(isinstance(text, str) for text in texts):
+        errors.append(f"{label}: non-empty generated_texts list of strings is required")
+    lengths = result.get("output_lens")
+    if (not isinstance(lengths, list)
+            or not isinstance(texts, list) or len(lengths) != len(texts)
+            or any(type(length) is not int or length < 0 for length in lengths)):
+        errors.append(f"{label}: output_lens must contain one non-negative integer per text")
+    if "failed" in result and (type(result["failed"]) is not int or result["failed"] != 0):
+        errors.append(f"{label}: failed requests are present or the failure count is invalid")
+    if "completed" in result and (
+            type(result["completed"]) is not int or not isinstance(texts, list)
+            or result["completed"] != len(texts)):
+        errors.append(f"{label}: completed count does not match generated texts")
+    return errors
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Require identical greedy text/lengths for common raw cases."
@@ -50,6 +70,10 @@ def main() -> None:
         if str(cand.get("temperature")) not in {"0", "0.0"}:
             mismatches.append(f"{name}: candidate is not greedy")
             continue
+        invalid = evidence_errors(base, f"{name}: baseline") + evidence_errors(cand, f"{name}: candidate")
+        if invalid:
+            mismatches.extend(invalid)
+            continue
         for field in ("seed", "prompts", "prompts_sha256", "input_lens"):
             if field not in base and field not in cand:
                 continue
@@ -57,9 +81,6 @@ def main() -> None:
                 mismatches.append(f"{name}: {field} differs")
         base_text = base.get("generated_texts")
         cand_text = cand.get("generated_texts")
-        if not isinstance(base_text, list) or not isinstance(cand_text, list):
-            mismatches.append(f"{name}: detailed generated text is missing")
-            continue
         comparisons += max(len(base_text), len(cand_text))
         if base.get("output_lens") != cand.get("output_lens"):
             mismatches.append(f"{name}: output token lengths differ")
