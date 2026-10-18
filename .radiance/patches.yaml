@@ -247,6 +247,7 @@ patches:
     runner: independent
   patch_qwen_open_object_schema:
     v030_disposition: RETAIN_UNCHANGED
+    tests_add: [qwen-schema-literals-cpu]
     areas: [parser, tools, structured-output]
     reason: Preserve open nested-object schemas used by deferred-tool wrappers instead of flattening/restricting arguments.
     runner: independent
