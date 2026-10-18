@@ -15,7 +15,8 @@
       exact <parameter=..> XML the model was trained on. Same fix as qwen3.6-enhanced.jinja.
    3. Self-healing for an unclosed <think> that swallowed a <tool_call> (carried over from
       qwen3.6-enhanced.jinja), and the reasoning_content fallback for clients that inline
-      <think>..</think> in content instead of sending reasoning_content.
+      <think>..</think> in content instead of sending reasoning_content. Only the first
+      closing boundary splits reasoning from the answer; later delimiters remain data.
 
    Qwen3.8 semantics kept as-is from the official template:
    - reasoning_effort: xhigh (default) | medium | low, injected as a system instruction.
@@ -216,7 +217,7 @@
                more forgiving and prevents a double-wrapped think block). #}
             {%- if '</think>' in content -%}
                 {%- set reasoning_content = content.split('</think>')[0].rstrip('\n').split('<think>')[-1].lstrip('\n') -%}
-                {%- set content = content.split('</think>')[-1].lstrip('\n') -%}
+                {%- set content = content.split('</think>', 1)[1].lstrip('\n') -%}
             {%- endif -%}
         {%- endif -%}
         {%- set reasoning_content = reasoning_content|trim -%}

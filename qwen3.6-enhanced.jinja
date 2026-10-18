@@ -14,7 +14,8 @@
 {# Macro to render individual tool parameters #}
 {%- macro render_tool_parameter(args_name, args_value) -%}
     {{- '<parameter=' ~ args_name ~ '>\n' -}}
-    {%- set args_value = args_value | tojson(ensure_ascii=False) | safe if args_value is mapping or (args_value is sequence and args_value is not string) else args_value | string -%}
+    {# Keep strings verbatim and use JSON for booleans, nulls and other values. #}
+    {%- set args_value = args_value | string if args_value is string else args_value | tojson(ensure_ascii=False) | safe -%}
     {{- args_value -}}
     {{- '\n</parameter>\n' -}}
 {%- endmacro -%}
@@ -158,7 +159,7 @@
         {%- else -%}
             {%- if '</think>' in content -%}
                 {%- set reasoning_content = content.split('</think>')[0].rstrip('\n').split('<think>')[-1].lstrip('\n') -%}
-                {%- set content = content.split('</think>')[-1].lstrip('\n') -%}
+                {%- set content = content.split('</think>', 1)[1].lstrip('\n') -%}
             {%- endif -%}
         {%- endif -%}
         {%- set reasoning_content = reasoning_content|trim -%}
