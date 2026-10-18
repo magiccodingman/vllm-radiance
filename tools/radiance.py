@@ -85,8 +85,18 @@ def show_plan(items: list[dict[str, Any]]) -> None:
 
 
 def run_auto(items: list[dict[str, Any]], dry_run: bool) -> int:
+    # Validate the whole plan before launching even its first CPU command.
+    # In particular, quoted YAML "false" is truthy in Python.
     for item in items:
-        if not item.get("automatic"):
+        for flag in ("automatic", "ci"):
+            if not isinstance(item.get(flag, False), bool):
+                print(f"FAIL {item['id']}: {flag} must be a YAML boolean")
+                return 1
+        if item.get("automatic") is True and item.get("hardware") != "cpu":
+            print(f"FAIL {item['id']}: automatic checks must require cpu hardware")
+            return 1
+    for item in items:
+        if item.get("automatic") is not True:
             print(f"SKIP {item['id']}: requires {item['hardware']}")
             continue
         print(f"{'PLAN' if dry_run else 'RUN '} {item['id']}: {item['command']}")
