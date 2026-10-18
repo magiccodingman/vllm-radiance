@@ -302,6 +302,26 @@ from radiance_kv_offload import get_rank_sharded_enabled
         "rank_sharded=rank_sharded,",
         "kv-offload rank-sharded: native CPU worker opt-in",
     )
+    # Separate guarded edits also repair images that already carry the layout
+    # overlay: its original idempotence markers must not hide this correction.
+    apply(
+        path,
+        "from radiance_kv_offload import get_rank_sharded_enabled\n",
+        "from radiance_kv_offload import get_rank_sharded_enabled\n"
+        "from vllm.distributed import get_world_group\n",
+        "from vllm.distributed import get_world_group",
+        "kv-offload: import logical worker rank",
+    )
+    apply(
+        path,
+        "                rank = torch.accelerator.current_device_index() % world_size\n",
+        "                # Worker order is logical, not a physical/visible GPU ordinal.\n"
+        "                # Modulo removes outer DP offsets, as PP/PCP/TP are the\n"
+        "                # contiguous inner dimensions of vLLM's rank layout.\n"
+        "                rank = get_world_group().rank_in_group % world_size\n",
+        "rank = get_world_group().rank_in_group % world_size",
+        "kv-offload: select slot by logical worker rank",
+    )
 
 
 def patch_gpu_worker_registration() -> None:

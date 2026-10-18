@@ -13,6 +13,8 @@ qualification_levels:
 - performance-qualified
 - release-qualified
 change_map:
+- pattern: '^(patch_kv_offload_rank_sharded\.py$|tests/test_kv_worker_rank\.py$)'
+  areas: [kv-offload]
 - pattern: '^benchmarks/bin/(run_client_tool_gate|check_client_tool_gate|run_tool_schema_gate)'
   areas: [parser, structured-output]
 - pattern: '^(\.radiance/|tools/|AGENTS\.md$|CONTRIBUTING\.md$|docs/maintenance/)'
@@ -50,6 +52,14 @@ profiles:
   upgrade: [control-plane-validate, python-compile, kv-offload-registration-cpu, kv-offload-rank-sharded-cpu, kv-offload-restore-cpu, parser-shared-engine-image, xgrammar-spec-image, qwen-open-object-image, qwen-tool-grammar-image, client-tool-gate-cpu, client-tool-live, fp8-kv-calibration-image, tunableop-preflight-image, r9700-tp2-smoke, tool-schema-live, open-object-tool-live, betterbench-standard, correctness-equivalence]
   release: [control-plane-validate, python-compile, kv-offload-registration-cpu, kv-offload-rank-sharded-cpu, kv-offload-restore-cpu, parser-shared-engine-image, xgrammar-spec-image, qwen-open-object-image, qwen-tool-grammar-image, client-tool-gate-cpu, client-tool-live, fp8-kv-calibration-image, tunableop-preflight-image, r9700-tp2-smoke, tool-schema-live, open-object-tool-live, betterbench-standard, correctness-equivalence, capacity-qualification]
 tests:
+- id: kv-worker-rank-cpu
+  class: contract
+  hardware: cpu
+  areas: [kv-offload]
+  command: python -m unittest discover -s tests -p test_kv_worker_rank.py -v
+  automatic: true
+  ci: true
+  description: Execute the patched constructor for TP2/TP4, isolated/reordered devices, DP offsets and existing-image upgrades; no DMA or GPU.
 - id: client-tool-gate-cpu
   class: contract
   hardware: cpu
