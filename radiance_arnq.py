@@ -320,12 +320,10 @@ def install(model) -> None:
         if getattr(layer, "layer_scale", False) or layer.use_attn_reduce_scatter_for_moe:
             _log(f"layer {i}: layer_scale/SP branch live, left stock")
             layer._rad_fp8_in = layer._rad_fp8_mid = False
-            layer.forward = types.MethodType(_stream_forward, layer)
             continue
         if getattr(layer.mlp, "expert_gate", None) is not None:
             _log(f"layer {i}: mlp.expert_gate present, left stock")
             layer._rad_fp8_in = layer._rad_fp8_mid = False
-            layer.forward = types.MethodType(_stream_forward, layer)
             continue
         row = (layer.linear_attn.out_proj if layer.layer_type == "linear_attention"
                else layer.self_attn.o_proj)
@@ -342,10 +340,12 @@ def install(model) -> None:
         # finishes it. Never on the last layer (model.norm and the drafter read its output).
         nxt = layers[i + 1] if i + 1 < L else None
         down = layer.mlp.down_proj
-        down_ok = (nxt is not None and _linear_is_ours(down) and down.bias is None
-                   and down.reduce_results and _consumers_ok(nxt)
+        down_ok = (nxt is not None
                    and not getattr(nxt, "layer_scale", False)
-                   and not nxt.use_attn_reduce_scatter_for_moe)
+                   and not nxt.use_attn_reduce_scatter_for_moe
+                   and getattr(nxt.mlp, "expert_gate", None) is None
+                   and _linear_is_ours(down) and down.bias is None
+                   and down.reduce_results and _consumers_ok(nxt))
         if down_ok:
             down.reduce_results = False
             nxt._rad_fp8_in = True
