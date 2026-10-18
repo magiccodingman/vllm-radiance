@@ -13,6 +13,8 @@ qualification_levels:
 - performance-qualified
 - release-qualified
 change_map:
+- pattern: '^(radiance_allreduce\.py$|tests/test_allreduce_quant_consensus\.py$)'
+  areas: [allreduce, libr4d]
 - pattern: '^benchmarks/bin/(run_client_tool_gate|check_client_tool_gate|run_tool_schema_gate)'
   areas: [parser, structured-output]
 - pattern: '^(\.radiance/|tools/|AGENTS\.md$|CONTRIBUTING\.md$|docs/maintenance/)'
@@ -50,6 +52,22 @@ profiles:
   upgrade: [control-plane-validate, python-compile, kv-offload-registration-cpu, kv-offload-rank-sharded-cpu, kv-offload-restore-cpu, parser-shared-engine-image, xgrammar-spec-image, qwen-open-object-image, qwen-tool-grammar-image, client-tool-gate-cpu, client-tool-live, fp8-kv-calibration-image, tunableop-preflight-image, r9700-tp2-smoke, tool-schema-live, open-object-tool-live, betterbench-standard, correctness-equivalence]
   release: [control-plane-validate, python-compile, kv-offload-registration-cpu, kv-offload-rank-sharded-cpu, kv-offload-restore-cpu, parser-shared-engine-image, xgrammar-spec-image, qwen-open-object-image, qwen-tool-grammar-image, client-tool-gate-cpu, client-tool-live, fp8-kv-calibration-image, tunableop-preflight-image, r9700-tp2-smoke, tool-schema-live, open-object-tool-live, betterbench-standard, correctness-equivalence, capacity-qualification]
 tests:
+- id: allreduce-gloo-cpu
+  class: contract
+  hardware: cpu
+  areas: [allreduce, libr4d]
+  command: uv run --project benchmarks/conformance --locked --group dev --extra cpu-tests python -m unittest discover -s tests -p test_allreduce_gloo.py -v
+  automatic: true
+  ci: false
+  description: Real two/four-process Gloo checks group protocol agreement and TP4 stock fallback with native allocation/IPC doubles; no GPU qualification.
+- id: allreduce-quant-consensus-cpu
+  class: contract
+  hardware: cpu
+  areas: [allreduce, libr4d]
+  command: python -m unittest discover -s tests -p test_allreduce_quant_consensus.py -v
+  automatic: true
+  ci: true
+  description: Threaded CPU rendezvous checks group-wide quant protocol fallback and independent TP2 groups on four synthetic workers; no native execution.
 - id: client-tool-gate-cpu
   class: contract
   hardware: cpu
