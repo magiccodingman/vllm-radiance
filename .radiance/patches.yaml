@@ -276,6 +276,7 @@ patches:
     reason: Route qualified skinny GEMM shapes through Radiance-tuned implementations.
     runner: both
   patch_topk_composite:
+    tests_add: [topk-vocabulary-cpu]
     v030_disposition: RETAIN_UNCHANGED
     areas: [sampling, topk]
     reason: Install the bounded composite top-k path with exact fallback.
