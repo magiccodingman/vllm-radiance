@@ -100,6 +100,7 @@ patches:
     reason: Install Radiance DFlash integration hooks on top of vLLM's native DFlash2 implementation.
     runner: v2
   patch_dflash_fused_kv_fp8:
+    tests_add: [dflash-fused-kv-cpu]
     v030_disposition: RETAIN_UNCHANGED
     areas: [dflash, fp8-kv, speculative]
     reason: Preserve fused FP8 KV handling required by the qualified DFlash lane.

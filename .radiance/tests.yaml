@@ -13,6 +13,8 @@ qualification_levels:
 - performance-qualified
 - release-qualified
 change_map:
+- pattern: '^tests/test_dflash_fused_kv_projection\.py$'
+  areas: [dflash, speculative, fp8-kv]
 - pattern: '^benchmarks/bin/(run_client_tool_gate|check_client_tool_gate|run_tool_schema_gate)'
   areas: [parser, structured-output]
 - pattern: '^(\.radiance/|tools/|AGENTS\.md$|CONTRIBUTING\.md$|docs/maintenance/)'
@@ -46,10 +48,18 @@ change_map:
 - pattern: '^(radiance_r4d_attn|patch_r4d|patch_unified_attention_lds)'
   areas: [attention, libr4d]
 profiles:
-  pr: [control-plane-validate, python-compile, kv-offload-registration-cpu, kv-offload-rank-sharded-cpu, kv-offload-restore-cpu, qwen-tool-grammar-cpu, client-tool-gate-cpu]
-  upgrade: [control-plane-validate, python-compile, kv-offload-registration-cpu, kv-offload-rank-sharded-cpu, kv-offload-restore-cpu, parser-shared-engine-image, xgrammar-spec-image, qwen-open-object-image, qwen-tool-grammar-image, client-tool-gate-cpu, client-tool-live, fp8-kv-calibration-image, tunableop-preflight-image, r9700-tp2-smoke, tool-schema-live, open-object-tool-live, betterbench-standard, correctness-equivalence]
-  release: [control-plane-validate, python-compile, kv-offload-registration-cpu, kv-offload-rank-sharded-cpu, kv-offload-restore-cpu, parser-shared-engine-image, xgrammar-spec-image, qwen-open-object-image, qwen-tool-grammar-image, client-tool-gate-cpu, client-tool-live, fp8-kv-calibration-image, tunableop-preflight-image, r9700-tp2-smoke, tool-schema-live, open-object-tool-live, betterbench-standard, correctness-equivalence, capacity-qualification]
+  pr: [dflash-fused-kv-cpu, control-plane-validate, python-compile, kv-offload-registration-cpu, kv-offload-rank-sharded-cpu, kv-offload-restore-cpu, qwen-tool-grammar-cpu, client-tool-gate-cpu]
+  upgrade: [dflash-fused-kv-cpu, control-plane-validate, python-compile, kv-offload-registration-cpu, kv-offload-rank-sharded-cpu, kv-offload-restore-cpu, parser-shared-engine-image, xgrammar-spec-image, qwen-open-object-image, qwen-tool-grammar-image, client-tool-gate-cpu, client-tool-live, fp8-kv-calibration-image, tunableop-preflight-image, r9700-tp2-smoke, tool-schema-live, open-object-tool-live, betterbench-standard, correctness-equivalence]
+  release: [dflash-fused-kv-cpu, control-plane-validate, python-compile, kv-offload-registration-cpu, kv-offload-rank-sharded-cpu, kv-offload-restore-cpu, parser-shared-engine-image, xgrammar-spec-image, qwen-open-object-image, qwen-tool-grammar-image, client-tool-gate-cpu, client-tool-live, fp8-kv-calibration-image, tunableop-preflight-image, r9700-tp2-smoke, tool-schema-live, open-object-tool-live, betterbench-standard, correctness-equivalence, capacity-qualification]
 tests:
+- id: dflash-fused-kv-cpu
+  class: contract
+  hardware: cpu
+  areas: [dflash, speculative, fp8-kv]
+  command: uv run --project benchmarks/conformance --locked --group dev --extra cpu-tests python -m unittest discover -s tests -p test_dflash_fused_kv_projection.py
+  automatic: true
+  ci: true
+  description: CPU algebra and fresh/existing overlay migration for bias-free, mixed and packed context KV; no native quantized kernels.
 - id: client-tool-gate-cpu
   class: contract
   hardware: cpu

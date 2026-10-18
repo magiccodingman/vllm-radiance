@@ -12,7 +12,8 @@ behind that slice fails once the drafter checkpoint is quantized:
     weights at all, so nothing can be read out of them yet.
 
 Rather than teach this path about every weight layout, ask the layer for its own effective weight:
-running the identity through `qkv_proj` returns W^T whatever the quant method and layout underneath.
+running the identity through its quant method with no bias returns W^T whatever the layout.
+Calling the full projection would bake its bias into the weight and add it again at first use.
 A one-hot row has amax 1, so its activation quantization is exact and the result is the dequantized
 weight rounded to the compute dtype -- precisely what the fused GEMM would have multiplied by. The
 build is deferred to first use, which is the profile run, so the weights are fully processed and the
@@ -21,7 +22,8 @@ fused buffer is the same bf16 tensor the unquantized path builds.
 
 An unquantized drafter keeps the original eager slice, so the bf16 configuration is untouched.
 
-The test is on the dense dtypes rather than on a list of known quantized ones.
+The shortcut requires a dense dtype and a matrix in every layer. W4 conversion can leave an
+empty bf16 storage parameter while its quant method owns the effective weight.
 The identity path asks the layer for its effective weight and is therefore
 scheme-independent.  Enumerating quantized dtypes would silently misroute a
 new scheme; notably, OCP MXFP4 stores packed uint8 weights with shape [N, K/2].
@@ -44,13 +46,13 @@ HELPER_NEW = '''_DFLASH_DENSE = (torch.bfloat16, torch.float16, torch.float32)
 def _dflash_kv_weight_rows(qkv_proj, q_size: int) -> torch.Tensor:
     """The K/V rows of a qkv projection as a dense compute-dtype matrix."""
     weight = qkv_proj.weight
-    if weight.dtype in _DFLASH_DENSE:
+    if weight.dtype in _DFLASH_DENSE and weight.ndim == 2:
         return weight[q_size:]
     dtype = getattr(qkv_proj, "orig_dtype", torch.bfloat16)
     eye = torch.eye(
         qkv_proj.input_size_per_partition, dtype=dtype, device=weight.device
     )
-    out = qkv_proj(eye)
+    out = qkv_proj.quant_method.apply(qkv_proj, eye, bias=None)
     if isinstance(out, tuple):
         out = out[0]
     return out[:, q_size:].t().contiguous()
@@ -62,7 +64,8 @@ class DFlashQwen3Model(nn.Module):'''
 SLICE_OLD = """        kv_weights = [a.qkv_proj.weight[a.q_size :] for a in layers_attn]
         self._fused_kv_weight = torch.cat(kv_weights, dim=0)"""
 SLICE_NEW = """        self._kv_source_attn = layers_attn
-        if layers_attn[0].qkv_proj.weight.dtype not in _DFLASH_DENSE:
+        if any(a.qkv_proj.weight.dtype not in _DFLASH_DENSE
+               or a.qkv_proj.weight.ndim != 2 for a in layers_attn):
             # Deferred: a quantized qkv_proj cannot be read until its quant method has processed
             # the weights, which happens after load_weights returns.
             self._fused_kv_weight = None
@@ -146,6 +149,21 @@ def main() -> None:
         apply(F, SLICE_OLD, SLICE_NEW, "self._kv_source_attn", "dflash: defer fused KV build")
     apply(F, LAZY_OLD, LAZY_NEW, "if self._fused_kv_weight is None",
           "dflash: materialize fused KV on first use")
+    # Existing images may already contain the previous scheme-independent helper.
+    # Its broad install sentinels must not hide these correctness repairs.
+    apply(F, "    if weight.dtype in _DFLASH_DENSE:\n",
+          "    if weight.dtype in _DFLASH_DENSE and weight.ndim == 2:\n",
+          "weight.dtype in _DFLASH_DENSE and weight.ndim == 2",
+          "dflash: recognize packed dense-dtype storage")
+    apply(F, "    out = qkv_proj(eye)\n",
+          "    out = qkv_proj.quant_method.apply(qkv_proj, eye, bias=None)\n",
+          "qkv_proj.quant_method.apply(qkv_proj, eye, bias=None)",
+          "dflash: exclude bias from materialized KV weights")
+    apply(F, "        if layers_attn[0].qkv_proj.weight.dtype not in _DFLASH_DENSE:\n",
+          "        if any(a.qkv_proj.weight.dtype not in _DFLASH_DENSE\n"
+          "               or a.qkv_proj.weight.ndim != 2 for a in layers_attn):\n",
+          "or a.qkv_proj.weight.ndim != 2 for a in layers_attn)",
+          "dflash: defer mixed-layer KV materialization")
 
 
 if __name__ == "__main__":
