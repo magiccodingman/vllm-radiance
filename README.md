@@ -418,12 +418,13 @@ and an earlier mismatched combination caused sustained TP hangs.
 
 ## Documentation
 
+- [ROCm idle CPU workaround and validation](docs/ROCM_IDLE_CPU.md)
 - [DFlash sampling and GDN prefill numerical corrections](docs/NUMERICAL_CORRECTIONS.md)
 - [Upgrade and reproducibility history](https://gitlab.sayou.io/lance-wright/vllm-radiance/-/blob/main/docs/UPGRADE_PROGRESS.md)
 - [Stable vLLM v0.28 upgrade and qualification](https://gitlab.sayou.io/lance-wright/vllm-radiance/-/blob/main/docs/V028_UPGRADE.md)
 - [Radiance 0.9.3 / libr4d 0.5.0 qualification](https://gitlab.sayou.io/lance-wright/vllm-radiance/-/blob/main/docs/RADIANCE_093_R4D050_MXFP4.md)
 - [MXFP4/W4A8 implementation and validation](https://gitlab.sayou.io/lance-wright/vllm-radiance/-/blob/main/docs/MXFP4_W4A8_R9700.md)
-- [RX4 MXFP4 continuation and qualification](https://gitlab.sayou.io/lance-wright/vllm-radiance/-/blob/main/docs/MXFP4_RX4_CONTINUATION.md)
+- [RX4 MXFP4 continuation and qualification](docs/MXFP4_RX4_CONTINUATION.md)
 - [Compose capacity and prefix-cache qualification](https://gitlab.sayou.io/lance-wright/vllm-radiance/-/blob/main/docs/COMPOSE_CAPACITY.md)
 - [DFlash2 optimization and correctness investigation](https://gitlab.sayou.io/lance-wright/vllm-radiance/-/blob/main/docs/DFLASH2_OPTIMIZATION.md)
 - [XGrammar speculative-decoding backport](https://gitlab.sayou.io/lance-wright/vllm-radiance/-/blob/main/docs/XGRAMMAR_SPECULATIVE_BACKPORT.md)
