@@ -271,6 +271,7 @@ patches:
     runner: both
     provenance: {kind: upstream-backport, upstream_pr: 'vLLM #53818', upstream_commit: 080a66a69c6fd1fe464756f88ab958baad66ce69, evidence: docs/V028_UPGRADE.md}
   patch_skinny_gemm:
+    tests_add: [skinny-gemm-contract-cpu]
     v030_disposition: RETAIN_UNCHANGED
     areas: [gemm, decode]
     reason: Route qualified skinny GEMM shapes through Radiance-tuned implementations.
