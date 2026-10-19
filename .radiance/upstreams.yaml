@@ -12,6 +12,13 @@ commit_trailers:
   Radiance-Upstream-Commit: exact upstream commit when known
   Radiance-Import: cherry-pick|selective-port|conceptual-port
 upstreams:
+- id: rocr-idle-backport
+  repository: https://github.com/ROCm/rocm-systems.git
+  relationship: [selective-backport, experimental-build]
+  areas: [rocm, rocr-idle, build]
+  current_pin: 2b22ab0195cc1461cd9abf3b969e9dd7c10af350
+  last_audited_ref: '7.14.0 binary/source identity and three fixes in backports/rocr-idle/manifest.json; docs/ROCR_IDLE_BACKPORT.md'
+  policy: Explicit experimental image only; preserve the qualified stack and profiler support. Remove after equivalent upstream ownership is qualified.
 - id: vllm
   repository: https://github.com/vllm-project/vllm.git
   relationship:

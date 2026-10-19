@@ -1,0 +1,106 @@
+From 8cc8159ac3e60cb786d21499389bb920035dccb1 Mon Sep 17 00:00:00 2001
+From: Robert Imschweiler <robert.imschweiler@amd.com>
+Date: Fri, 21 Aug 2026 21:22:52 +0200
+Subject: [PATCH] ROCr: notify the wake signal on async-events wakeup paths
+ (ROCM-21824) (#10463)
+
+InterruptSignal::SetEvent() skips hsaKmtSetEvent unless InWaiting() is
+true, which for AsyncEventsControl::wake holds only while
+AsyncEventsLoop is inside its wait. Registrations outside that window
+are silent, leaving the loop to notice them by re-reading signal values
+before it sleeps. That check-then-sleep can lose one, and the loop then
+parks in hsaKmtWaitOnMultipleEvents_Ext (0xFFFFFFFE ms) with the
+registration still in new_async_events_.
+
+Measured on a QMCPACK run, about 61% of registrations issued no
+notification.
+
+Notify unconditionally on the two wakeup paths, registration and
+shutdown. Notifying before the wait is safe; KFD's event-age protocol
+reports it to the next wait. This costs one extra hsaKmtSetEvent per
+registration that previously skipped it. The loop's own StoreRelaxed(0)
+clears stay gated; they can never wake anyone.
+
+Symptom: QMCPACK NiO-fcc-S64 DMC hangs on gfx942 with the GPU idle. The
+OpenMP plugin's device-to-host copy completes, but the async handler
+that signals its host-memcpy step never runs, and the waiter blocks
+holding the stream mutex.
+
+Validated on MI300X, TheRock 10.1.0a20260818, KFD wait left unbounded:
+unmodified 4/4 hang (2/2 built from ef3b1473), with this change 4/4
+pass. Reproduces on MI300X, not only the MI300A the ticket reports.
+
+JIRA ID : ROCM-21824
+---
+ .../runtime/hsa-runtime/core/inc/interrupt_signal.h          | 2 ++
+ projects/rocr-runtime/runtime/hsa-runtime/core/inc/signal.h  | 5 +++++
+ .../runtime/hsa-runtime/core/runtime/interrupt_signal.cpp    | 4 ++++
+ .../runtime/hsa-runtime/core/runtime/runtime.cpp             | 4 ++--
+ 4 files changed, 13 insertions(+), 2 deletions(-)
+
+diff --git a/projects/rocr-runtime/runtime/hsa-runtime/core/inc/interrupt_signal.h b/projects/rocr-runtime/runtime/hsa-runtime/core/inc/interrupt_signal.h
+index a928d2c5ac24..38008f66cb54 100644
+--- a/projects/rocr-runtime/runtime/hsa-runtime/core/inc/interrupt_signal.h
++++ b/projects/rocr-runtime/runtime/hsa-runtime/core/inc/interrupt_signal.h
+@@ -114,6 +114,8 @@ class InterruptSignal : private LocalSignal, public Signal {
+ 
+   void StoreRelease(hsa_signal_value_t value);
+ 
++  void StoreReleaseAndNotify(hsa_signal_value_t value);
++
+   hsa_signal_value_t WaitRelaxed(hsa_signal_condition_t condition,
+                                  hsa_signal_value_t compare_value,
+                                  uint64_t timeout, hsa_wait_state_t wait_hint);
+diff --git a/projects/rocr-runtime/runtime/hsa-runtime/core/inc/signal.h b/projects/rocr-runtime/runtime/hsa-runtime/core/inc/signal.h
+index 16ec6879409d..2a76b369d49d 100644
+--- a/projects/rocr-runtime/runtime/hsa-runtime/core/inc/signal.h
++++ b/projects/rocr-runtime/runtime/hsa-runtime/core/inc/signal.h
+@@ -354,6 +354,11 @@ class Signal {
+   virtual void StoreRelaxed(hsa_signal_value_t value) = 0;
+   virtual void StoreRelease(hsa_signal_value_t value) = 0;
+ 
++  /// @brief Store with release semantics and notify the driver even when no
++  /// waiter is registered. Use on paths that must break a wait which may be
++  /// about to start; SetEvent() alone can skip the notification.
++  virtual void StoreReleaseAndNotify(hsa_signal_value_t value) { StoreRelease(value); }
++
+   virtual hsa_signal_value_t WaitRelaxed(hsa_signal_condition_t condition,
+                                          hsa_signal_value_t compare_value,
+                                          uint64_t timeout,
+diff --git a/projects/rocr-runtime/runtime/hsa-runtime/core/runtime/interrupt_signal.cpp b/projects/rocr-runtime/runtime/hsa-runtime/core/runtime/interrupt_signal.cpp
+index f35b98edc011..ef5db87c07f5 100644
+--- a/projects/rocr-runtime/runtime/hsa-runtime/core/runtime/interrupt_signal.cpp
++++ b/projects/rocr-runtime/runtime/hsa-runtime/core/runtime/interrupt_signal.cpp
+@@ -134,6 +134,10 @@ void InterruptSignal::StoreRelease(hsa_signal_value_t value) {
+   atomic::Store(&signal_.value, int64_t(value), std::memory_order_release);
+   SetEvent();
+ }
++void InterruptSignal::StoreReleaseAndNotify(hsa_signal_value_t value) {
++  atomic::Store(&signal_.value, int64_t(value), std::memory_order_release);
++  if (event_ != nullptr) HSAKMT_CALL(hsaKmtSetEvent(event_));
++}
+ 
+ hsa_signal_value_t InterruptSignal::WaitRelaxed(hsa_signal_condition_t condition,
+                                                hsa_signal_value_t compare_value,
+diff --git a/projects/rocr-runtime/runtime/hsa-runtime/core/runtime/runtime.cpp b/projects/rocr-runtime/runtime/hsa-runtime/core/runtime/runtime.cpp
+index 2b665528b7b8..5e1a9d507989 100644
+--- a/projects/rocr-runtime/runtime/hsa-runtime/core/runtime/runtime.cpp
++++ b/projects/rocr-runtime/runtime/hsa-runtime/core/runtime/runtime.cpp
+@@ -979,7 +979,7 @@ hsa_status_t Runtime::SetAsyncSignalHandler(hsa_signal_t signal, hsa_signal_cond
+ 
+   asyncInfo->new_events.PushBack(signal, cond, value, handler, arg);
+ 
+-  hsa_signal_handle(asyncInfo->control.wake)->StoreRelease(1);
++  hsa_signal_handle(asyncInfo->control.wake)->StoreReleaseAndNotify(1);
+ 
+   return HSA_STATUS_SUCCESS;
+ }
+@@ -3213,7 +3213,7 @@ void Runtime::CloseTools() {
+ 
+ void Runtime::AsyncEventsControl::Shutdown() {
+   exit.store(true, std::memory_order_release);
+-  hsa_signal_handle(wake)->StoreRelaxed(1);
++  hsa_signal_handle(wake)->StoreReleaseAndNotify(1);
+   os::WaitForThread(thread_);
+   os::CloseThread(thread_);
+   thread_ = NULL;

@@ -13,6 +13,8 @@ qualification_levels:
 - performance-qualified
 - release-qualified
 change_map:
+- pattern: '^(backports/rocr-idle/|Dockerfile\.rocr-idle$|tools/.*rocr_idle.*|tests/test_rocr_idle_backport\.py$|docs/ROCR_IDLE_BACKPORT\.md$|\.github/workflows/rocr-idle-cpu\.yml$)'
+  areas: [rocr-idle, rocm, build]
 - pattern: '^benchmarks/bin/(run_client_tool_gate|check_client_tool_gate|run_tool_schema_gate)'
   areas: [parser, structured-output]
 - pattern: '^(\.radiance/|tools/|AGENTS\.md$|CONTRIBUTING\.md$|docs/maintenance/)'
@@ -50,6 +52,30 @@ profiles:
   upgrade: [control-plane-validate, python-compile, kv-offload-registration-cpu, kv-offload-rank-sharded-cpu, kv-offload-restore-cpu, parser-shared-engine-image, xgrammar-spec-image, qwen-open-object-image, qwen-tool-grammar-image, client-tool-gate-cpu, client-tool-live, fp8-kv-calibration-image, tunableop-preflight-image, r9700-tp2-smoke, tool-schema-live, open-object-tool-live, betterbench-standard, correctness-equivalence]
   release: [control-plane-validate, python-compile, kv-offload-registration-cpu, kv-offload-rank-sharded-cpu, kv-offload-restore-cpu, parser-shared-engine-image, xgrammar-spec-image, qwen-open-object-image, qwen-tool-grammar-image, client-tool-gate-cpu, client-tool-live, fp8-kv-calibration-image, tunableop-preflight-image, r9700-tp2-smoke, tool-schema-live, open-object-tool-live, betterbench-standard, correctness-equivalence, capacity-qualification]
 tests:
+- id: rocr-idle-boundary-cpu
+  class: contract
+  hardware: cpu
+  areas: [rocr-idle, rocm, build]
+  command: python -m unittest discover -s tests -p test_rocr_idle_backport.py -v
+  automatic: true
+  ci: true
+  description: Checksum/source guards, original-binary refusal, interrupted-checkout preservation and default isolation.
+- id: rocr-idle-build-cpu
+  class: contract
+  hardware: cpu
+  areas: [rocr-idle, rocm, build]
+  command: 'See .github/workflows/rocr-idle-cpu.yml: prepare exact source, run native CPU contracts, fetch pinned SDK, build and dynamically load the complete library.'
+  automatic: false
+  ci: false
+  description: Linux native compiler/network gate; no GPU needed. The dedicated path-selected CPU workflow executes this full plan.
+- id: rocr-idle-r9700-tp2
+  class: performance
+  hardware: r9700-tp2
+  areas: [rocr-idle, rocm, build]
+  command: 'Follow docs/ROCR_IDLE_BACKPORT.md matched-control hardware protocol and retain the complete release/upgrade qualification plan.'
+  automatic: false
+  ci: false
+  description: Exact loaded-library identity, idle CPU, sparse callback latency, lifecycle/profiling, TP2 serving, correctness and matched performance. Required before promotion.
 - id: client-tool-gate-cpu
   class: contract
   hardware: cpu

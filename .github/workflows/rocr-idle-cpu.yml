@@ -1,0 +1,60 @@
+name: Experimental ROCr idle backport (CPU build)
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'backports/rocr-idle/**'
+      - 'tools/*rocr_idle*'
+      - 'tests/test_rocr_idle_backport.py'
+      - 'Dockerfile.rocr-idle'
+      - '.github/workflows/rocr-idle-cpu.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  rocr:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      PYTHONUNBUFFERED: '1'
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - name: Install CPU build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build g++ libelf-dev libdrm-dev libnuma-dev pkg-config libssl-dev libgtest-dev
+      - name: Check boundaries and prepare pinned source
+        run: |
+          python -m unittest discover -s tests -p test_rocr_idle_backport.py -v
+          python tools/rocr_idle_backport.py prepare "$RUNNER_TEMP/rocr-source"
+      - name: Run real-source CPU contracts and upstream backoff tests
+        run: python tools/check_rocr_idle_source.py "$RUNNER_TEMP/rocr-source"
+      - name: Fetch checksum-pinned ROCm 7.14 build SDK
+        run: python tools/rocr_idle_backport.py fetch-sdk "$RUNNER_TEMP/rocr-sdk"
+      - name: Verify original library and build full candidate runtime
+        run: |
+          python tools/rocr_idle_backport.py check-runtime "$RUNNER_TEMP/rocr-sdk/opt/rocm/core-7.14/lib/libhsa-runtime64.so.1.21.0"
+          python tools/rocr_idle_backport.py build "$RUNNER_TEMP/rocr-source" "$RUNNER_TEMP/rocr-build" "$RUNNER_TEMP/rocr-candidate" --sdk "$RUNNER_TEMP/rocr-sdk/opt/rocm/core-7.14"
+      - name: Load linked candidate without initializing a GPU
+        run: |
+          export LD_LIBRARY_PATH="$RUNNER_TEMP/rocr-sdk/opt/rocm/core-7.14/lib:$RUNNER_TEMP/rocr-sdk/opt/rocm/core-7.14/lib/rocm_sysdeps/lib"
+          python tools/rocr_idle_backport.py load-candidate "$RUNNER_TEMP/rocr-candidate/libhsa-runtime64.so.1.21.0"
+      - name: Retain exact build identity and dynamic dependencies in the run log
+        if: always()
+        run: |
+          if [ -f "$RUNNER_TEMP/rocr-candidate/provenance.json" ]; then
+            cat "$RUNNER_TEMP/rocr-candidate/provenance.json"
+            cat "$RUNNER_TEMP/rocr-candidate/dynamic.txt"
+          fi
+      - name: Record qualification limits
+        if: always()
+        run: |
+          echo 'Experimental ROCr candidate: source/CPU/build evidence only.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Candidate Radiance image, GPU execution, idle CPU, callback latency, R9700 TP2 and release qualification: NOT RUN.' >> "$GITHUB_STEP_SUMMARY"

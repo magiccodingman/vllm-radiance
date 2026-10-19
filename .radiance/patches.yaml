@@ -60,6 +60,18 @@ policy:
   upgrade_rule: Classify each active overlay as upstream-owned, still-required, mechanical-drift, semantic-migration, obsolete, deprecated-architecture debt, or Tier-3.
   gate_rule: Required gates may be strengthened but not silently weakened or removed to make a candidate pass.
 patches:
+  tools/rocr_idle_backport:
+    component: rocr-runtime
+    activation: indirect
+    status: experimental-default-off
+    runner: independent
+    areas: [rocm, rocr-idle, build]
+    reason: Build three attributed upstream idle-spin/wakeup repairs only through the explicit Dockerfile.rocr-idle experiment.
+    tests_add: [rocr-idle-boundary-cpu, rocr-idle-build-cpu, rocr-idle-r9700-tp2]
+    provenance:
+      kind: selective-upstream-backport
+      evidence: backports/rocr-idle/manifest.json
+    remove_when: Equivalent upstream fixes are included and qualified in the production ROCm base.
   patch_qwen_tool_grammar:
     areas: [parser, structured-output]
     runner: independent

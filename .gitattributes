@@ -1,0 +1,2 @@
+# Keep attributed upstream patch bytes stable, including unified-diff context spaces.
+backports/rocr-idle/*.patch -text -whitespace
