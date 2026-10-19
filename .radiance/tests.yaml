@@ -13,6 +13,10 @@ qualification_levels:
 - performance-qualified
 - release-qualified
 change_map:
+- pattern: '^tests/test_ngram_tail_width\.py$'
+  areas: [dflash, speculative]
+- pattern: '^radiance_draft_gpu\.py$'
+  areas: [dflash, speculative]
 - pattern: '^benchmarks/bin/(run_client_tool_gate|check_client_tool_gate|run_tool_schema_gate)'
   areas: [parser, structured-output]
 - pattern: '^(\.radiance/|tools/|AGENTS\.md$|CONTRIBUTING\.md$|docs/maintenance/)'
@@ -46,10 +50,18 @@ change_map:
 - pattern: '^(radiance_r4d_attn|patch_r4d|patch_unified_attention_lds)'
   areas: [attention, libr4d]
 profiles:
-  pr: [control-plane-validate, python-compile, kv-offload-registration-cpu, kv-offload-rank-sharded-cpu, kv-offload-restore-cpu, qwen-tool-grammar-cpu, client-tool-gate-cpu]
-  upgrade: [control-plane-validate, python-compile, kv-offload-registration-cpu, kv-offload-rank-sharded-cpu, kv-offload-restore-cpu, parser-shared-engine-image, xgrammar-spec-image, qwen-open-object-image, qwen-tool-grammar-image, client-tool-gate-cpu, client-tool-live, fp8-kv-calibration-image, tunableop-preflight-image, r9700-tp2-smoke, tool-schema-live, open-object-tool-live, betterbench-standard, correctness-equivalence]
-  release: [control-plane-validate, python-compile, kv-offload-registration-cpu, kv-offload-rank-sharded-cpu, kv-offload-restore-cpu, parser-shared-engine-image, xgrammar-spec-image, qwen-open-object-image, qwen-tool-grammar-image, client-tool-gate-cpu, client-tool-live, fp8-kv-calibration-image, tunableop-preflight-image, r9700-tp2-smoke, tool-schema-live, open-object-tool-live, betterbench-standard, correctness-equivalence, capacity-qualification]
+  pr: [ngram-tail-width-cpu, control-plane-validate, python-compile, kv-offload-registration-cpu, kv-offload-rank-sharded-cpu, kv-offload-restore-cpu, qwen-tool-grammar-cpu, client-tool-gate-cpu]
+  upgrade: [ngram-tail-width-cpu, control-plane-validate, python-compile, kv-offload-registration-cpu, kv-offload-rank-sharded-cpu, kv-offload-restore-cpu, parser-shared-engine-image, xgrammar-spec-image, qwen-open-object-image, qwen-tool-grammar-image, client-tool-gate-cpu, client-tool-live, fp8-kv-calibration-image, tunableop-preflight-image, r9700-tp2-smoke, tool-schema-live, open-object-tool-live, betterbench-standard, correctness-equivalence]
+  release: [ngram-tail-width-cpu, control-plane-validate, python-compile, kv-offload-registration-cpu, kv-offload-rank-sharded-cpu, kv-offload-restore-cpu, parser-shared-engine-image, xgrammar-spec-image, qwen-open-object-image, qwen-tool-grammar-image, client-tool-gate-cpu, client-tool-live, fp8-kv-calibration-image, tunableop-preflight-image, r9700-tp2-smoke, tool-schema-live, open-object-tool-live, betterbench-standard, correctness-equivalence, capacity-qualification]
 tests:
+- id: ngram-tail-width-cpu
+  class: contract
+  hardware: cpu
+  areas: [dflash, speculative]
+  command: python -m unittest discover -s tests -p test_ngram_tail_width.py
+  automatic: true
+  ci: true
+  description: NumPy lane simulation for non-power-of-two n-gram tails, padded stores and continuation lengths; no Triton execution.
 - id: client-tool-gate-cpu
   class: contract
   hardware: cpu

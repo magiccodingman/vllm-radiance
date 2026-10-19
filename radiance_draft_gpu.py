@@ -38,11 +38,15 @@ def _match_scan(ctx, nA, ML, key, MAXL: tl.constexpr, MIN: tl.constexpr, SH: tl.
 
 
 @triton.jit
-def _match_gather(ctx, nA, ML, key, cont, clen, SH: tl.constexpr, NSPEC: tl.constexpr):
+def _match_gather(ctx, nA, ML, key, cont, clen, SH: tl.constexpr, NSPEC: tl.constexpr,
+                  BLOCK: tl.constexpr):
     i = tl.program_id(0); n = tl.load(nA + i); row = ctx + i * ML; k = tl.load(key + i)
     start = (k & ((1 << SH) - 1)) + 1; has = k != 0
-    t = tl.arange(0, NSPEC); valid = has & (start + t < n)
-    tl.store(cont + i * NSPEC + t, tl.where(valid, tl.load(row + start + t, mask=valid, other=-1), -1))
+    t = tl.arange(0, BLOCK); in_bounds = t < NSPEC
+    valid = in_bounds & has & (start + t < n)
+    tl.store(cont + i * NSPEC + t,
+             tl.where(valid, tl.load(row + start + t, mask=valid, other=-1), -1),
+             mask=in_bounds)
     tl.store(clen + i, tl.sum(valid.to(tl.int32), 0))
 
 
@@ -55,7 +59,8 @@ def match_gpu(ctx, n_arr, nspec, nmax):
     cont = torch.empty(B * nspec, dtype=torch.int32, device=ctx.device)
     clen = torch.empty(B, dtype=torch.int32, device=ctx.device)
     _match_scan[(B, triton.cdiv(nmax, 512))](ctx, n_arr, ML, key, _MAXL, _MIN, _SH, BLOCK=512)
-    _match_gather[(B,)](ctx, n_arr, ML, key, cont, clen, _SH, nspec)
+    _match_gather[(B,)](ctx, n_arr, ML, key, cont, clen, _SH, nspec,
+                        triton.next_power_of_2(nspec))
     return cont.view(B, nspec), clen
 
 

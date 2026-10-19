@@ -205,6 +205,7 @@ patches:
     reason: Repair native CPU KV restore/group handling for qualified hybrid/speculative layouts.
     runner: independent
   patch_mtp_loopbreak:
+    tests_add: [ngram-tail-width-cpu]
     v030_disposition: RETAIN_UNCHANGED
     areas: [mtp, speculative]
     reason: Preserve Radiance MTP loop termination/controller behavior.
