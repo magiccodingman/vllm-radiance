@@ -89,6 +89,13 @@ class SSEDecoder:
         return events
 
 
+def _finite_json_number(value):
+    number = float(value)
+    if not math.isfinite(number):
+        raise ProtocolError("tool arguments contain a non-finite JSON number")
+    return number
+
+
 class Completion:
     """Assemble one real response without inventing a finish or a tool call."""
 
@@ -164,11 +171,13 @@ class Completion:
         if sorted(self.tools) != list(range(len(self.tools))):
             raise ProtocolError("tool indices have a gap")
         tools = []
-        for value in self.tools.values():
+        for index in sorted(self.tools):
+            value = self.tools[index]
             if not value["id"] or not value["name"]:
                 raise ProtocolError("incomplete tool identity")
             try:
-                args = json.loads(value["arguments"])
+                args = json.loads(value["arguments"], parse_float=_finite_json_number,
+                                  parse_constant=_finite_json_number)
             except ValueError as error:
                 raise ProtocolError("unfinished tool arguments") from error
             if not isinstance(args, dict):
