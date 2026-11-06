@@ -59,8 +59,10 @@ def main():
             ks = torch.full((n, kvheads), 0.75, device="cuda")
             vs = torch.full((n, kvheads), 1.25, device="cuda")
             geometry = dict(head_dim=width, gqa=6, block_size=16, causal=1,
-                            q_dtype="bf16", kv_dtype=dtype_name)
+                            q_dtype="bf16", kv_dtype=("fp8_e4m3" if dtype_name == "fp8" else "bf16"))
             operation = "attn_decode_paged" if qlen <= 10 else "attn_prefill_paged"
+            if qlen <= 10:
+                geometry["q_len"] = qlen
             name = r4d.select(operation, **geometry)
             assert name is not None, (operation, geometry)
             launch = getattr(r4d, name)
