@@ -23,6 +23,7 @@ area_tests:
   - r9700-tp2-smoke
   - correctness-equivalence
   attention:
+  - r4d-attention-native
   - r9700-tp2-smoke
   - betterbench-standard
   dflash:

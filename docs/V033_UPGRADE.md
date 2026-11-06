@@ -85,7 +85,7 @@ the existing patch applied; semantic ownership still needs review.
 ## Validation boundary
 
 Retain CPU/source/image failures as evidence. Run focused installed-image contracts,
-GPU-0 native GDN/MXFP4 tests and real inference/tool gates when the candidate image
+GPU-0 native attention/GDN/MXFP4 and LFM3 convolution tests and real inference/tool gates when the candidate image
 is available. No TP2, maximum capacity, or performance qualification may be inferred
 from TP1. Existing production defaults are not promoted by this MR.
 
