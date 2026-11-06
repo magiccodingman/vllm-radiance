@@ -266,8 +266,9 @@ COPY mxfp4-configs/gfx1201-GEMM-AFP4WFP4.json ${SP}/aiter/ops/triton/configs/gfx
 # writing. patch_gdn_wmma covers the solve_tril triangular block-inverse only; the gated-delta-net
 # gram cast is handled in 0.26.0 upstream.
 COPY patch_*.py install_radiance_hooks.py _patchlib.py /opt/patches/
+COPY upstream/vllm-lfm3/ /opt/patches/upstream/vllm-lfm3/
 RUN set -eu; cd /opt/patches; \
-    for p in patch_gfx1201 patch_radiance_dispatch patch_skinny_gemm patch_unified_attention_lds \
+    for p in patch_lfm3_backport patch_gfx1201 patch_radiance_dispatch patch_skinny_gemm patch_unified_attention_lds \
              patch_gdn_wmma patch_gdn_aiter_prefill patch_preshuffle install_radiance_hooks \
              patch_mtp_mm_mask patch_mtp_loopbreak patch_qwen3_toolparse patch_from_json_filter \
              patch_dynamo_metrics patch_conv1d_blockn patch_r4d \

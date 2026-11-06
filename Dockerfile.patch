@@ -36,9 +36,10 @@ COPY mxfp4-configs/gfx1201-GEMM-AFP4WFP4-N=17408-K=5120.json ${SP}/aiter/ops/tri
 COPY mxfp4-configs/gfx1201-GEMM-AFP4WFP4-N=5120-K=8704.json ${SP}/aiter/ops/triton/configs/gfx1201/triton/gemm/gemm_afp4wfp4/GEMM-AFP4WFP4-N=5120-K=8704.json
 COPY mxfp4-configs/gfx1201-GEMM-AFP4WFP4.json ${SP}/aiter/ops/triton/configs/gfx1201/triton/gemm/gemm_afp4wfp4/DEFAULT.json
 COPY patch_*.py install_radiance_hooks.py _patchlib.py /opt/patches/
+COPY upstream/vllm-lfm3/ /opt/patches/upstream/vllm-lfm3/
 
 RUN set -eu; cd /opt/patches; \
-    for p in patch_gfx1201 patch_radiance_dispatch patch_skinny_gemm patch_unified_attention_lds \
+    for p in patch_lfm3_backport patch_gfx1201 patch_radiance_dispatch patch_skinny_gemm patch_unified_attention_lds \
              patch_gdn_wmma patch_gdn_aiter_prefill patch_preshuffle install_radiance_hooks \
              patch_mtp_mm_mask patch_mtp_loopbreak patch_qwen3_toolparse patch_from_json_filter \
              patch_dynamo_metrics patch_conv1d_blockn patch_r4d \

@@ -33,6 +33,9 @@ residual BLAS GEMMs. Neither is enabled until its exact model/profile passes
 the normal correctness and benchmark gates. See
 [FP8-KV calibration and persisted TunableOp](docs/FP8_KV_TUNABLEOP.md).
 
+LFM3 text is an additional candidate backport with a separate serving profile; see
+[LFM3 source, configuration and qualification](docs/LFM3.md).
+
 ## Runtime defaults and optional research
 
 Portable defaults remain non-speculative (`RADIANCE_FAST_DRAFT=0`, no speculative config).

@@ -1,0 +1,32 @@
+# Optional LFM3 text profile. Layer over docker-compose.yml; configure model
+# mounts/GPU selection in .env or the ignored host overlay. See docs/LFM3.md.
+# Its command replaces the Qwen command; it does not change portable defaults.
+services:
+  vllm:
+    command:
+      - ${MODEL_PATH:-/models/model}
+      - --served-model-name=${SERVED_MODEL_NAME:-lfm3}
+      - --tensor-parallel-size=${TP:-1}
+      - --dtype=bfloat16
+      - --attention-backend=TRITON_ATTN
+      - --kv-cache-dtype=auto
+      - --max-model-len=${MAX_MODEL_LEN:-8192}
+      - --max-num-seqs=${MAX_NUM_SEQS:-4}
+      - --max-num-batched-tokens=${MAX_NUM_BATCHED_TOKENS:-2048}
+      - --gpu-memory-utilization=${GPU_UTIL:-0.65}
+      - --no-enable-prefix-caching
+      - --mamba-cache-mode=none
+      - --enable-auto-tool-choice
+      - --tool-call-parser=qwen3_coder
+      - --reasoning-parser=qwen3
+      - --generation-config=${GENERATION_CONFIG:-auto}
+      - --host=0.0.0.0
+      - --port=8000
+    environment:
+      # Respect the checkpoint's compressed-tensors metadata. Explicitly forcing
+      # the unrelated `fp8` loader would change the checkpoint's quantization.
+      RADIANCE_WEIGHT_QUANTIZATION: auto
+      RADIANCE_MXFP4: "0"
+      RADIANCE_MXFP4_W4A8: "0"
+      RADIANCE_FAST_DRAFT: "0"
+      RADIANCE_SPECULATIVE_CONFIG: ""

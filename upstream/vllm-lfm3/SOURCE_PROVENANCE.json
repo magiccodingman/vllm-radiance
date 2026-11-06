@@ -1,0 +1,19 @@
+{
+  "repository": "https://github.com/vllm-project/vllm",
+  "upstream_pr": 65826,
+  "commit": "c96e5f60bbdd7b523d56f6e7cb9b39e0a7013287",
+  "license": "Apache-2.0",
+  "author": "Paul Pak <52512091+paulpak58@users.noreply.github.com>",
+  "co_authors": [
+    "abhijithneilabraham <abhijithneilabrahampk@gmail.com>",
+    "vllm-agent <claw@inferact.ai>",
+    "Cyrus Leung <tlleungac@connect.ust.hk>"
+  ],
+  "import": "Original mail patch; six vllm runtime files installed without model implementation changes. Upstream tests/docs retained in payload.",
+  "sha256": {
+    "c96e5f60bbdd.patch": "5258e48cec5c9f5cfa39ad1e00513b3ddaa7a988065770493e7d05c247c004fe",
+    "test_causal_conv1d.py": "4ff47229495c1a8eb68ab8bc59f3f0077131a6a7627930367e552d79570d6189",
+    "test_lfm3.py": "4af172d151d3692932c749aeb805dd56ff5b7e11ec7cbc6d215eca7ccb660fec"
+  },
+  "remove_when": "Stable pinned vLLM includes the official LFM3 text support and width-7 causal convolution."
+}

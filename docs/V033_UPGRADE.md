@@ -89,6 +89,12 @@ GPU-0 native GDN/MXFP4 tests and real inference/tool gates when the candidate im
 is available. No TP2, maximum capacity, or performance qualification may be inferred
 from TP1. Existing production defaults are not promoted by this MR.
 
+## LFM3 text addition
+
+The owner also requested `Lfm3ForCausalLM` and supplied an FP8 compressed-tensors
+checkpoint. The official post-release backport and its separate model/profile
+qualification are recorded in [LFM3.md](LFM3.md). No LFM3 runtime pass is claimed yet.
+
 ## Implemented migration (candidate)
 
 - The native `vllm.general_plugins` entrypoint replaces modification of vLLM's

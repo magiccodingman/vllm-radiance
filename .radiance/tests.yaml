@@ -13,6 +13,8 @@ qualification_levels:
 - performance-qualified
 - release-qualified
 change_map:
+- pattern: '^(patch_lfm3_|upstream/vllm-lfm3/|benchmarks/bin/check_lfm3_|docker-compose\.lfm3)'
+  areas: [lfm3, upgrade, attention]
 - pattern: '^benchmarks/bin/(run_client_tool_gate|check_client_tool_gate|run_tool_schema_gate)'
   areas: [parser, structured-output]
 - pattern: '^(\.radiance/|tools/|AGENTS\.md$|CONTRIBUTING\.md$|docs/maintenance/)'
@@ -46,10 +48,34 @@ change_map:
 - pattern: '^(radiance_r4d_attn|patch_r4d|patch_unified_attention_lds)'
   areas: [attention, libr4d]
 profiles:
-  pr: [v033-upgrade-cpu, control-plane-validate, python-compile, kv-offload-registration-cpu, kv-offload-rank-sharded-cpu, kv-offload-restore-cpu, qwen-tool-grammar-cpu, client-tool-gate-cpu]
+  pr: [lfm3-backport-cpu, v033-upgrade-cpu, control-plane-validate, python-compile, kv-offload-registration-cpu, kv-offload-rank-sharded-cpu, kv-offload-restore-cpu, qwen-tool-grammar-cpu, client-tool-gate-cpu]
   upgrade: [control-plane-validate, python-compile, kv-offload-registration-cpu, kv-offload-rank-sharded-cpu, kv-offload-restore-cpu, parser-shared-engine-image, xgrammar-spec-image, qwen-open-object-image, qwen-tool-grammar-image, client-tool-gate-cpu, client-tool-live, fp8-kv-calibration-image, tunableop-preflight-image, r9700-tp2-smoke, tool-schema-live, open-object-tool-live, betterbench-standard, correctness-equivalence]
   release: [control-plane-validate, python-compile, kv-offload-registration-cpu, kv-offload-rank-sharded-cpu, kv-offload-restore-cpu, parser-shared-engine-image, xgrammar-spec-image, qwen-open-object-image, qwen-tool-grammar-image, client-tool-gate-cpu, client-tool-live, fp8-kv-calibration-image, tunableop-preflight-image, r9700-tp2-smoke, tool-schema-live, open-object-tool-live, betterbench-standard, correctness-equivalence, capacity-qualification]
 tests:
+- id: lfm3-backport-cpu
+  class: contract
+  hardware: cpu
+  areas: [lfm3, upgrade]
+  command: python benchmarks/bin/check_lfm3_backport_cpu.py
+  automatic: true
+  ci: true
+  description: Immutable official LFM3 payload hashes and fail-closed installation before source mutation.
+- id: lfm3-image
+  class: contract
+  hardware: candidate-image
+  areas: [lfm3, upgrade, attention]
+  command: 'python benchmarks/bin/check_lfm3_image.py --model "$MODEL_PATH" && python -m pytest --noconftest upstream/vllm-lfm3/test_lfm3.py -q'
+  automatic: false
+  ci: false
+  description: Native registry/config, checkpoint compressed-tensors settings and upstream CPU proportional-RoPE reference.
+- id: lfm3-native
+  class: contract
+  hardware: r9700
+  areas: [lfm3, attention, upgrade]
+  command: python -m pytest --noconftest upstream/vllm-lfm3/test_causal_conv1d.py -q
+  automatic: false
+  ci: false
+  description: Unchanged upstream causal-convolution suite including widths 3-7, initial state, padded/gathered sequences and width rejection; requires one visible GPU.
 - id: v033-upgrade-cpu
   class: contract
   hardware: cpu

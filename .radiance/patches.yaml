@@ -61,6 +61,19 @@ policy:
     obsolete, deprecated-architecture debt, or Tier-3.
   gate_rule: Required gates may be strengthened but not silently weakened or removed to make a candidate pass.
 patches:
+  patch_lfm3_backport:
+    component: vllm
+    runner: both
+    areas: [lfm3, runtime, attention, upgrade]
+    reason: Official LFM3 text model/config registration and width-7 recurrent convolution support after stable v0.33.
+    v033_disposition: BACKPORT_GUARDED
+    tests_add: [lfm3-backport-cpu, lfm3-image, lfm3-native]
+    provenance:
+      kind: upstream-backport
+      upstream_pr: 'vLLM #65826'
+      upstream_commit: c96e5f60bbdd7b523d56f6e7cb9b39e0a7013287
+      evidence: upstream/vllm-lfm3/SOURCE_PROVENANCE.json
+    remove_when: The pinned stable vLLM release includes official LFM3 and width-7 convolution support.
   patch_qwen_tool_grammar:
     areas:
     - parser

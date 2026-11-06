@@ -1,0 +1,1072 @@
+From c96e5f60bbdd7b523d56f6e7cb9b39e0a7013287 Mon Sep 17 00:00:00 2001
+From: Paul Pak <52512091+paulpak58@users.noreply.github.com>
+Date: Thu, 5 Nov 2026 22:39:42 -0700
+Subject: [PATCH] [Model] Add LFM3-Text (#65826)
+
+Signed-off-by: abhijithneilabraham <abhijithneilabrahampk@gmail.com>
+Signed-off-by: paulpak58 <52512091+paulpak58@users.noreply.github.com>
+Co-authored-by: abhijithneilabraham <abhijithneilabrahampk@gmail.com>
+Co-authored-by: vllm-agent <claw@inferact.ai>
+Co-authored-by: Cyrus Leung <tlleungac@connect.ust.hk>
+---
+ docs/models/supported_models.md               |   1 +
+ tests/kernels/mamba/test_causal_conv1d.py     |  27 +-
+ tests/model_executor/test_lfm3.py             |  89 ++++
+ tests/models/registry.py                      |   1 +
+ .../layers/mamba/ops/causal_conv1d.py         | 167 +++++++
+ vllm/model_executor/models/lfm3.py            | 457 ++++++++++++++++++
+ vllm/model_executor/models/registry.py        |   1 +
+ vllm/transformers_utils/config.py             |   1 +
+ vllm/transformers_utils/configs/__init__.py   |   2 +
+ vllm/transformers_utils/configs/lfm3.py       |  96 ++++
+ 10 files changed, 838 insertions(+), 4 deletions(-)
+ create mode 100644 tests/model_executor/test_lfm3.py
+ create mode 100644 vllm/model_executor/models/lfm3.py
+ create mode 100644 vllm/transformers_utils/configs/lfm3.py
+
+diff --git a/docs/models/supported_models.md b/docs/models/supported_models.md
+index 61662839b36d..6e5ce8020670 100644
+--- a/docs/models/supported_models.md
++++ b/docs/models/supported_models.md
+@@ -436,6 +436,7 @@ th {
+ | `KimiLinearForCausalLM` | Kimi-Linear-48B-A3B-Base, Kimi-Linear-48B-A3B-Instruct | `moonshotai/Kimi-Linear-48B-A3B-Base`, `moonshotai/Kimi-Linear-48B-A3B-Instruct` | | ✅︎ |
+ | `Lfm2ForCausalLM` | LFM2 | `LiquidAI/LFM2-1.2B`, `LiquidAI/LFM2-700M`, `LiquidAI/LFM2-350M`, etc. | ✅︎ | ✅︎ |
+ | `Lfm2MoeForCausalLM` | LFM2MoE | `LiquidAI/LFM2-8B-A1B-preview`, etc. | ✅︎ | ✅︎ |
++| `Lfm3ForCausalLM` | LFM3 | `LiquidAI/LFM3-1.7B`, `LiquidAI/LFM3-1.7B-Base`, etc. | ✅︎ | ✅︎ |
+ | `LlamaForCausalLM` | Llama 3.1, Llama 3, Llama 2, LLaMA, Yi | `meta-llama/Meta-Llama-3.1-405B-Instruct`, `meta-llama/Meta-Llama-3.1-70B`, `meta-llama/Meta-Llama-3-70B-Instruct`, `meta-llama/Llama-2-70b-hf`, `01-ai/Yi-34B`, etc. | ✅︎ | ✅︎ |
+ | `LongcatFlashForCausalLM` | LongCat-Flash | `meituan-longcat/LongCat-Flash-Chat`, `meituan-longcat/LongCat-Flash-Chat-FP8` | ✅︎ | ✅︎ |
+ | `MambaForCausalLM` | Mamba | `state-spaces/mamba-130m-hf`, `state-spaces/mamba-790m-hf`, `state-spaces/mamba-2.8b-hf`, etc. | | ✅︎ |
+diff --git a/tests/kernels/mamba/test_causal_conv1d.py b/tests/kernels/mamba/test_causal_conv1d.py
+index 06031842bd01..0a9d8c060292 100644
+--- a/tests/kernels/mamba/test_causal_conv1d.py
++++ b/tests/kernels/mamba/test_causal_conv1d.py
+@@ -122,11 +122,30 @@ def causal_conv1d_update_ref(
+     return (out if activation is None else F.silu(out)).to(dtype=dtype_in)
+ 
+ 
++@pytest.mark.parametrize("width", [1, 8])
++@pytest.mark.skipif(
++    current_platform.is_cpu(),
++    reason="The width check lives in the Triton wrappers, which CPU bypasses.",
++)
++def test_causal_conv1d_rejects_unsupported_width(width):
++    # The kernels branch on widths 2 to 7; any other width would compute
++    # wrong values silently.
++    dim = 8
++    weight = torch.randn(dim, width, device=DEVICE)
++    conv_state = torch.zeros(1, dim, 7, device=DEVICE)
++    x = torch.randn(dim, 1, device=DEVICE)
++    query_start_loc = torch.tensor([0, 1], dtype=torch.int32, device=DEVICE)
++    with pytest.raises(ValueError, match="widths 2 to 7"):
++        causal_conv1d_fn(x, weight, None, conv_state, query_start_loc)
++    with pytest.raises(ValueError, match="widths 2 to 7"):
++        causal_conv1d_update(x.T.contiguous(), conv_state, weight)
++
++
+ @pytest.mark.parametrize("itype", [torch.bfloat16])
+ @pytest.mark.parametrize("silu_activation", [False, True])
+ @pytest.mark.parametrize("has_bias", [False, True])
+ @pytest.mark.parametrize("seqlen", [1])
+-@pytest.mark.parametrize("width", [4])
++@pytest.mark.parametrize("width", [4, 7])
+ @pytest.mark.parametrize("dim", [2048, 2048 + 16, 4096])
+ def test_causal_conv1d_update(dim, width, seqlen, has_bias, silu_activation, itype):
+     device = DEVICE
+@@ -168,7 +187,7 @@ def test_causal_conv1d_update(dim, width, seqlen, has_bias, silu_activation, ity
+ @pytest.mark.parametrize("silu_activation", [False, True])
+ @pytest.mark.parametrize("has_bias", [False, True])
+ @pytest.mark.parametrize("seqlen", [1, 3])
+-@pytest.mark.parametrize("width", [3, 4])
++@pytest.mark.parametrize("width", [3, 4, 7])
+ @pytest.mark.parametrize("dim", [2048 + 16, 4096])
+ # tests correctness in case subset of the sequences are padded
+ @pytest.mark.parametrize("with_padding", [True, False])
+@@ -247,7 +266,7 @@ def test_causal_conv1d_update_with_batch_gather(
+ @pytest.mark.parametrize("itype", [torch.bfloat16])
+ @pytest.mark.parametrize("silu_activation", [True])
+ @pytest.mark.parametrize("has_bias", [True])
+-@pytest.mark.parametrize("width", [4])
++@pytest.mark.parametrize("width", [4, 5, 6, 7])
+ @pytest.mark.parametrize("seqlen", [8, 249, 4096])
+ @pytest.mark.parametrize("dim", [64, 4096])
+ @pytest.mark.parametrize("with_padding", [True, False])
+@@ -365,7 +384,7 @@ def test_causal_conv1d_varlen(
+ @pytest.mark.parametrize("itype", [torch.bfloat16])
+ @pytest.mark.parametrize("silu_activation", [True])
+ @pytest.mark.parametrize("has_bias", [True])
+-@pytest.mark.parametrize("width", [4])
++@pytest.mark.parametrize("width", [4, 7])
+ @pytest.mark.parametrize("dim", [64, 2048])
+ @pytest.mark.parametrize("q_lens_cfg", [[3, 1, 0, 4, 2], [1, 5, 5, 1], [2, 0, 0, 3]])
+ @pytest.mark.skipif(
+diff --git a/tests/model_executor/test_lfm3.py b/tests/model_executor/test_lfm3.py
+new file mode 100644
+index 000000000000..14593bf9df36
+--- /dev/null
++++ b/tests/model_executor/test_lfm3.py
+@@ -0,0 +1,89 @@
++# SPDX-License-Identifier: Apache-2.0
++# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
++import pytest
++import torch
++
++from vllm.config import DeviceConfig, VllmConfig, set_current_vllm_config
++from vllm.model_executor.models.lfm3 import get_rotary_embedding
++from vllm.transformers_utils.configs.lfm3 import Lfm3Config
++from vllm.utils.torch_utils import set_default_torch_dtype
++
++# rope_parameters as written by the released hub checkpoints
++HUB_ROPE_PARAMETERS = {
++    "full_attention": {
++        "rope_type": "default",
++        "rope_theta": 1_000_000.0,
++        "partial_rotary_factor": 0.5,
++    },
++    "sliding_attention": {"rope_type": "default", "rope_theta": 10_000.0},
++}
++
++
++@pytest.fixture
++def cpu_vllm_config():
++    # get_rope uses the default dtype, which earlier tests can leave at bf16
++    with (
++        set_current_vllm_config(VllmConfig(device_config=DeviceConfig("cpu"))),
++        set_default_torch_dtype(torch.float32),
++    ):
++        yield
++
++
++def _reference_rope(x: torch.Tensor, positions: torch.Tensor, params: dict):
++    # Hub remote code: the rotated frequencies follow the full head dimension
++    # and the unrotated tail gets zero frequency.
++    head_dim = x.shape[-1]
++    num_freqs = int(params.get("partial_rotary_factor", 1.0) * head_dim) // 2
++    exponent = torch.arange(0, 2 * num_freqs, 2, dtype=torch.float) / head_dim
++    inv_freq = torch.cat(
++        [params["rope_theta"] ** -exponent, torch.zeros(head_dim // 2 - num_freqs)]
++    )
++    freqs = positions[:, None].float() * inv_freq
++    emb = torch.cat([freqs, freqs], dim=-1)[:, None]
++    x1, x2 = x.chunk(2, dim=-1)
++    return x * emb.cos() + torch.cat([-x2, x1], dim=-1) * emb.sin()
++
++
++def test_hub_config():
++    config = Lfm3Config(
++        rope_parameters={k: dict(v) for k, v in HUB_ROPE_PARAMETERS.items()},
++        tie_embedding=False,
++        is_causal=True,
++    )
++    assert config.rope_parameters["full_attention"]["rope_type"] == "proportional"
++    assert config.rope_parameters["sliding_attention"]["rope_type"] == "default"
++    assert config.use_attention_gate and config.use_sandwich_norm
++    assert not config.tie_word_embeddings
++    assert config.layer_types[:5] == [
++        "conv",
++        "conv",
++        "full_attention",
++        "conv",
++        "sliding_attention",
++    ]
++
++
++@pytest.mark.parametrize("layer_type", ["full_attention", "sliding_attention"])
++def test_rotary_embedding_matches_hub(cpu_vllm_config, layer_type: str):
++    config = Lfm3Config(
++        hidden_size=64,
++        head_dim=32,
++        num_attention_heads=2,
++        num_key_value_heads=1,
++        max_position_embeddings=128,
++        rope_parameters={k: dict(v) for k, v in HUB_ROPE_PARAMETERS.items()},
++    )
++    rotary_emb = get_rotary_embedding(config, layer_type)
++
++    torch.manual_seed(0)
++    query = torch.randn(4, 2, 32)
++    key = torch.randn(4, 1, 32)
++    positions = torch.tensor([0, 1, 63, 127])
++    actual_q, actual_k = rotary_emb.forward_native(
++        positions, query.flatten(1).clone(), key.flatten(1).clone()
++    )
++    params = HUB_ROPE_PARAMETERS[layer_type]
++    expected_q = _reference_rope(query, positions, params).flatten(1)
++    expected_k = _reference_rope(key, positions, params).flatten(1)
++    torch.testing.assert_close(actual_q, expected_q, atol=1e-5, rtol=1e-5)
++    torch.testing.assert_close(actual_k, expected_k, atol=1e-5, rtol=1e-5)
+diff --git a/tests/models/registry.py b/tests/models/registry.py
+index 1badcc9083ae..ffbe099e158d 100644
+--- a/tests/models/registry.py
++++ b/tests/models/registry.py
+@@ -396,6 +396,7 @@ def check_available_online(
+         # Initialize at least one MoE layer
+         hf_overrides={"num_hidden_layers": 4},
+     ),
++    "Lfm3ForCausalLM": _HfExamplesInfo("LiquidAI/LFM3-1.7B"),
+     "LlamaForCausalLM": _HfExamplesInfo(
+         "meta-llama/Llama-3.2-1B-Instruct",
+         extras={
+diff --git a/vllm/model_executor/layers/mamba/ops/causal_conv1d.py b/vllm/model_executor/layers/mamba/ops/causal_conv1d.py
+index 2094df902a27..47895c7e80b0 100644
+--- a/vllm/model_executor/layers/mamba/ops/causal_conv1d.py
++++ b/vllm/model_executor/layers/mamba/ops/causal_conv1d.py
+@@ -146,6 +146,30 @@ def _causal_conv1d_fwd_kernel(  # continuous batching
+                 col1 = tl.load(conv_states_ptrs, mask_w, 0.0)
+                 conv_states_ptrs = prior_tokens - 3 * stride_conv_state_tok  # [BLOCK_N]
+                 col0 = tl.load(conv_states_ptrs, mask_w, 0.0)
++            if KERNEL_WIDTH == 6:
++                conv_states_ptrs = prior_tokens  # [BLOCK_N]
++                col4 = tl.load(conv_states_ptrs, mask_w, 0.0)
++                conv_states_ptrs = prior_tokens - 1 * stride_conv_state_tok  # [BLOCK_N]
++                col3 = tl.load(conv_states_ptrs, mask_w, 0.0)
++                conv_states_ptrs = prior_tokens - 2 * stride_conv_state_tok  # [BLOCK_N]
++                col2 = tl.load(conv_states_ptrs, mask_w, 0.0)
++                conv_states_ptrs = prior_tokens - 3 * stride_conv_state_tok  # [BLOCK_N]
++                col1 = tl.load(conv_states_ptrs, mask_w, 0.0)
++                conv_states_ptrs = prior_tokens - 4 * stride_conv_state_tok  # [BLOCK_N]
++                col0 = tl.load(conv_states_ptrs, mask_w, 0.0)
++            if KERNEL_WIDTH == 7:
++                conv_states_ptrs = prior_tokens  # [BLOCK_N]
++                col5 = tl.load(conv_states_ptrs, mask_w, 0.0)
++                conv_states_ptrs = prior_tokens - 1 * stride_conv_state_tok  # [BLOCK_N]
++                col4 = tl.load(conv_states_ptrs, mask_w, 0.0)
++                conv_states_ptrs = prior_tokens - 2 * stride_conv_state_tok  # [BLOCK_N]
++                col3 = tl.load(conv_states_ptrs, mask_w, 0.0)
++                conv_states_ptrs = prior_tokens - 3 * stride_conv_state_tok  # [BLOCK_N]
++                col2 = tl.load(conv_states_ptrs, mask_w, 0.0)
++                conv_states_ptrs = prior_tokens - 4 * stride_conv_state_tok  # [BLOCK_N]
++                col1 = tl.load(conv_states_ptrs, mask_w, 0.0)
++                conv_states_ptrs = prior_tokens - 5 * stride_conv_state_tok  # [BLOCK_N]
++                col0 = tl.load(conv_states_ptrs, mask_w, 0.0)
+         else:
+             # prior-tokens are zeros
+             if KERNEL_WIDTH >= 2:  # STRATEGY1
+@@ -157,6 +181,10 @@ def _causal_conv1d_fwd_kernel(  # continuous batching
+                 col2 = tl.zeros((BLOCK_N,), dtype=x_ptr.dtype.element_ty)
+             if KERNEL_WIDTH >= 5:  # STRATEGY1
+                 col3 = tl.zeros((BLOCK_N,), dtype=x_ptr.dtype.element_ty)
++            if KERNEL_WIDTH >= 6:  # STRATEGY1
++                col4 = tl.zeros((BLOCK_N,), dtype=x_ptr.dtype.element_ty)
++            if KERNEL_WIDTH >= 7:  # STRATEGY1
++                col5 = tl.zeros((BLOCK_N,), dtype=x_ptr.dtype.element_ty)
+ 
+         # STEP 2:
+         # here prepare data for updating conv_state
+@@ -293,6 +321,30 @@ def _causal_conv1d_fwd_kernel(  # continuous batching
+             col1 = tl.load(conv_states_ptrs, mask_w, 0.0, cache_modifier=".ca")
+             conv_states_ptrs = prior_tokens - 3 * stride_x_token  # [BLOCK_N]
+             col0 = tl.load(conv_states_ptrs, mask_w, 0.0, cache_modifier=".ca")
++        if KERNEL_WIDTH == 6:
++            conv_states_ptrs = prior_tokens  # [BLOCK_N]
++            col4 = tl.load(conv_states_ptrs, mask_w, 0.0, cache_modifier=".ca")
++            conv_states_ptrs = prior_tokens - 1 * stride_x_token  # [BLOCK_N]
++            col3 = tl.load(conv_states_ptrs, mask_w, 0.0, cache_modifier=".ca")
++            conv_states_ptrs = prior_tokens - 2 * stride_x_token  # [BLOCK_N]
++            col2 = tl.load(conv_states_ptrs, mask_w, 0.0, cache_modifier=".ca")
++            conv_states_ptrs = prior_tokens - 3 * stride_x_token  # [BLOCK_N]
++            col1 = tl.load(conv_states_ptrs, mask_w, 0.0, cache_modifier=".ca")
++            conv_states_ptrs = prior_tokens - 4 * stride_x_token  # [BLOCK_N]
++            col0 = tl.load(conv_states_ptrs, mask_w, 0.0, cache_modifier=".ca")
++        if KERNEL_WIDTH == 7:
++            conv_states_ptrs = prior_tokens  # [BLOCK_N]
++            col5 = tl.load(conv_states_ptrs, mask_w, 0.0, cache_modifier=".ca")
++            conv_states_ptrs = prior_tokens - 1 * stride_x_token  # [BLOCK_N]
++            col4 = tl.load(conv_states_ptrs, mask_w, 0.0, cache_modifier=".ca")
++            conv_states_ptrs = prior_tokens - 2 * stride_x_token  # [BLOCK_N]
++            col3 = tl.load(conv_states_ptrs, mask_w, 0.0, cache_modifier=".ca")
++            conv_states_ptrs = prior_tokens - 3 * stride_x_token  # [BLOCK_N]
++            col2 = tl.load(conv_states_ptrs, mask_w, 0.0, cache_modifier=".ca")
++            conv_states_ptrs = prior_tokens - 4 * stride_x_token  # [BLOCK_N]
++            col1 = tl.load(conv_states_ptrs, mask_w, 0.0, cache_modifier=".ca")
++            conv_states_ptrs = prior_tokens - 5 * stride_x_token  # [BLOCK_N]
++            col0 = tl.load(conv_states_ptrs, mask_w, 0.0, cache_modifier=".ca")
+ 
+     if HAS_BIAS:
+         bias = bias_ptr + idx_feats
+@@ -318,6 +370,15 @@ def _causal_conv1d_fwd_kernel(  # continuous batching
+     if KERNEL_WIDTH >= 4:
+         w_ptrs = w_base + (3 * stride_w_width)  # [BLOCK_N] tensor
+         w_col3 = tl.load(w_ptrs, mask_w, other=0.0)
++    if KERNEL_WIDTH >= 5:
++        w_ptrs = w_base + (4 * stride_w_width)  # [BLOCK_N] tensor
++        w_col4 = tl.load(w_ptrs, mask_w, other=0.0)
++    if KERNEL_WIDTH >= 6:
++        w_ptrs = w_base + (5 * stride_w_width)  # [BLOCK_N] tensor
++        w_col5 = tl.load(w_ptrs, mask_w, other=0.0)
++    if KERNEL_WIDTH >= 7:
++        w_ptrs = w_base + (6 * stride_w_width)  # [BLOCK_N] tensor
++        w_col6 = tl.load(w_ptrs, mask_w, other=0.0)
+     mask_x_1d = idx_feats < dim
+ 
+     if launch_pdl:
+@@ -353,6 +414,57 @@ def _causal_conv1d_fwd_kernel(  # continuous batching
+                     matrix_w = w_col3
+                     x_ptrs_1d = x_base_1d + idx_token * stride_x_token  # [BLOCK_N]
+                     matrix_x = tl.load(x_ptrs_1d, mask=mask_x_1d)
++            elif KERNEL_WIDTH == 5:
++                if j == 1:
++                    matrix_w = w_col1
++                    matrix_x = col1
++                elif j == 2:
++                    matrix_w = w_col2
++                    matrix_x = col2
++                elif j == 3:
++                    matrix_w = w_col3
++                    matrix_x = col3
++                elif j == 4:
++                    matrix_w = w_col4
++                    x_ptrs_1d = x_base_1d + idx_token * stride_x_token  # [BLOCK_N]
++                    matrix_x = tl.load(x_ptrs_1d, mask=mask_x_1d)
++            elif KERNEL_WIDTH == 6:
++                if j == 1:
++                    matrix_w = w_col1
++                    matrix_x = col1
++                elif j == 2:
++                    matrix_w = w_col2
++                    matrix_x = col2
++                elif j == 3:
++                    matrix_w = w_col3
++                    matrix_x = col3
++                elif j == 4:
++                    matrix_w = w_col4
++                    matrix_x = col4
++                elif j == 5:
++                    matrix_w = w_col5
++                    x_ptrs_1d = x_base_1d + idx_token * stride_x_token  # [BLOCK_N]
++                    matrix_x = tl.load(x_ptrs_1d, mask=mask_x_1d)
++            elif KERNEL_WIDTH == 7:
++                if j == 1:
++                    matrix_w = w_col1
++                    matrix_x = col1
++                elif j == 2:
++                    matrix_w = w_col2
++                    matrix_x = col2
++                elif j == 3:
++                    matrix_w = w_col3
++                    matrix_x = col3
++                elif j == 4:
++                    matrix_w = w_col4
++                    matrix_x = col4
++                elif j == 5:
++                    matrix_w = w_col5
++                    matrix_x = col5
++                elif j == 6:
++                    matrix_w = w_col6
++                    x_ptrs_1d = x_base_1d + idx_token * stride_x_token  # [BLOCK_N]
++                    matrix_x = tl.load(x_ptrs_1d, mask=mask_x_1d)
+ 
+             acc += matrix_x * matrix_w  # [BLOCK_N]
+ 
+@@ -365,6 +477,24 @@ def _causal_conv1d_fwd_kernel(  # continuous batching
+             col0 = col1
+             col1 = col2
+             col2 = matrix_x
++        elif KERNEL_WIDTH == 5:
++            col0 = col1
++            col1 = col2
++            col2 = col3
++            col3 = matrix_x
++        elif KERNEL_WIDTH == 6:
++            col0 = col1
++            col1 = col2
++            col2 = col3
++            col3 = col4
++            col4 = matrix_x
++        elif KERNEL_WIDTH == 7:
++            col0 = col1
++            col1 = col2
++            col2 = col3
++            col3 = col4
++            col4 = col5
++            col5 = matrix_x
+ 
+         if SILU_ACTIVATION:
+             acc = acc / (1 + tl.exp(-acc))
+@@ -463,6 +593,8 @@ def causal_conv1d_fn(
+     is_channel_last = (x.stride(0) == 1) & (x.stride(1) > 1)
+     dim, cu_seqlen = x.shape
+     _, width = weight.shape
++    if not 2 <= width <= 7:
++        raise ValueError(f"causal_conv1d_fn supports widths 2 to 7, got {width}")
+     state_len = width - 1
+     np2_statelen = triton.next_power_of_2(state_len)
+ 
+@@ -765,6 +897,9 @@ def _causal_conv1d_update_kernel(
+     if KERNEL_WIDTH >= 6:
+         conv_states_ptrs = prior_tokens + 4 * stride_conv_state_tok  # [BLOCK_N]
+         col4 = tl.load(conv_states_ptrs, mask_w, 0.0)
++    if KERNEL_WIDTH >= 7:
++        conv_states_ptrs = prior_tokens + 5 * stride_conv_state_tok  # [BLOCK_N]
++        col5 = tl.load(conv_states_ptrs, mask_w, 0.0)
+ 
+     # STEP 2: assume state_len > seqlen
+     idx_tokens = tl.arange(0, NP2_STATELEN)  # [BLOCK_M]
+@@ -847,6 +982,9 @@ def _causal_conv1d_update_kernel(
+     if KERNEL_WIDTH >= 6:
+         w_ptrs = w_base + (5 * stride_w_width)  # [BLOCK_N] tensor
+         w_col5 = tl.load(w_ptrs, mask_w, other=0.0)
++    if KERNEL_WIDTH >= 7:
++        w_ptrs = w_base + (6 * stride_w_width)  # [BLOCK_N] tensor
++        w_col6 = tl.load(w_ptrs, mask_w, other=0.0)
+ 
+     x_base_1d = x_base  # starting of chunk [BLOCK_N]
+     mask_x_1d = idx_feats < dim
+@@ -916,6 +1054,26 @@ def _causal_conv1d_update_kernel(
+                     matrix_w = w_col5
+                     x_ptrs_1d = x_base_1d + idx_token * stride_x_token  # [BLOCK_N]
+                     matrix_x = tl.load(x_ptrs_1d, mask=mask_x_1d)
++            elif KERNEL_WIDTH == 7:
++                if j == 1:
++                    matrix_w = w_col1
++                    matrix_x = col1
++                elif j == 2:
++                    matrix_w = w_col2
++                    matrix_x = col2
++                elif j == 3:
++                    matrix_w = w_col3
++                    matrix_x = col3
++                elif j == 4:
++                    matrix_w = w_col4
++                    matrix_x = col4
++                elif j == 5:
++                    matrix_w = w_col5
++                    matrix_x = col5
++                elif j == 6:
++                    matrix_w = w_col6
++                    x_ptrs_1d = x_base_1d + idx_token * stride_x_token  # [BLOCK_N]
++                    matrix_x = tl.load(x_ptrs_1d, mask=mask_x_1d)
+ 
+             acc += matrix_x * matrix_w  # [BLOCK_N]
+ 
+@@ -939,6 +1097,13 @@ def _causal_conv1d_update_kernel(
+             col2 = col3
+             col3 = col4
+             col4 = matrix_x
++        elif KERNEL_WIDTH == 7:
++            col0 = col1
++            col1 = col2
++            col2 = col3
++            col3 = col4
++            col4 = col5
++            col5 = matrix_x
+ 
+         if SILU_ACTIVATION:
+             acc = acc / (1 + tl.exp(-acc))
+@@ -1034,6 +1199,8 @@ def causal_conv1d_update(
+         dim = x.size(1)
+         seqlen = max_query_len
+     _, width = weight.shape
++    if not 2 <= width <= 7:
++        raise ValueError(f"causal_conv1d_update supports widths 2 to 7, got {width}")
+     # conv_state: (..., dim, state_len), where state_len >= width - 1
+     num_cache_lines, _, state_len = conv_state.size()
+ 
+diff --git a/vllm/model_executor/models/lfm3.py b/vllm/model_executor/models/lfm3.py
+new file mode 100644
+index 000000000000..d8c7c07fccf5
+--- /dev/null
++++ b/vllm/model_executor/models/lfm3.py
+@@ -0,0 +1,457 @@
++# SPDX-License-Identifier: Apache-2.0
++# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
++"""Inference-only LFM3 model compatible with HuggingFace weights."""
++
++from collections.abc import Iterable
++from itertools import islice
++
++import torch
++from torch import nn
++
++from vllm.compilation.decorators import support_torch_compile
++from vllm.config import CacheConfig, ModelConfig, VllmConfig
++from vllm.distributed import get_pp_group, get_tensor_model_parallel_world_size
++from vllm.model_executor.layers.activation import SiluAndMul
++from vllm.model_executor.layers.attention import Attention
++from vllm.model_executor.layers.layernorm import RMSNorm
++from vllm.model_executor.layers.linear import (
++    ColumnParallelLinear,
++    MergedColumnParallelLinear,
++    QKVParallelLinear,
++    RowParallelLinear,
++)
++from vllm.model_executor.layers.logits_processor import LogitsProcessor
++from vllm.model_executor.layers.mamba.mamba_utils import (
++    MambaStateCopyFunc,
++    MambaStateCopyFuncCalculator,
++    MambaStateDtypeCalculator,
++    MambaStateShapeCalculator,
++)
++from vllm.model_executor.layers.mamba.short_conv import ShortConv
++from vllm.model_executor.layers.quantization import QuantizationConfig
++from vllm.model_executor.layers.rotary_embedding import RotaryEmbedding, get_rope
++from vllm.model_executor.layers.vocab_parallel_embedding import (
++    ParallelLMHead,
++    VocabParallelEmbedding,
++)
++from vllm.sequence import IntermediateTensors
++from vllm.transformers_utils.configs.lfm3 import Lfm3Config
++
++from .interfaces import (
++    HasInnerState,
++    IsHybrid,
++    SupportsLoRA,
++    SupportsPP,
++    SupportsQuant,
++)
++from .utils import (
++    AutoWeightsLoader,
++    PPMissingLayer,
++    WeightsMapper,
++    extract_layer_index,
++    make_empty_intermediate_tensors_factory,
++    make_layers,
++    maybe_prefix,
++)
++
++ATTENTION_LAYER_TYPES = ("full_attention", "sliding_attention")
++
++
++def get_rotary_embedding(config: Lfm3Config, layer_type: str) -> RotaryEmbedding:
++    """RoPE of one attention layer type: `proportional` rotates the first
++    `partial_rotary_factor` of the head with frequencies spread over the whole
++    head, as the released full-attention layers do."""
++    rope_parameters = config.rope_parameters[layer_type]
++    if (
++        rope_parameters.get("partial_rotary_factor", 1.0) != 1.0
++        and rope_parameters.get("rope_type", "default") != "proportional"
++    ):
++        # the other types read the factor from elsewhere or scale the frequencies
++        raise NotImplementedError(
++            "LFM3 partial rotation is only supported with the proportional RoPE type"
++        )
++    return get_rope(
++        config.head_dim,
++        max_position=config.max_position_embeddings,
++        is_neox_style=True,
++        rope_parameters=rope_parameters,
++    )
++
++
++class Lfm3MLP(nn.Module):
++    def __init__(
++        self,
++        config: Lfm3Config,
++        quant_config: QuantizationConfig | None = None,
++        prefix: str = "",
++    ) -> None:
++        super().__init__()
++        self.w13 = MergedColumnParallelLinear(
++            input_size=config.hidden_size,
++            output_sizes=[config.intermediate_size] * 2,
++            bias=False,
++            quant_config=quant_config,
++            prefix=f"{prefix}.w13",
++        )
++        self.w2 = RowParallelLinear(
++            input_size=config.intermediate_size,
++            output_size=config.hidden_size,
++            bias=False,
++            quant_config=quant_config,
++            prefix=f"{prefix}.w2",
++        )
++        self.act_fn = SiluAndMul()
++
++    def forward(self, x: torch.Tensor) -> torch.Tensor:
++        gate_up, _ = self.w13(x)
++        x = self.act_fn(gate_up)
++        x, _ = self.w2(x)
++        return x
++
++
++class Lfm3Attention(nn.Module):
++    def __init__(
++        self,
++        config: Lfm3Config,
++        layer_type: str,
++        cache_config: CacheConfig | None = None,
++        quant_config: QuantizationConfig | None = None,
++        prefix: str = "",
++    ) -> None:
++        super().__init__()
++        tp_size = get_tensor_model_parallel_world_size()
++        self.total_num_heads = config.num_attention_heads
++        assert self.total_num_heads % tp_size == 0
++        self.num_heads = self.total_num_heads // tp_size
++        self.total_num_kv_heads = config.num_key_value_heads
++        if self.total_num_kv_heads >= tp_size:
++            assert self.total_num_kv_heads % tp_size == 0
++        else:
++            assert tp_size % self.total_num_kv_heads == 0
++        self.num_kv_heads = max(1, self.total_num_kv_heads // tp_size)
++        self.head_dim = config.head_dim
++        self.q_size = self.num_heads * self.head_dim
++        self.kv_size = self.num_kv_heads * self.head_dim
++
++        self.qkv_proj = QKVParallelLinear(
++            hidden_size=config.hidden_size,
++            head_size=self.head_dim,
++            total_num_heads=self.total_num_heads,
++            total_num_kv_heads=self.total_num_kv_heads,
++            bias=False,
++            quant_config=quant_config,
++            prefix=f"{prefix}.qkv_proj",
++        )
++        self.o_proj = RowParallelLinear(
++            input_size=self.total_num_heads * self.head_dim,
++            output_size=config.hidden_size,
++            bias=False,
++            quant_config=quant_config,
++            prefix=f"{prefix}.o_proj",
++        )
++        self.q_norm = RMSNorm(self.head_dim, eps=config.norm_eps)
++        self.k_norm = RMSNorm(self.head_dim, eps=config.norm_eps)
++        self.gate_proj = (
++            ColumnParallelLinear(
++                config.hidden_size,
++                self.total_num_heads,
++                bias=False,
++                quant_config=quant_config,
++                prefix=f"{prefix}.gate_proj",
++            )
++            if config.use_attention_gate
++            else None
++        )
++        self.rotary_emb = get_rotary_embedding(config, layer_type)
++        self.attn = Attention(
++            self.num_heads,
++            self.head_dim,
++            self.head_dim**-0.5,
++            num_kv_heads=self.num_kv_heads,
++            cache_config=cache_config,
++            quant_config=quant_config,
++            per_layer_sliding_window=(
++                config.sliding_window if layer_type == "sliding_attention" else None
++            ),
++            prefix=f"{prefix}.attn",
++        )
++
++    def forward(
++        self,
++        positions: torch.Tensor,
++        hidden_states: torch.Tensor,
++    ) -> torch.Tensor:
++        qkv, _ = self.qkv_proj(hidden_states)
++        q, k, v = qkv.split([self.q_size, self.kv_size, self.kv_size], dim=-1)
++        q = self.q_norm(q.view(-1, self.num_heads, self.head_dim)).view(-1, self.q_size)
++        k = self.k_norm(k.view(-1, self.num_kv_heads, self.head_dim))
++        k = k.view(-1, self.kv_size)
++        q, k = self.rotary_emb(positions, q, k)
++        attn_output = self.attn(q, k, v)
++        if self.gate_proj is not None:
++            gate, _ = self.gate_proj(hidden_states)
++            attn_output = attn_output.view(-1, self.num_heads, self.head_dim)
++            attn_output = attn_output * torch.sigmoid(gate)[..., None]
++            attn_output = attn_output.view(-1, self.q_size)
++        output, _ = self.o_proj(attn_output)
++        return output
++
++
++class Lfm3DecoderLayer(nn.Module):
++    def __init__(
++        self,
++        config: Lfm3Config,
++        model_config: ModelConfig | None = None,
++        cache_config: CacheConfig | None = None,
++        quant_config: QuantizationConfig | None = None,
++        prefix: str = "",
++    ) -> None:
++        super().__init__()
++        layer_idx = extract_layer_index(prefix)
++        layer_type = config.layer_types[layer_idx]
++        self.is_attention_layer = layer_type in ATTENTION_LAYER_TYPES
++        if self.is_attention_layer:
++            self.self_attn = Lfm3Attention(
++                config,
++                layer_type,
++                cache_config=cache_config,
++                quant_config=quant_config,
++                prefix=f"{prefix}.self_attn",
++            )
++        else:
++            self.short_conv = ShortConv(
++                config=config,
++                dim=config.hidden_size,
++                layer_idx=layer_idx,
++                model_config=model_config,
++                cache_config=cache_config,
++                quant_config=quant_config,
++                prefix=f"{prefix}.short_conv",
++            )
++        self.feed_forward = Lfm3MLP(
++            config, quant_config=quant_config, prefix=f"{prefix}.feed_forward"
++        )
++        self.operator_norm = RMSNorm(config.hidden_size, eps=config.norm_eps)
++        self.ffn_norm = RMSNorm(config.hidden_size, eps=config.norm_eps)
++        self.use_sandwich_norm = config.use_sandwich_norm
++        if self.use_sandwich_norm:
++            self.post_operator_norm = RMSNorm(config.hidden_size, eps=config.norm_eps)
++            self.post_ffn_norm = RMSNorm(config.hidden_size, eps=config.norm_eps)
++
++    def forward(
++        self,
++        positions: torch.Tensor,
++        hidden_states: torch.Tensor,
++        residual: torch.Tensor | None,
++    ) -> tuple[torch.Tensor, torch.Tensor]:
++        if residual is None:
++            residual = hidden_states
++            hidden_states = self.operator_norm(hidden_states)
++        else:
++            hidden_states, residual = self.operator_norm(hidden_states, residual)
++        if self.is_attention_layer:
++            hidden_states = self.self_attn(positions, hidden_states)
++        else:
++            output = torch.empty_like(hidden_states)
++            self.short_conv(hidden_states, output)
++            hidden_states = output
++        if self.use_sandwich_norm:
++            hidden_states = self.post_operator_norm(hidden_states)
++        hidden_states, residual = self.ffn_norm(hidden_states, residual)
++        hidden_states = self.feed_forward(hidden_states)
++        if self.use_sandwich_norm:
++            hidden_states = self.post_ffn_norm(hidden_states)
++        return hidden_states, residual
++
++
++@support_torch_compile
++class Lfm3Model(nn.Module):
++    # HF uses .conv. but vLLM uses .short_conv. to avoid LoRA regex collision
++    # with the inner .conv.conv child, see Lfm2Model.
++    hf_to_vllm_mapper = WeightsMapper(
++        orig_to_new_substr={".conv.": ".short_conv."},
++        orig_to_new_stacked={
++            ".q_proj": (".qkv_proj", "q"),
++            ".k_proj": (".qkv_proj", "k"),
++            ".v_proj": (".qkv_proj", "v"),
++            ".w1": (".w13", 0),
++            ".w3": (".w13", 1),
++        },
++    )
++
++    def __init__(self, *, vllm_config: VllmConfig, prefix: str = "") -> None:
++        super().__init__()
++        config: Lfm3Config = vllm_config.model_config.hf_config
++        model_config = vllm_config.model_config
++        cache_config = vllm_config.cache_config
++        quant_config = vllm_config.quant_config
++        self.config = config
++        self.vocab_size = config.vocab_size
++
++        if get_pp_group().is_first_rank or (
++            config.tie_word_embeddings and get_pp_group().is_last_rank
++        ):
++            self.embed_tokens = VocabParallelEmbedding(
++                config.vocab_size,
++                config.hidden_size,
++                org_num_embeddings=config.vocab_size,
++                quant_config=quant_config,
++                prefix=f"{prefix}.embed_tokens",
++            )
++        else:
++            self.embed_tokens = PPMissingLayer()
++
++        self.start_layer, self.end_layer, self.layers = make_layers(
++            config.num_hidden_layers,
++            lambda prefix: Lfm3DecoderLayer(
++                config,
++                model_config=model_config,
++                cache_config=cache_config,
++                quant_config=quant_config,
++                prefix=prefix,
++            ),
++            prefix=f"{prefix}.layers",
++        )
++        self.make_empty_intermediate_tensors = make_empty_intermediate_tensors_factory(
++            ["hidden_states", "residual"], config.hidden_size
++        )
++        if get_pp_group().is_last_rank:
++            self.embedding_norm = RMSNorm(config.hidden_size, eps=config.norm_eps)
++        else:
++            self.embedding_norm = PPMissingLayer()
++
++    def embed_input_ids(self, input_ids: torch.Tensor) -> torch.Tensor:
++        return self.embed_tokens(input_ids)
++
++    def forward(
++        self,
++        input_ids: torch.Tensor | None,
++        positions: torch.Tensor,
++        intermediate_tensors: IntermediateTensors | None = None,
++        inputs_embeds: torch.Tensor | None = None,
++    ) -> torch.Tensor | IntermediateTensors:
++        if get_pp_group().is_first_rank:
++            if inputs_embeds is not None:
++                hidden_states = inputs_embeds
++            else:
++                hidden_states = self.embed_input_ids(input_ids)
++            residual = None
++        else:
++            assert intermediate_tensors is not None
++            hidden_states = intermediate_tensors["hidden_states"]
++            residual = intermediate_tensors["residual"]
++
++        for layer in islice(self.layers, self.start_layer, self.end_layer):
++            hidden_states, residual = layer(positions, hidden_states, residual)
++
++        if not get_pp_group().is_last_rank:
++            return IntermediateTensors(
++                {"hidden_states": hidden_states, "residual": residual}
++            )
++        hidden_states, _ = self.embedding_norm(hidden_states, residual)
++        return hidden_states
++
++    def load_weights(self, weights: Iterable[tuple[str, torch.Tensor]]) -> set[str]:
++        loader = AutoWeightsLoader(self)
++        return loader.load_weights(weights, mapper=self.hf_to_vllm_mapper)
++
++
++def _short_conv_state_shape(
++    vllm_config: VllmConfig, config: Lfm3Config
++) -> tuple[tuple[int, int]]:
++    return MambaStateShapeCalculator.short_conv_state_shape(
++        tp_world_size=vllm_config.parallel_config.tensor_parallel_size,
++        intermediate_size=config.hidden_size,
++        conv_kernel=config.conv_L_cache,
++        num_spec=vllm_config.num_speculative_tokens,
++    )
++
++
++def _short_conv_state_dtype(vllm_config: VllmConfig) -> tuple[torch.dtype, ...]:
++    return MambaStateDtypeCalculator.short_conv_state_dtype(
++        vllm_config.model_config.dtype, vllm_config.cache_config.mamba_cache_dtype
++    )
++
++
++class Lfm3ForCausalLM(
++    nn.Module, HasInnerState, SupportsLoRA, SupportsPP, IsHybrid, SupportsQuant
++):
++    packed_modules_mapping = {
++        "qkv_proj": ["q_proj", "k_proj", "v_proj"],
++        "w13": ["w1", "w3"],
++        "in_proj": ["in_proj"],
++    }
++
++    # Reuse the backbone mapper so LoRA/quantization see the same name mapping.
++    hf_to_vllm_mapper = Lfm3Model.hf_to_vllm_mapper
++
++    # LoRA specific attributes
++    embedding_modules = {
++        "embed_tokens": "input_embeddings",
++        "lm_head": "output_embeddings",
++    }
++
++    @classmethod
++    def get_mamba_state_dtype_from_config(
++        cls, vllm_config: VllmConfig
++    ) -> tuple[torch.dtype, ...]:
++        return _short_conv_state_dtype(vllm_config)
++
++    @classmethod
++    def get_mamba_state_shape_from_config(
++        cls, vllm_config: VllmConfig
++    ) -> tuple[tuple[int, int]]:
++        return _short_conv_state_shape(vllm_config, vllm_config.model_config.hf_config)
++
++    @classmethod
++    def get_mamba_state_copy_func(cls) -> tuple[MambaStateCopyFunc]:
++        return MambaStateCopyFuncCalculator.short_conv_state_copy_func()
++
++    def __init__(self, *, vllm_config: VllmConfig, prefix: str = "") -> None:
++        super().__init__()
++        config: Lfm3Config = vllm_config.model_config.hf_config
++        quant_config = vllm_config.quant_config
++        self.config = config
++        self.model = Lfm3Model(
++            vllm_config=vllm_config, prefix=maybe_prefix(prefix, "model")
++        )
++        if get_pp_group().is_last_rank:
++            self.lm_head = ParallelLMHead(
++                config.vocab_size,
++                config.hidden_size,
++                quant_config=quant_config,
++                prefix=maybe_prefix(prefix, "lm_head"),
++            )
++            if config.tie_word_embeddings:
++                self.lm_head = self.lm_head.tie_weights(self.model.embed_tokens)
++        else:
++            self.lm_head = PPMissingLayer()
++        self.logits_processor = LogitsProcessor(config.vocab_size)
++        self.make_empty_intermediate_tensors = (
++            self.model.make_empty_intermediate_tensors
++        )
++
++    def embed_input_ids(self, input_ids: torch.Tensor) -> torch.Tensor:
++        return self.model.embed_input_ids(input_ids)
++
++    def forward(
++        self,
++        input_ids: torch.Tensor | None,
++        positions: torch.Tensor,
++        intermediate_tensors: IntermediateTensors | None = None,
++        inputs_embeds: torch.Tensor | None = None,
++        **kwargs: object,
++    ) -> torch.Tensor | IntermediateTensors:
++        return self.model(input_ids, positions, intermediate_tensors, inputs_embeds)
++
++    def compute_logits(self, hidden_states: torch.Tensor) -> torch.Tensor | None:
++        return self.logits_processor(self.lm_head, hidden_states)
++
++    def load_weights(self, weights: Iterable[tuple[str, torch.Tensor]]) -> set[str]:
++        loader = AutoWeightsLoader(
++            self,
++            ignore_unexpected_prefixes=(
++                ["lm_head."] if self.config.tie_word_embeddings else None
++            ),
++        )
++        return loader.load_weights(weights)
+diff --git a/vllm/model_executor/models/registry.py b/vllm/model_executor/models/registry.py
+index 8f022c9b6da0..181a9da9bae0 100644
+--- a/vllm/model_executor/models/registry.py
++++ b/vllm/model_executor/models/registry.py
+@@ -151,6 +151,7 @@
+     ),
+     "Lfm2ForCausalLM": ("lfm2", "Lfm2ForCausalLM"),
+     "Lfm2MoeForCausalLM": ("lfm2_moe", "Lfm2MoeForCausalLM"),
++    "Lfm3ForCausalLM": ("lfm3", "Lfm3ForCausalLM"),
+     "LagunaForCausalLM": ("laguna", "LagunaForCausalLM"),
+     "LlamaForCausalLM": ("llama", "LlamaForCausalLM"),
+     "Llama4ForCausalLM": ("llama4", "Llama4ForCausalLM"),
+diff --git a/vllm/transformers_utils/config.py b/vllm/transformers_utils/config.py
+index 71564800a05b..6d85240cbf4b 100644
+--- a/vllm/transformers_utils/config.py
++++ b/vllm/transformers_utils/config.py
+@@ -149,6 +149,7 @@ def __getitem__(self, key):
+     muse_spark_audio="MuseSparkAudioConfig",
+     muse_spark="MuseSparkConfig",
+     kimi_k3="KimiK3Config",
++    lfm3="Lfm3Config",
+     RefinedWeb="RWConfig",  # For tiiuae/falcon-40b(-instruct)
+     RefinedWebModel="RWConfig",  # For tiiuae/falcon-7b(-instruct)
+     midashenglm="MiDashengLMConfig",
+diff --git a/vllm/transformers_utils/configs/__init__.py b/vllm/transformers_utils/configs/__init__.py
+index f7d453608e0c..33b970b2ac8c 100644
+--- a/vllm/transformers_utils/configs/__init__.py
++++ b/vllm/transformers_utils/configs/__init__.py
+@@ -57,6 +57,7 @@
+     "MoonViTConfig": "vllm.transformers_utils.configs.moonvit",
+     "KimiLinearConfig": "vllm.transformers_utils.configs.kimi_linear",
+     "KimiVLConfig": "vllm.transformers_utils.configs.kimi_vl",
++    "Lfm3Config": "vllm.transformers_utils.configs.lfm3",
+     "MuseSpark1xTextConfig": "vllm.transformers_utils.configs.muse_spark",
+     "MuseSparkTextConfig": "vllm.transformers_utils.configs.muse_spark",
+     "MuseSparkVisionConfig": "vllm.transformers_utils.configs.muse_spark",
+@@ -131,6 +132,7 @@
+     "KimiLinearConfig",
+     "KimiVLConfig",
+     "Kimi_K25Config",
++    "Lfm3Config",
+     "MuseSpark1xTextConfig",
+     "MuseSparkTextConfig",
+     "MuseSparkVisionConfig",
+diff --git a/vllm/transformers_utils/configs/lfm3.py b/vllm/transformers_utils/configs/lfm3.py
+new file mode 100644
+index 000000000000..a82241a164e2
+--- /dev/null
++++ b/vllm/transformers_utils/configs/lfm3.py
+@@ -0,0 +1,96 @@
++# SPDX-License-Identifier: Apache-2.0
++# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
++from typing import Any
++
++from transformers.configuration_utils import PreTrainedConfig
++
++
++class Lfm3Config(PreTrainedConfig):
++    model_type = "lfm3"
++    keys_to_ignore_at_inference = ["past_key_values"]
++    attribute_map = {"rms_norm_eps": "norm_eps"}
++    default_theta = 1_000_000.0
++    _rope_type_labels = ("full_attention", "sliding_attention")
++
++    def __init__(
++        self,
++        vocab_size: int = 128_000,
++        hidden_size: int = 2048,
++        intermediate_size: int = 7680,
++        num_hidden_layers: int = 24,
++        num_attention_heads: int = 16,
++        num_key_value_heads: int = 4,
++        max_position_embeddings: int = 128_000,
++        initializer_range: float = 0.02,
++        norm_eps: float = 1e-5,
++        use_cache: bool = True,
++        pad_token_id: int | None = 124_893,
++        bos_token_id: int | None = 124_894,
++        eos_token_id: int | list[int] | None = 124_900,
++        tie_word_embeddings: bool = True,
++        rope_parameters: dict[str, Any] | None = None,
++        conv_bias: bool = False,
++        conv_L_cache: int = 7,
++        layer_types: list[str] | None = None,
++        head_dim: int = 128,
++        sliding_window: int | None = 256,
++        use_sandwich_norm: bool = True,
++        use_attention_gate: bool = True,
++        attention_bias: bool = False,
++        attention_dropout: float = 0.0,
++        **kwargs: Any,
++    ) -> None:
++        self.vocab_size = vocab_size
++        self.hidden_size = hidden_size
++        self.intermediate_size = intermediate_size
++        self.num_hidden_layers = num_hidden_layers
++        self.num_attention_heads = num_attention_heads
++        self.num_key_value_heads = num_key_value_heads
++        self.max_position_embeddings = max_position_embeddings
++        self.initializer_range = initializer_range
++        self.norm_eps = norm_eps
++        self.use_cache = use_cache
++        self.conv_bias = conv_bias
++        self.conv_L_cache = conv_L_cache
++        self.head_dim = head_dim
++        self.sliding_window = sliding_window
++        self.use_sandwich_norm = use_sandwich_norm
++        self.use_attention_gate = use_attention_gate
++        self.attention_bias = attention_bias
++        self.attention_dropout = attention_dropout
++        self.layer_types = layer_types or [
++            "full_attention"
++            if i % 4 == 2
++            else "sliding_attention"
++            if i % 4 == 0 and i > 0
++            else "conv"
++            for i in range(num_hidden_layers)
++        ]
++        if rope_parameters is None:
++            rope_parameters = {
++                "sliding_attention": {"rope_type": "default", "rope_theta": 10_000.0},
++                "full_attention": {
++                    "rope_type": "proportional",
++                    "rope_theta": 1_000_000.0,
++                    "partial_rotary_factor": 0.5,
++                },
++            }
++        for params in rope_parameters.values():
++            # The released hub configs say `default`, but their remote code spreads
++            # the partial frequencies over the whole head, which is `proportional`.
++            if (
++                isinstance(params, dict)
++                and params.get("rope_type", "default") == "default"
++                and params.get("partial_rotary_factor", 1.0) < 1.0
++            ):
++                params["rope_type"] = "proportional"
++        self.rope_parameters = rope_parameters
++        # Legacy key the hub remote code still accepts
++        tie_word_embeddings = kwargs.pop("tie_embedding", tie_word_embeddings)
++        super().__init__(
++            pad_token_id=pad_token_id,
++            bos_token_id=bos_token_id,
++            eos_token_id=eos_token_id,
++            tie_word_embeddings=tie_word_embeddings,
++            **kwargs,
++        )
