@@ -180,6 +180,12 @@ separate research candidates. No new experiment is silently made a default.
   pointer/geometry/scale forwarding, the explicit fp32-state flag and stream,
   and attention's complete argument struct, causal flag and zeroed extension
   fields. These probes launch no GPU kernel and make no numerical claim.
+- Twelve paged-attention cases pass on GPU 0 with the maintained extension
+  under ROCm 10, using direct HIP calls and independent CPU-generated FP64
+  references. Both BF16 and FP8 caches, shuffled/partial pages, guards and
+  changed-input HIP graph replay pass; maximum relative error is 0.001772.
+  The previous image also passes its independent oracle control. This is
+  native-kernel evidence, not the still-pending new Torch/vLLM integration.
 - The full foundation source build is still running. No candidate-image serving,
   native GPU correctness, TP2, release, capacity or performance pass is claimed.
 
