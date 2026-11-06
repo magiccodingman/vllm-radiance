@@ -186,6 +186,16 @@ separate research candidates. No new experiment is silently made a default.
   changed-input HIP graph replay pass; maximum relative error is 0.001772.
   The previous image also passes its independent oracle control. This is
   native-kernel evidence, not the still-pending new Torch/vLLM integration.
+- Twenty-four maintained GDN extreme-decay cases pass on GPU 0 under ROCm 10,
+  with FP64 output/state references and changed-query graphs for both 48/16 and
+  24/8 geometries; maximum relative error is 0.003572.
+- Sixteen newly compiled MXFP4/FP8 GEMM cases pass under ROCm 10, covering
+  folded/per-block scaling, decode/prefill/TN4, K64-only widths, partial N and
+  TP1-wide N=34816, guards, reset counters and changed-input graphs. Maximum
+  relative error to exact stored-operand FP64 dots is 0.001683.
+- Source, results, hashes and preflight limits are preserved in
+  [native kernel evidence](../benchmarks/results/20261106-v033-native-kernels/README.md).
+  These direct HIP checks do not qualify the pending Torch/vLLM/model integration.
 - The full foundation source build is still running. No candidate-image serving,
   native GPU correctness, TP2, release, capacity or performance pass is claimed.
 

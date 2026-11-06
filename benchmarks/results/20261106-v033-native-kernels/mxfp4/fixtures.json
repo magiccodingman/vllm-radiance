@@ -1,0 +1,54 @@
+{
+  "scope": "CPU independent FP64 dot product over exact FP8 activation/E2M1 weight/E8M0 scales",
+  "cases": [
+    {
+      "file": "case0-m1-n128-k256.npz",
+      "m": 1,
+      "n": 128,
+      "k": 256
+    },
+    {
+      "file": "case1-m2-n144-k192.npz",
+      "m": 2,
+      "n": 144,
+      "k": 192
+    },
+    {
+      "file": "case2-m17-n48-k256.npz",
+      "m": 17,
+      "n": 48,
+      "k": 256
+    },
+    {
+      "file": "case3-m64-n128-k256.npz",
+      "m": 64,
+      "n": 128,
+      "k": 256
+    },
+    {
+      "file": "case4-m65-n128-k256.npz",
+      "m": 65,
+      "n": 128,
+      "k": 256
+    },
+    {
+      "file": "case5-m129-n144-k192.npz",
+      "m": 129,
+      "n": 144,
+      "k": 192
+    },
+    {
+      "file": "case6-m2048-n128-k256.npz",
+      "m": 2048,
+      "n": 128,
+      "k": 256
+    },
+    {
+      "file": "case7-m1-n34816-k256.npz",
+      "m": 1,
+      "n": 34816,
+      "k": 256
+    }
+  ],
+  "producer_torch": "2.12.0+rocm7.14"
+}

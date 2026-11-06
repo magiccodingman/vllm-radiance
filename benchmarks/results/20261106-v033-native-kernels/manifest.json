@@ -1,0 +1,62 @@
+{
+  "recorded_at": "2026-11-06T21:05:36.559769+00:00",
+  "scope": "Native-kernel preflight only; not installed candidate vLLM/Torch integration, model quality, performance, TP2 or release qualification",
+  "source_revision": "5a3936350e71a183af36d83efb91421a8e112f9f",
+  "vllm_target": "4ba787ec9959e566d3b587a796dff07673324da5",
+  "rocm_base": "rocm/dev-ubuntu-24.04:10.0.0-full@sha256:a90cf047f615abe70fbef83c64def0a2d549ef37a39c8ea545430aba4981b374",
+  "producer_cpu_image": "magiccodingman/vllm-radiance@sha256:b73bf3e41bc0a1cf7aaa5935bebe31123f549639e69b61a3ffa81acd5f7313e0",
+  "producer_torch": "2.12.0+rocm7.14 CPU only; no old Torch in ROCm10 GPU process",
+  "gpu": {
+    "name": "AMD Radeon AI PRO R9700",
+    "gfx_arch": "gfx1201",
+    "pci": "0000:03:00.0",
+    "mapped_render": "renderD128",
+    "visible_compute_devices": 1
+  },
+  "libr4d_legacy_abi_commit": "e8de4bc1f3dbd608dcb8d3ffceb6b48acdf83bb7",
+  "libr4d_maintained_commit": "451b136874084650992668bed9e8662deb58de88",
+  "source_sha256": {
+    "tools/prepare_r4d.py": "cd651422ad123cce7a7dbdddd47e22b36b94244920b007780077827232be2084",
+    "r4d_radiance_extras.patch": "c8c10918cd7218e2512f33d8902b9185029fd070cfbca2f88213d6c8cac7d126",
+    "radiance_mxfp4_fp8.hip": "d421fbc4a8ef464b1ba3a5772531898a35817ef12a451b102d8caa1cdfe41190",
+    "benchmarks/bin/check_gdn_extreme_decay.py": "31e018b580d8e87125e330b03ef22f1ea80483cb6c4ba8aa096516bc7f4070f4",
+    "benchmarks/bin/check_r4d_attention_native.py": "367b917e34131e1ab4c34985d3c81f142b0c1da5fdb8c8afd6beb9b5624f03a7"
+  },
+  "binary_sha256": {
+    "r4d.so": "9741015832bddf7d8b8d182e7a97fadef67bd42d39e3b4131f190da5722b492f",
+    "radiance_mxfp4_fp8.so": "c8a5dc6157c56c0f26402ead0225a4443e99ee662503db85a1c1688a2ac3f8af"
+  },
+  "gates": {
+    "attention": {
+      "cases": 12,
+      "maximum_relative_error": 0.0017713394390129176
+    },
+    "gdn": {
+      "cases": 24,
+      "maximum_relative_error": 0.0035712601236722544
+    },
+    "mxfp4": {
+      "cases": 16,
+      "maximum_relative_error": 0.0016821554649541748
+    }
+  },
+  "negative_evidence": [
+    "Attention harness initially omitted required q_len/FP8 dtype selector keys; corrected before numerical runs. Original log retained in task audit.",
+    "Unadapted LFM3 configuration on Transformers 5.16.1 normalized conv labels and injected global RoPE entries; repaired and checked separately."
+  ],
+  "evidence_sha256": {
+    "mxfp4/run_raw_hip.py": "6587d8610b07a067992b2ca1e7352d0660f78535a86d30175b132669b28b07fd",
+    "mxfp4/make_fixtures.py": "7e8f23629ca088b516559dbedfa12463eeb8b65f5e057a763dd51e399dd41033",
+    "mxfp4/fixtures.json": "b6cdb3c718ab6cef5de64142a178be8ee87660741fcdb525398ee9f6f30cc4c3",
+    "mxfp4/result.json": "a22201d78562201589456d3d43c14fb7b7aae6df3fa1db3894bbd87afd35f7e3",
+    "attention/baseline-old-image.json": "bee9a6582b3a12fe226b3890ee07c9a05e491a49475416daa47499ae381bee26",
+    "attention/run_raw_hip.py": "00c3655136ef20a35f9741144e541a00ad3b920210e19f9ae96ce9adadbffeb2",
+    "attention/make_fixtures.py": "7c3ac6059d474991c3cfb0ee9980832eb46727b651ab1c52921754ab630e279c",
+    "attention/fixtures.json": "39e703e7a29f3d9cfb85ac014b801ed9e228bb0ffa26ca46f1cccaaf81b068bb",
+    "attention/result.json": "349fa42f7ee678c2ebe3220da63711c5ac9e8647d699d0dea9aa43c5e20cd40d",
+    "gdn/run_raw_hip.py": "f48c66015011daded446556a33b8358f785ddd9c47f6651336dcb297f965d364",
+    "gdn/make_fixtures.py": "efc54e6f88d6faccc19fafe77fecfb203fea997b0ca54034507ffa9b18113362",
+    "gdn/fixtures.json": "bf50aff0ef75bf126d25d708b8bccfc8fb9555a2101b7c99b65e054d9e8a8914",
+    "gdn/result.json": "926e7642ee73ebb05b06d8077ecb363e9dc295f945d2005390ede528c7b023ca"
+  }
+}
