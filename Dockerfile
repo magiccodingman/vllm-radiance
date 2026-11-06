@@ -163,7 +163,7 @@ RUN --mount=type=cache,id=radiance-ccache-gfx1201,target=/root/.cache/ccache \
     git clone --filter=blob:none --no-checkout https://github.com/vllm-project/vllm.git /src/vllm \
     && cd /src/vllm && git checkout --detach ${VLLM_COMMIT} \
     && test "$(git rev-parse HEAD)" = "${VLLM_COMMIT}" \
-    && python use_existing_torch.py \
+    && python tools/use_existing_torch.py --prefix \
     && pip install "setuptools-rust>=1.9.0" \
     && VLLM_TARGET_DEVICE=rocm VLLM_VERSION_OVERRIDE=${VLLM_VERSION} \
        pip wheel --no-build-isolation --no-deps . -w /wheels \

@@ -38,7 +38,7 @@ RUN --mount=type=cache,id=radiance-dev-ccache-gfx1201,target=/root/.cache/ccache
     && cd /src/vllm \
     && git checkout --detach ${VLLM_COMMIT} \
     && test "$(git rev-parse HEAD)" = "${VLLM_COMMIT}" \
-    && python use_existing_torch.py \
+    && python tools/use_existing_torch.py --prefix \
     && mkdir -p /wheels \
     && VLLM_TARGET_DEVICE=rocm VLLM_VERSION_OVERRIDE=${VLLM_VERSION} \
        MAX_JOBS=2 CMAKE_BUILD_PARALLEL_LEVEL=2 \
