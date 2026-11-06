@@ -174,6 +174,10 @@ separate research candidates. No new experiment is silently made a default.
   checks pass. Initially run in the previous image; repeat in the candidate.
 - Maintained gfx1201 attention/GDN extension compiles with the new ROCm compiler
   and imports with the expected version and full maintained revision.
+- Host-only symbol-interception probes of the compiled extension confirm GDN
+  pointer/geometry/scale forwarding, the explicit fp32-state flag and stream,
+  and attention's complete argument struct, causal flag and zeroed extension
+  fields. These probes launch no GPU kernel and make no numerical claim.
 - The full foundation source build is still running. No candidate-image serving,
   native GPU correctness, TP2, release, capacity or performance pass is claimed.
 
