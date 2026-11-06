@@ -89,6 +89,13 @@ def main():
         entrypoints = [e for d in distributions for e in d.entry_points]
         assert [(e.group, e.name, e.value) for e in entrypoints] == [
             ("vllm.general_plugins", "radiance", "radiance_kernels:install_all")]
+    # A newer upstream fused speculative layout must retain ownership before
+    # any weight merge/release or optional Torch import can occur.
+    gdn_tree = ast.parse((ROOT / "radiance_gdnmerge.py").read_text())
+    merge = next(n for n in gdn_tree.body if isinstance(n, ast.FunctionDef) and n.name == "_merge_one")
+    scope = {}
+    exec(compile(ast.Module(body=[merge], type_ignores=[]), "gdn-merge-guard", "exec"), scope)
+    assert scope["_merge_one"](SimpleNamespace(enable_fused_gdn_spec_decode=True)) is False
     print("v0.33 draft exclusion, LDS and native plugin CPU regressions: PASS")
 
 

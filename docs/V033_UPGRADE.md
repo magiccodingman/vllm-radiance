@@ -100,9 +100,12 @@ from TP1. Existing production defaults are not promoted by this MR.
 - Quark MXFP4 tuning JSON files move to AITER's nested gfx1201 GEMM directory.
   FlyDSL moves to the AITER 0.1.26 requirement, **0.4.0**.
 - GDN's V2 metadata reuse is upstream-owned; the redundant shared-build overlay
-  is retired. Persistent index buffers and the explicit RDNA4 `aiter` prefill
+  is retired. `RADIANCE_GDN_SHARED_BUILD` is removed from image/Compose defaults;
+  reuse is now upstream-owned rather than an optional local hook. Persistent index buffers and the explicit RDNA4 `aiter` prefill
   implementation remain guarded. The upstream CDNA FlyDSL architecture gate
   is not widened. Zero-draft state offsets retain upstream semantics.
+- GDN projection merging leaves the new upstream fused speculative forward and
+  its weight ownership untouched. Its compatible ROCm path remains eligible.
 - Sampler top-k retains v0.33's positional `has_topp_only_rows` argument;
   Radiance's known bound is keyword-only. V1 and V2 load hooks are updated.
 - CPU KV offload uses upstream mmap lifetime, runtime helpers, role detection

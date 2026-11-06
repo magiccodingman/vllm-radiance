@@ -116,7 +116,6 @@ services:
       RADIANCE_GDN_FUSED_MAX_ITEMS: "${RADIANCE_GDN_FUSED_MAX_ITEMS:-32}"
       # Build identical speculative GDN metadata once per step, then copy only
       # each KV group's block-table-derived state indices.
-      RADIANCE_GDN_SHARED_BUILD: "${RADIANCE_GDN_SHARED_BUILD:-1}"
       RADIANCE_TOPK_TRITON_MIN_ROWS: "${RADIANCE_TOPK_TRITON_MIN_ROWS:-1}"
       # Multi-block torch.topk plus a small exact mask replaces the serial
       # whole-vocabulary Triton scan when every active top-k is <= KCAP.
