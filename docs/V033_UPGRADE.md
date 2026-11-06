@@ -93,7 +93,9 @@ from TP1. Existing production defaults are not promoted by this MR.
 
 The owner also requested `Lfm3ForCausalLM` and supplied an FP8 compressed-tensors
 checkpoint. The official post-release backport and its separate model/profile
-qualification are recorded in [LFM3.md](LFM3.md). No LFM3 runtime pass is claimed yet.
+qualification are recorded in [LFM3.md](LFM3.md). A pinned Transformers 5.16.1
+CPU check caught and verified the repair for config label/RoPE normalization;
+its initial failure is retained. No LFM3 runtime pass is claimed yet.
 
 ## Implemented migration (candidate)
 

@@ -17,6 +17,30 @@ PATCH_SHA256 = "5258e48cec5c9f5cfa39ad1e00513b3ddaa7a988065770493e7d05c247c004fe
 PAYLOAD = Path(__file__).parent / "upstream/vllm-lfm3/c96e5f60bbdd.patch"
 
 
+def adapt_lfm3_config(source: str) -> str:
+    """Preserve upstream's config representation on Transformers 5.16.1.
+
+    The base initializer validates legacy conv labels as linear_attention and
+    injects global RoPE defaults into the nested dictionary. Retain the original
+    validated layer labels and the two declared RoPE dictionaries. Model/kernel
+    arithmetic is unchanged; the original mail patch remains byte-identical.
+    """
+    before = '        super().__init__(\n'
+    if source.count(before) != 1:
+        raise RuntimeError("LFM3 config initialization anchor drift")
+    source = source.replace(before,
+        '        _lfm3_layer_types = self.layer_types\n' + before, 1)
+    ending = '            **kwargs,\n        )\n'
+    if source.count(ending) != 1:
+        raise RuntimeError("LFM3 config post-initialization anchor drift")
+    return source.replace(ending, ending +
+        '        self.layer_types = _lfm3_layer_types\n'
+        '        self.rope_parameters = {\n'
+        '            label: self.rope_parameters[label] for label in self._rope_type_labels\n'
+        '        }\n'
+        '        self.validate_rope()\n', 1)
+
+
 def apply_backport(site: Path, payload: Path = PAYLOAD):
     raw = payload.read_bytes()
     if hashlib.sha256(raw).hexdigest() != PATCH_SHA256:
@@ -56,6 +80,8 @@ def apply_backport(site: Path, payload: Path = PAYLOAD):
         if not hunks:
             raise RuntimeError(f"No hunks for {relative}")
         for before, after in hunks:
+            if relative.as_posix() == "vllm/transformers_utils/configs/lfm3.py":
+                after = adapt_lfm3_config(after)
             if after in text:
                 continue
             if not before:

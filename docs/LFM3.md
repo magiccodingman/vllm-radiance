@@ -13,6 +13,14 @@ under `upstream/vllm-lfm3/`, with SHA-256 provenance. The build installs its six
 runtime files through `patch_lfm3_backport.py` with exact context/checksum guards.
 Every target is validated before writing any file. Reapplication is supported.
 
+A narrow config adaptation preserves the upstream convolution layer labels and
+the two nested RoPE dictionaries after Transformers 5.16.1's base initializer
+normalizes legacy labels and injects global defaults. Parent validation still
+runs; the original model/kernel code and upstream tests remain unchanged. A
+real pinned-Transformers CPU check passes checkpoint metadata, constructor and
+serialization roundtrip checks, plus invalid-layer negative controls. The first
+unadapted configuration failure is retained in the upgrade audit.
+
 This includes native `Lfm3ForCausalLM`, the bundled `Lfm3Config`, model/config
 registration and width-7 causal convolution in prefill and decode. The bundled
 config reconciles the checkpoint's partial RoPE with the existing proportional

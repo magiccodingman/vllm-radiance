@@ -9,7 +9,7 @@
     "vllm-agent <claw@inferact.ai>",
     "Cyrus Leung <tlleungac@connect.ust.hk>"
   ],
-  "import": "Original mail patch; six vllm runtime files installed without model implementation changes. Upstream tests/docs retained in payload.",
+  "import": "Original mail patch; six vllm runtime files installed. Model/kernel code is unchanged. A narrow config adaptation restores validated convolution labels and nested RoPE dictionaries after the Transformers 5.16.1 base initializer. Upstream tests/docs are retained.",
   "sha256": {
     "c96e5f60bbdd.patch": "5258e48cec5c9f5cfa39ad1e00513b3ddaa7a988065770493e7d05c247c004fe",
     "test_causal_conv1d.py": "4ff47229495c1a8eb68ab8bc59f3f0077131a6a7627930367e552d79570d6189",
