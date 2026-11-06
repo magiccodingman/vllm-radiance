@@ -27,8 +27,11 @@ def main():
     # disabled; a registry-only string alias would fail here.
     loaded = get_config(str(args.model), trust_remote_code=False)
     assert isinstance(loaded, Lfm3Config)
-    cls, architecture = ModelRegistry.resolve_model_cls(["Lfm3ForCausalLM"])
-    assert architecture == "Lfm3ForCausalLM"
+    # Load the registered native class without constructing a device-aware
+    # ModelConfig. Full ModelConfig/quantization execution is the live gate.
+    registered = ModelRegistry.models["Lfm3ForCausalLM"]
+    cls = registered.load_model_cls()
+    assert cls.__name__ == "Lfm3ForCausalLM"
     assert cls.__module__ == "vllm.model_executor.models.lfm3"
     assert json.loads((args.model / "config.json").read_text()) == expected
     quant = getattr(config, "quantization_config", None)
