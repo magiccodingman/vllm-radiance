@@ -90,10 +90,13 @@ def main() -> None:
           '# radiance: Responses tool parameters may otherwise alias caller schemas.',
           "qwen-tool-schema-copy")
     apply(REGISTRY,
-          '    if tool_choice == "auto" and not _any_tool_strict(tools):\n',
-          '    if (tool_choice == "auto" and not _any_tool_strict(tools)\n'
-          '            and not _radiance_qwen_auto_grammar(model)):\n',
-          'and not _radiance_qwen_auto_grammar(model)', "qwen-auto-grammar-opt-in")
+          '    tools = resolve_tool_strictness(tools, tool_choice, strict_level)\n',
+          '    # Preserve the legacy opt-in using v0.33 native strictness semantics.\n'
+          '    if _radiance_qwen_auto_grammar(model):\n'
+          '        strict_level = max(strict_level, ToolStrictLevel.FUNCTION)\n'
+          '    tools = resolve_tool_strictness(tools, tool_choice, strict_level)\n',
+          'strict_level = max(strict_level, ToolStrictLevel.FUNCTION)',
+          "qwen-auto-grammar-opt-in")
     apply(REGISTRY,
           '        _normalize_qwen_tool_schemas(dumped_tools)\n',
           '        _normalize_qwen_tool_schemas(dumped_tools)\n'

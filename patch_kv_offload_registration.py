@@ -1,31 +1,14 @@
 #!/usr/bin/env python3
-"""Harden mmap KV-offload host registration on CUDA/ROCm.
+"""Retain coordinated ROCm host registration on v0.33's native CPU KV worker.
 
-This v0.28.0 overlay combines the narrowly relevant pieces of upstream vLLM
-PRs #50070, #51081, and #52296:
-
-* call host-register/unregister through one runtime-library handle and drain a
-  failed registration's pending HIP/CUDA error;
-* serialize registration across TP/PCP/PP workers and require an all-pinned or
-  coherently all-pageable result;
-* retain every successful row-aligned chunk for exact rollback and cleanup.
-
-Chunking is implemented but opt-in pending gfx1201 qualification.  The default
-is one whole-region registration, matching vLLM v0.28.0 behavior.  The default
-``auto`` policy falls back to pageable DMA if any worker cannot pin; ``required``
-fails startup, and ``disabled`` skips registration.
-
-Idempotent; exact-anchor guarded; ast.parse checked before writing.
+Upstream owns pageable-safe DMA selection and mapped-file lifetime. Radiance
+adds its explicit pin policy, shared runtime-handle ownership, bounded chunks,
+and coordinated failure/rollback across model-parallel ranks.
 """
-
 import sysconfig
 from pathlib import Path
-
 from _patchlib import apply
-
-
 LIB = Path(sysconfig.get_paths()["purelib"])
-
 
 def patch_cuda_wrapper() -> None:
     path = LIB / "vllm/distributed/device_communicators/cuda_wrapper.py"
@@ -123,164 +106,119 @@ def patch_cuda_wrapper() -> None:
         "kv-offload: same-handle host helpers",
     )
 
-
-def patch_shared_region() -> None:
+def patch_shared_region():
     path = LIB / "vllm/v1/kv_offload/cpu/shared_offload_region.py"
-    apply(
-        path,
-        "from vllm.distributed.device_communicators.shm_broadcast import (\n",
-        "from radiance_kv_offload import rollback_host_chunks\n\n"
-        "from vllm.distributed.device_communicators.shm_broadcast import (\n",
-        "from radiance_kv_offload import rollback_host_chunks",
-        "kv-offload: import registration rollback",
-    )
-    apply(
-        path,
-        '''        self._canonical_offset = 0
-        self.is_pinned: bool = False
-''',
-        '''        self._canonical_offset = 0
-        self.is_pinned: bool = False
-        self.pinned_chunks: list[tuple[int, int]] = []
-        self._cudart_lib = None
-''',
-        "self.pinned_chunks: list[tuple[int, int]]",
-        "kv-offload: retain registered chunks",
-    )
-    apply(
-        path,
-        '''    def cleanup(self) -> None:
+    apply(path, "from vllm.v1.kv_offload.cpu.host_register import host_unregister\n",
+          "from radiance_kv_offload import rollback_host_chunks\n",
+          "rollback_host_chunks", "KV rollback handle import")
+    apply(path, '        self.is_pinned: bool = False\n',
+          '        self.is_pinned: bool = False\n        self.pinned_chunks: list[tuple[int, int]] = []\n        self._cudart_lib = None\n',
+          'self.pinned_chunks: list[tuple[int, int]]', "KV registered chunk ownership")
+    apply(path, '''    def cleanup(self) -> None:
         if self.is_pinned and self._base is not None:
-            if current_platform.is_cuda_alike():
-                base_ptr = self._base.data_ptr()
-                addresses = self.pinned_addresses or [base_ptr]
-                for address in reversed(addresses):
-                    result = torch.cuda.cudart().cudaHostUnregister(address)
-                    if result.value != 0:
-                        logger.warning(
-                            "cudaHostUnregister failed for rank=%d, "
-                            "address=%#x (code=%d)",
-                            self.rank,
-                            address,
-                            result.value,
-                        )
-                self.pinned_addresses.clear()
+            base_ptr = self._base.data_ptr()
+            addresses = self.pinned_addresses or [base_ptr]
+            for address in reversed(addresses):
+                host_unregister(address)
+            self.pinned_addresses.clear()
             self.is_pinned = False
 ''',
-        '''    def cleanup(self) -> None:
+          '''    def cleanup(self) -> None:
         if self.is_pinned and self._base is not None:
-            if current_platform.is_cuda_alike() and self._cudart_lib is not None:
-                rollback = rollback_host_chunks(
-                    self._cudart_lib,
-                    self._base.data_ptr(),
-                    self.pinned_chunks,
-                )
-                if not rollback.ok:
-                    logger.warning(
-                        "cudaHostUnregister cleanup incomplete for rank=%d "
-                        "(code=%s, remaining_chunks=%d)",
-                        self.rank,
-                        rollback.error_code,
-                        len(rollback.remaining_chunks),
-                    )
-            elif current_platform.is_cuda_alike():
-                logger.warning(
-                    "Missing runtime handle while unregistering rank=%d", self.rank
-                )
-            self.pinned_chunks.clear()
+            if self._cudart_lib is None:
+                raise RuntimeError("Pinned KV mmap lost its registration runtime handle")
+            result = rollback_host_chunks(
+                self._cudart_lib, self._base.data_ptr(), self.pinned_chunks
+            )
+            self.pinned_chunks = list(result.remaining_chunks)
+            if not result.ok:
+                raise RuntimeError("KV mmap unregister failed; refusing to unmap pinned storage")
+            self.pinned_addresses.clear()
             self.is_pinned = False
             self._cudart_lib = None
 ''',
-        "cudaHostUnregister cleanup incomplete",
-        "kv-offload: exact same-handle cleanup",
-    )
+          "refusing to unmap pinned storage", "KV exact-handle cleanup")
 
 
-def patch_gpu_worker() -> None:
+def patch_gpu_worker():
     path = LIB / "vllm/v1/kv_offload/cpu/gpu_worker.py"
-    apply(
-        path,
-        "import functools\nimport time\n",
-        "import functools\nimport math\nimport time\n",
-        "import math\nimport time",
-        "kv-offload: import math",
-    )
-    apply(
-        path,
-        "from vllm import _custom_ops as ops\nfrom vllm.logger import init_logger\n",
-        '''from radiance_kv_offload import (
-    get_pin_policy,
-    get_register_chunk_bytes,
-    register_host_chunks,
-    rollback_host_chunks,
+    apply(path, "import functools\n", "import functools\nimport math\n", "import math\n", "KV coordination math")
+    apply(path, 'from vllm import _custom_ops as ops\n',
+          '''from radiance_kv_offload import (
+    get_pin_policy, get_register_chunk_bytes, register_host_chunks, rollback_host_chunks,
 )
-from vllm import _custom_ops as ops
 from vllm.distributed.device_communicators.cuda_wrapper import CudaRTLibrary
 from vllm.distributed.parallel_state import (
-    GroupCoordinator,
-    get_pcp_group,
-    get_pp_group,
-    get_tp_group,
-    model_parallel_is_initialized,
+    GroupCoordinator, get_pcp_group, get_pp_group, get_tp_group, model_parallel_is_initialized,
 )
-from vllm.logger import init_logger
-''',
-        "from radiance_kv_offload import (",
-        "kv-offload: import coordinated registration",
+from vllm import _custom_ops as ops
+''', "from radiance_kv_offload import (", "KV registration imports")
+    old_pin = '''def pin_mmap_region(
+    region: SharedOffloadRegion, worker_slot_only: bool = False
+) -> None:
+    """Register row-aligned chunks or this worker's slots, rolling back on failure."""
+    rank = region.rank
+    base_ptr = region._base.data_ptr()
+    total_size = region.total_size_bytes
+    # Chunks end on block-row boundaries, which are page aligned, so neither the
+    # driver's page rounding nor any single block transfer straddles two
+    # registrations.
+    rows_per_chunk = max(MAX_HOST_REGISTER_CHUNK_BYTES // region._row_stride, 1)
+    chunk_size = rows_per_chunk * region._row_stride
+    ranges: Iterator[tuple[int, int]] = (
+        (offset, min(chunk_size, total_size - offset))
+        for offset in range(0, total_size, chunk_size)
     )
-    apply(
-        path,
-        '''def _select_swap_blocks_fn(
-    layer_refs_per_group: list[list[CanonicalKVCacheRef]],
-    gpu_to_cpu: bool,
-):
-    """Resolve the swap_blocks function for a handler at init time."""
-    # GPU->CPU is bandwidth-bound; the dedicated copy engine beats Triton.
-    if gpu_to_cpu:
-        return ops.swap_blocks_batch
-''',
-        '''def _select_swap_blocks_fn(
-    layer_refs_per_group: list[list[CanonicalKVCacheRef]],
-    gpu_to_cpu: bool,
-    host_memory_is_pinned: bool = True,
-):
-    """Resolve the swap_blocks function for a handler at init time."""
-    # GPU->CPU is bandwidth-bound; pageable host memory also requires DMA.
-    if gpu_to_cpu or not host_memory_is_pinned:
-        return ops.swap_blocks_batch
-''',
-        "gpu_to_cpu or not host_memory_is_pinned",
-        "kv-offload: force DMA for pageable host memory",
-    )
-
-    old_pin = '''def pin_mmap_region(region: SharedOffloadRegion) -> None:
-    """Register the entire mmap as CUDA pinned memory via cudaHostRegister."""
-    if not current_platform.is_cuda_alike():
-        logger.info(
-            "Skipping mmap host registration on %s; cudaHostRegister is only "
-            "available on CUDA/ROCm.",
-            current_platform.device_name,
+    stride, slot, page = region._row_stride, region.cpu_page_size, region.page_size
+    min_savings = max(page, MIN_HOST_REGISTER_SAVED_BYTES)
+    if worker_slot_only and region.rank is not None and stride - slot >= min_savings:
+        # Round each slot out to pages; the worker's next slot is a page away.
+        ranges = region.iter_worker_slot_ranges()
+    else:
+        reason = (
+            "whole-region layout requested"
+            if not worker_slot_only
+            else "no worker rank"
+            if region.rank is None
+            else f"less than {min_savings} bytes saved per row"
         )
+        logger.info(
+            "Registering full CPU offload region rank=%s (row=%d, slot=%d bytes): %s",
+            rank,
+            stride,
+            slot,
+            reason,
+        )
+
+    # Register, drain and roll back through the same helper, so a failed
+    # chunk leaves neither a pending error nor a partly pinned region.
+    addresses: list[int] = []
+    registered_bytes = 0
+    for offset, size in ranges:
+        address = base_ptr + offset
+        if host_register(address, size):
+            addresses.append(address)
+            registered_bytes += size
+            continue
+        logger.warning(
+            "host_register failed for rank=%d at %.2f of %.2f GB; "
+            "the offload region stays pageable",
+            rank,
+            offset / 1e9,
+            total_size / 1e9,
+        )
+        for registered in reversed(addresses):
+            host_unregister(registered)
         return
 
-    rank = region.rank
-
-    base_ptr = region._base.data_ptr()
-    result = torch.cuda.cudart().cudaHostRegister(base_ptr, region.total_size_bytes, 0)
-    if result.value != 0:
-        logger.warning(
-            "cudaHostRegister failed for rank=%d (code=%d) — "
-            "transfers will still work but may be slower (unpinned DMA)",
-            rank,
-            result,
-        )
-    else:
-        logger.debug(
-            "cudaHostRegister rank=%d %.2f GB",
-            rank,
-            region.total_size_bytes / 1e9,
-        )
-        region.is_pinned = True
+    region.pinned_addresses.extend(addresses)
+    region.is_pinned = True
+    logger.debug(
+        "Host-registered mmap region rank=%d %.2f GB in %d chunk(s)",
+        rank,
+        registered_bytes / 1e9,
+        len(addresses),
+    )
 '''
     new_pin = '''@dataclass(frozen=True)
 class _ModelParallelCoordination:
@@ -322,6 +260,7 @@ def _group_max(status: int, groups: Sequence[GroupCoordinator]) -> int:
 
 def pin_mmap_region(
     region: SharedOffloadRegion,
+    worker_slot_only: bool = False,
     coordination: _ModelParallelCoordination | None = None,
 ) -> None:
     """Register mmap consistently or coherently fall back to pageable DMA."""
@@ -333,6 +272,8 @@ def pin_mmap_region(
         )
         return
 
+    # Preserve the qualified whole-region policy on block-major mappings.
+    # The v0.33 worker-slot hint is not a rank-major layout declaration.
     policy = get_pin_policy()
     if policy == "disabled":
         logger.info("KV mmap host registration disabled by Radiance policy")
@@ -456,118 +397,23 @@ def pin_mmap_region(
         raise error from local_error
     raise error
 '''
-    apply(
-        path,
-        old_pin,
-        new_pin,
-        "KV mmap registration failed on at least one worker",
-        "kv-offload: coordinated host registration",
-    )
-
-    apply(
-        path,
-        '''        gpu_to_cpu: bool,
-        canonical_layout: bool = False,
-    ):
-''',
-        '''        gpu_to_cpu: bool,
-        canonical_layout: bool = False,
-        host_memory_is_pinned: bool = True,
-    ):
-''',
-        "canonical_layout: bool = False,\n        host_memory_is_pinned: bool = True",
-        "kv-offload: handler pin-state argument",
-    )
-    apply(
-        path,
-        '''            canonical_layout: if True, CPU pages use the canonical layout
-                described by the refs' mappings.
-        """
-''',
-        '''            canonical_layout: if True, CPU pages use the canonical layout
-                described by the refs' mappings.
-            host_memory_is_pinned: whether kernels may dereference host tensors.
-        """
-''',
-        "host_memory_is_pinned: whether kernels",
-        "kv-offload: document handler pin state",
-    )
-    apply(
-        path,
-        '''        self._swap_blocks_batch = _select_swap_blocks_fn(
-            layer_refs_per_group, gpu_to_cpu
-        )
-''',
-        '''        self._swap_blocks_batch = _select_swap_blocks_fn(
-            layer_refs_per_group, gpu_to_cpu, host_memory_is_pinned
-        )
-''',
-        "layer_refs_per_group, gpu_to_cpu, host_memory_is_pinned",
-        "kv-offload: select pageable-safe transfer",
-    )
-    apply(
-        path,
-        '''        if mmap_region is not None and pin_memory:
-            pin_mmap_region(mmap_region)
-
-        canonical_bytes_per_block = (
-''',
-        '''        if mmap_region is not None and pin_memory:
-            coordination = (
-                _model_parallel_coordination()
-                if model_parallel_is_initialized()
-                else None
-            )
-            pin_mmap_region(mmap_region, coordination)
-
-        host_memory_is_pinned = pin_memory and (
-            mmap_region is None or mmap_region.is_pinned
-        )
-
-        canonical_bytes_per_block = (
-''',
-        "pin_mmap_region(mmap_region, coordination)",
-        "kv-offload: coordinate worker pinning",
-    )
-    apply(
-        path,
-        '''            gpu_to_cpu=True,
-            canonical_layout=canonical_layout,
-        )
-''',
-        '''            gpu_to_cpu=True,
-            canonical_layout=canonical_layout,
-            host_memory_is_pinned=host_memory_is_pinned,
-        )
-''',
-        "gpu_to_cpu=True,\n"
-        "            canonical_layout=canonical_layout,\n"
-        "            host_memory_is_pinned",
-        "kv-offload: store handler pin state",
-    )
-    apply(
-        path,
-        '''            gpu_to_cpu=False,
-            canonical_layout=canonical_layout,
-        )
-''',
-        '''            gpu_to_cpu=False,
-            canonical_layout=canonical_layout,
-            host_memory_is_pinned=host_memory_is_pinned,
-        )
-''',
-        "gpu_to_cpu=False,\n"
-        "            canonical_layout=canonical_layout,\n"
-        "            host_memory_is_pinned",
-        "kv-offload: load handler pin state",
-    )
+    apply(path, old_pin, new_pin, "KV mmap registration failed on at least one worker", "KV coordinated registration")
+    apply(path,
+          '        if mmap_region is not None and pin_memory:\n            pin_mmap_region(mmap_region, worker_slot_only=not canonical_layout)\n',
+          '''        if mmap_region is not None and pin_memory:
+            coordination = _model_parallel_coordination() if model_parallel_is_initialized() else None
+            pin_mmap_region(mmap_region, worker_slot_only=not canonical_layout, coordination=coordination)
+''', 'coordination=coordination)', "KV worker coordination")
+    text = path.read_text()
+    for contract in ("gpu_to_cpu or not host_memory_is_pinned", "current_platform.is_rocm()", "host_memory_is_pinned=host_memory_is_pinned"):
+        if contract not in text:
+            raise SystemExit(f"Upstream pageable/ROCm DMA contract drift: {contract}")
 
 
-def main() -> None:
+def main():
     patch_cuda_wrapper()
     patch_shared_region()
     patch_gpu_worker()
-
 
 if __name__ == "__main__":
     main()

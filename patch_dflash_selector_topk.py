@@ -31,11 +31,11 @@ apply(
 # "shape [B, S, 16] invalid" the moment the model returns 32 candidates.
 apply(
     SP / "vllm" / "v1" / "worker" / "gpu" / "spec_decode" / "dflash2" / "speculator.py",
-    '        self.selector_top_k = int(draft_config["selector_top_k"])\n',
+    '        self.top_k = int(draft_config[self._candidate_top_k_key])\n',
     '        # radiance (patch_dflash_selector_topk.py): must match the model-side override.\n'
-    '        self.selector_top_k = (\n'
+    '        self.top_k = (\n'
     '            int(__import__("os").environ.get("RADIANCE_DFLASH_SELECTOR_TOPK") or 0)\n'
-    '            or int(draft_config["selector_top_k"])\n'
+    '            or int(draft_config[self._candidate_top_k_key])\n'
     '        )\n',
     "RADIANCE_DFLASH_SELECTOR_TOPK",
     "dflash selector top_k override (speculator)",

@@ -46,10 +46,26 @@ change_map:
 - pattern: '^(radiance_r4d_attn|patch_r4d|patch_unified_attention_lds)'
   areas: [attention, libr4d]
 profiles:
-  pr: [control-plane-validate, python-compile, kv-offload-registration-cpu, kv-offload-rank-sharded-cpu, kv-offload-restore-cpu, qwen-tool-grammar-cpu, client-tool-gate-cpu]
+  pr: [v033-upgrade-cpu, control-plane-validate, python-compile, kv-offload-registration-cpu, kv-offload-rank-sharded-cpu, kv-offload-restore-cpu, qwen-tool-grammar-cpu, client-tool-gate-cpu]
   upgrade: [control-plane-validate, python-compile, kv-offload-registration-cpu, kv-offload-rank-sharded-cpu, kv-offload-restore-cpu, parser-shared-engine-image, xgrammar-spec-image, qwen-open-object-image, qwen-tool-grammar-image, client-tool-gate-cpu, client-tool-live, fp8-kv-calibration-image, tunableop-preflight-image, r9700-tp2-smoke, tool-schema-live, open-object-tool-live, betterbench-standard, correctness-equivalence]
   release: [control-plane-validate, python-compile, kv-offload-registration-cpu, kv-offload-rank-sharded-cpu, kv-offload-restore-cpu, parser-shared-engine-image, xgrammar-spec-image, qwen-open-object-image, qwen-tool-grammar-image, client-tool-gate-cpu, client-tool-live, fp8-kv-calibration-image, tunableop-preflight-image, r9700-tp2-smoke, tool-schema-live, open-object-tool-live, betterbench-standard, correctness-equivalence, capacity-qualification]
 tests:
+- id: v033-upgrade-cpu
+  class: contract
+  hardware: cpu
+  areas: [upgrade, attention, dflash, runtime]
+  command: python benchmarks/bin/check_v033_upgrade_cpu.py
+  automatic: true
+  ci: true
+  description: FP8 draft exclusion negative controls, RDNA4 LDS bounds and native plugin metadata discovery.
+- id: draft-head-packing-image
+  class: contract
+  hardware: candidate-image
+  areas: [upgrade, dflash, speculative]
+  command: python benchmarks/bin/check_draft_head_packing.py
+  automatic: false
+  ci: false
+  description: Real Torch CPU INT2/INT4 packing against an independent reference, chunk boundaries, NaNs and cache reuse.
 - id: client-tool-gate-cpu
   class: contract
   hardware: cpu

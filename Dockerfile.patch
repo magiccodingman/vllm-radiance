@@ -4,14 +4,15 @@
 # Use this after changing guarded patches, hooks, configs, or the entrypoint. It
 # intentionally does not rebuild torch, Triton, AITER, or vLLM. It does rebuild
 # the small Radiance/libr4d HIP extensions with the base image's pinned hipcc.
-ARG BASE_IMAGE=vllm-radiance:1.1.0-rc1.vllm0.30.0
+ARG BASE_IMAGE=vllm-radiance:1.2.0-rc1.vllm0.33.0
 FROM ${BASE_IMAGE}
 
 USER root
-ARG RADIANCE_VERSION=1.1.0-rc1.vllm0.30.0
-RUN python -c 'import importlib.metadata as m; assert m.version("vllm") == "0.30.0", "This overlay requires the v0.30 base; use Dockerfile.dev for a source upgrade"'
-ARG R4D_VERSION=v0.5.0
+ARG RADIANCE_VERSION=1.2.0-rc1.vllm0.33.0
+RUN python -c 'import importlib.metadata as m; assert m.version("vllm") == "0.33.0", "This overlay requires the v0.33 base; use Dockerfile.dev for a source upgrade"'
+ARG R4D_VERSION=0.5.0+rdna4.451b136
 ARG R4D_COMMIT=e8de4bc1f3dbd608dcb8d3ffceb6b48acdf83bb7
+ARG BUILD_JOBS=2
 ENV RADIANCE_VERSION=${RADIANCE_VERSION} \
     SP=/opt/vllm/lib/python3.12/site-packages \
     RADIANCE_GDN_MERGE_INPROJ=1 RADIANCE_GDN_FUSED_UPDATE=1 RADIANCE_GDN_FUSED_MAX_ITEMS=32 RADIANCE_GDN_SHARED_BUILD=1 \
@@ -31,7 +32,9 @@ COPY radiance_amdsmi.py radiance_amdsmi.pth \
      radiance_kv_calibration.py radiance_tunableop.py radiance_nvfp4.py ${SP}/
 COPY fp8-configs/ ${SP}/vllm/model_executor/layers/quantization/utils/configs/
 COPY moe-configs/ ${SP}/vllm/model_executor/layers/fused_moe/configs/
-COPY mxfp4-configs/ ${SP}/aiter/ops/triton/configs/gemm/
+COPY mxfp4-configs/gfx1201-GEMM-AFP4WFP4-N=17408-K=5120.json ${SP}/aiter/ops/triton/configs/gfx1201/triton/gemm/gemm_afp4wfp4/GEMM-AFP4WFP4-N=17408-K=5120.json
+COPY mxfp4-configs/gfx1201-GEMM-AFP4WFP4-N=5120-K=8704.json ${SP}/aiter/ops/triton/configs/gfx1201/triton/gemm/gemm_afp4wfp4/GEMM-AFP4WFP4-N=5120-K=8704.json
+COPY mxfp4-configs/gfx1201-GEMM-AFP4WFP4.json ${SP}/aiter/ops/triton/configs/gfx1201/triton/gemm/gemm_afp4wfp4/DEFAULT.json
 COPY patch_*.py install_radiance_hooks.py _patchlib.py /opt/patches/
 
 RUN set -eu; cd /opt/patches; \
@@ -39,8 +42,8 @@ RUN set -eu; cd /opt/patches; \
              patch_gdn_wmma patch_gdn_aiter_prefill patch_preshuffle install_radiance_hooks \
              patch_mtp_mm_mask patch_mtp_loopbreak patch_qwen3_toolparse patch_from_json_filter \
              patch_dynamo_metrics patch_conv1d_blockn patch_r4d \
-             patch_dflash_fused_kv_fp8 patch_dflash_w4 \
-             patch_dflash_selector_topk patch_gdn_metadata patch_gdn_shared_build \
+             patch_dflash_fused_kv_fp8 patch_dflash_quant_exclusions patch_dflash_w4 \
+             patch_dflash_selector_topk patch_gdn_metadata \
              patch_topk_composite \
              patch_quark_mxfp4 patch_nvfp4_mxfp4 patch_quark_bf16_mtp patch_ar_maxbytes patch_ar_geometry \
              patch_kv_group_size patch_gdn_merge_inproj patch_dynwidth patch_verify_head \
@@ -55,6 +58,7 @@ RUN set -eu; cd /opt/patches; \
 # Build the immutable libr4d source archive with the exact hipcc/pybind11 stack
 # already present in the base image. The tag is checked against the extension's
 # reported version after build.
+COPY tools/prepare_r4d.py /opt/patches/prepare_r4d.py
 COPY r4d_radiance_extras.patch /opt/patches/
 RUN apt-get update \
  && apt-get install -y --no-install-recommends patch \
@@ -64,11 +68,18 @@ RUN apt-get update \
  && cd /tmp/libr4d \
  && patch --dry-run -p1 < /opt/patches/r4d_radiance_extras.patch \
  && patch -p1 < /opt/patches/r4d_radiance_extras.patch \
- && GFX_ARCH=gfx1201 OUT=${SP}/r4d.so ./build.sh \
+ && mkdir -p /tmp/radiance-maintained \
+ && curl -fsSL "https://codeberg.org/StillDeadcode/radiance/archive/451b136874084650992668bed9e8662deb58de88.tar.gz" \
+      | tar -xzf - -C /tmp/radiance-maintained --strip-components=1 \
+ && python /opt/patches/prepare_r4d.py --legacy /tmp/libr4d --upstream /tmp/radiance-maintained \
+      --version "${R4D_VERSION}" --upstream-commit 451b136874084650992668bed9e8662deb58de88 \
+ && GFX_ARCH=gfx1201 JOBS=${BUILD_JOBS} OUT=${SP}/r4d.so ./build.sh \
  && WANT=$(echo "${R4D_VERSION}" | sed 's/^v//') \
  && python -c "import sys, torch, r4d; assert r4d.__version__ == sys.argv[1]; assert hasattr(r4d, 'ar_oneshot_2rank_exact_nq'); print('r4d RX4', r4d.__version__, 'kernels', len(r4d.kernels()))" "$WANT" \
+ && mkdir -p /opt/radiance-notices/libr4d-maintained \
+ && cp maintained/LICENSE maintained/NOTICE maintained-source-hashes.json /opt/radiance-notices/libr4d-maintained/ \
  && cd / \
- && rm -rf /tmp/libr4d \
+ && rm -rf /tmp/libr4d /tmp/radiance-maintained \
  && apt-get purge -y patch \
  && rm -rf /var/lib/apt/lists/*
 

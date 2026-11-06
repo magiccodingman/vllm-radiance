@@ -189,6 +189,52 @@ def _decode_3d_splits(max_seqlen_k, tile, prgms):
     return max(4, min(_DECODE_3D_MAX_SPLITS, seg, 1 << (tiles - 1).bit_length()))
 
 
+def _install_current_attn_config_hook(ua):
+    """Carry the measured settings through AITER's shared config-reader API."""
+    original = ua.get_unified_attention_config
+
+    def tuned(op, params, backend="triton", arch=None):
+        config = original(op, params, backend=backend, arch=arch)
+        # Historical measurements cover equal Q/V heads only. Preserve the
+        # upstream config (and mandatory LDS clamp) for new asymmetric shapes.
+        if backend != "triton" or params.head_size != params.head_size_v:
+            return config
+        fp8 = torch.float8_e4m3fn
+        two_byte = params.kv_cache_dtype in (torch.bfloat16, torch.float16)
+        if op == "attn_3d":
+            if params.q_dtype == fp8 and params.kv_cache_dtype == fp8:
+                config.update(TILE_SIZE=16, num_warps=4, num_stages=1, waves_per_eu=6)
+                if not params.all_decode and params.head_size == _DECODE_3D_HEAD:
+                    geometry = (params.num_tokens, params.num_seqs,
+                                params.num_queries_per_kv, params.num_kv_heads,
+                                params.all_decode)
+                    block_m = _decode_3d_block_m(geometry, params.head_size)
+                    programs = params.num_2d_prgms
+                    config["num_warps"] = 2
+                    if block_m is not None:
+                        config.update(BLOCK_M=block_m, TILE_SIZE=32, num_warps=4)
+                        programs = (params.num_tokens // (block_m // params.num_queries_per_kv)
+                                    + params.num_seqs) * params.num_kv_heads
+                    config["NUM_SEGMENTS"] = _decode_3d_splits(
+                        params.max_seqlen_k, config["TILE_SIZE"], programs
+                    )
+            elif two_byte and params.head_size == 256:
+                config.update(TILE_SIZE=16, num_warps=4, num_stages=2, waves_per_eu=2)
+        elif op == "reduce" and params.q_dtype == fp8 and params.kv_cache_dtype == fp8:
+            config.update(num_warps=8, num_stages=1, waves_per_eu=2)
+        elif op == "attn_2d":
+            if two_byte:
+                config.update(TILE_SIZE=16, num_warps=4, num_stages=1, waves_per_eu=1)
+            elif params.max_seqlen_q >= 256:
+                config.update(TILE_SIZE=16, waves_per_eu=1)
+                config.update(_PREFILL_2D_BY_HEAD.get(params.head_size, {}))
+        return config
+
+    ua.get_unified_attention_config = tuned
+    ua._radiance_attn_wrapped = True
+    sys.stderr.write("[radiance] AITER shared config-reader tune installed (v0.33)\n")
+
+
 def install_attn_config_hook():
     """Override AITER's unified-attention config with the gfx1201-tuned one, per dtype, phase and
     head size:
@@ -206,6 +252,9 @@ def install_attn_config_hook():
     if getattr(UA, "_radiance_attn_wrapped", False):
         return
     FP8 = torch.float8_e4m3fn
+    if not hasattr(UA, "select_3d_config"):
+        _install_current_attn_config_hook(UA)
+        return
     _o3, _o2 = UA.select_3d_config, UA.select_2d_config
     TWO_BYTE = (torch.bfloat16, torch.float16)   # includes --kv-cache-dtype auto
 

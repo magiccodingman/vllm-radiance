@@ -58,9 +58,9 @@ def check_wiring() -> None:
     patch = (REPO / "patch_kv_offload_restore.py").read_text()
     ast.parse(patch)
     for sentinel in (
-        "def _dflash_draft_layer_names(",
-        "def _mtp_draft_layer_names(",
-        "draft_names.intersection(group.layer_names)",
+        "if spec.is_draft",
+        "if attn_module.is_draft_layer:",
+        "group.is_eagle_group = not draft_layer_names.isdisjoint(group.layer_names)",
         "spec_config.use_eagle_block_drop()",
         "Skipping CPU hit for request %s since some of its",
     ):

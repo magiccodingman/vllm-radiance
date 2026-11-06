@@ -16,24 +16,12 @@ from _patchlib import apply
 SP = Path(sysconfig.get_paths()["purelib"])
 UTIL = SP / "vllm/model_executor/layers/utils.py"
 
-ANCHOR = (
-    "def rocm_unquantized_gemm_impl(\n"
-    "    x: torch.Tensor, weight: torch.Tensor, bias: torch.Tensor | None = None\n"
-    ") -> torch.Tensor:\n"
-    "    from vllm.platforms.rocm import on_gfx1x, on_gfx9, on_gfx950, on_gfx1250\n"
-)
-NEW = (
-    "try:\n"
-    "    import radiance_gemm as _radiance_gemm\n"
-    "except Exception:\n"
-    "    _radiance_gemm = None\n"
-    "\n"
-    "def rocm_unquantized_gemm_impl(\n"
-    "    x: torch.Tensor, weight: torch.Tensor, bias: torch.Tensor | None = None\n"
-    ") -> torch.Tensor:\n"
-    "    from vllm.platforms.rocm import on_gfx1x, on_gfx9, on_gfx950, on_gfx1250\n"
+ANCHOR = "    from vllm.platforms.rocm import on_gfx1x, on_gfx9, on_gfx11, on_gfx950\n"
+# Insert after upstream's batch-invariant early return; never bypass that contract.
+NEW = ANCHOR + (
     "    # --- RADIANCE skinny GEMM kernel (patch_skinny_gemm.py) ---\n"
-    "    if (_radiance_gemm is not None and _radiance_gemm.ENABLED and bias is None\n"
+    "    import radiance_gemm as _radiance_gemm\n"
+    "    if (_radiance_gemm.ENABLED and bias is None\n"
     "            and weight.dim() == 2 and x.dtype == torch.bfloat16\n"
     "            and weight.dtype == torch.bfloat16):\n"
     "        _out = _radiance_gemm.maybe_gemm(x, weight)\n"

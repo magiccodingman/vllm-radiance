@@ -88,3 +88,87 @@ Retain CPU/source/image failures as evidence. Run focused installed-image contra
 GPU-0 native GDN/MXFP4 tests and real inference/tool gates when the candidate image
 is available. No TP2, maximum capacity, or performance qualification may be inferred
 from TP1. Existing production defaults are not promoted by this MR.
+
+## Implemented migration (candidate)
+
+- The native `vllm.general_plugins` entrypoint replaces modification of vLLM's
+  plugin loader. An explicit `VLLM_PLUGINS` allowlist must include `radiance`.
+- AITER's unified-attention selectors moved to a shared configuration reader.
+  The mandatory 64-KiB LDS guard now covers both Triton attention paths there.
+  Radiance settings use the new API; asymmetric Q/V heads retain upstream
+  settings rather than inheriting measurements from a different shape.
+- Quark MXFP4 tuning JSON files move to AITER's nested gfx1201 GEMM directory.
+  FlyDSL moves to the AITER 0.1.26 requirement, **0.4.0**.
+- GDN's V2 metadata reuse is upstream-owned; the redundant shared-build overlay
+  is retired. Persistent index buffers and the explicit RDNA4 `aiter` prefill
+  implementation remain guarded. The upstream CDNA FlyDSL architecture gate
+  is not widened. Zero-draft state offsets retain upstream semantics.
+- Sampler top-k retains v0.33's positional `has_topp_only_rows` argument;
+  Radiance's known bound is keyword-only. V1 and V2 load hooks are updated.
+- CPU KV offload uses upstream mmap lifetime, runtime helpers, role detection
+  and ROCm DMA support. Radiance retains coordinated whole-region registration,
+  its rollback/required/auto policy, opt-in rank-major layout, and the prefix
+  restore convoy fix. A failed unregister prevents unmapping pinned memory.
+  This does **not** qualify the private TP2 layout on the new stack.
+- R4D explicitly refuses quantized Q input, preserving its BF16-query ABI even
+  when vLLM's Triton backend advertises quantized queries on gfx1201.
+- The FP8 DFlash exclusion backport adapts Yufeng He's
+  [vLLM PR 61010](https://github.com/vllm-project/vllm/pull/61010), commit
+  `c9cf9d5e77151bf47116ba908df748908b5112fd`, to the stable mapper.
+  Both `ignored_layers` and `exclude_modules` gain global-index/root aliases.
+  ModelOpt's mapping is unchanged. This bookkeeping prevents unwanted draft
+  projection quantization; it is not an end-to-end acceptance measurement.
+- Draft-head startup memory adapts amittell's
+  [GGZ14 Codeberg PR 60](https://codeberg.org/ggz14/radiance-vllm-mxfp4/pulls/60),
+  commit `2ec647c12bdac200ba2cd06eb6498281e8dc3110`: bounded zero checks,
+  smaller packing chunks and release of loader allocator reservations. INT2/4
+  arithmetic and exact target-head policy remain unchanged.
+
+### Compiler pin discrepancy
+
+The v0.33 ROCm Docker recipes name AMD Torch 2.13, but their short source pin
+`733fca1` did not resolve in ROCm/pytorch during this audit. This candidate uses
+AMD's release/2.13 commit `0e8e47fd5bb5cd734b6194b92e941075e932c925`,
+not an invented expansion of the unresolved short pin. It is a **new candidate
+pair**, not a claim that upstream qualified this exact combination. The earlier
+2.13 TP2 hang remains negative evidence; TP1 cannot clear that gate.
+
+### Maintained kernel compatibility boundary
+
+`tools/prepare_r4d.py` combines the retained v0.5.0 Python/private-extension ABI
+base with attention and GDN-scan sources from maintained radiance commit
+`451b136874084650992668bed9e8662deb58de88`. It copies the complete current
+`R4DArgs` struct, zero-initializes new fields, explicitly preserves causality,
+and passes fp32 state mode to the newer GDN scan. Engine/plugin entrypoints are
+excluded at a checked boundary. The image retains upstream license, notice and
+source hashes under `/opt/radiance-notices/libr4d-maintained/`.
+
+The maintained attention includes the newer causal-row merge handling. The GDN
+scan still forms nonpositive decay exponents, retaining the extreme-decay
+correctness contract. New compressed-KV formats, standalone-engine integration,
+and wholesale replacement of collectives are not enabled by this adaptation.
+The remaining legacy bindings/private kernels are visible compatibility debt;
+this report does not describe the entire retired library as current upstream.
+
+Optional host embeddings, lazy GDN, and additional quantization formats remain
+separate research candidates. No new experiment is silently made a default.
+
+## Evidence so far
+
+- All **36** active source overlays apply to disposable exact-source snapshots;
+  repeated application is idempotent. This is source evidence only.
+- Eight PR CPU checks pass, including negative controls for FP8 draft aliases,
+  asymmetric-head LDS bounds, fail-closed oversized configurations and native
+  plugin metadata discovery.
+- Real Torch CPU INT2/INT4 packing agrees bit-for-bit with an independent
+  reference across chunk boundaries; signed zero, NaN and shared packing reuse
+  checks pass. Initially run in the previous image; repeat in the candidate.
+- Maintained gfx1201 attention/GDN extension compiles with the new ROCm compiler
+  and imports with the expected version and full maintained revision.
+- The full foundation source build is still running. No candidate-image serving,
+  native GPU correctness, TP2, release, capacity or performance pass is claimed.
+
+Preserved setup failures: an isolated attention probe initially lacked required
+operand helpers; adding the actual upstream headers fixed compilation. A raw
+ROCm-base import initially lacked `/opt/rocm/lib` in its library search path;
+setting that path allowed import. Neither was a GPU correctness test.

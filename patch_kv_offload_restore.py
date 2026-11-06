@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Restore native CPU KV hits for Qwen hybrid DFlash deployments.
+"""Verify upstream draft-cache ownership and retain the CPU-hit convoy correction.
 
 The pinned vLLM v0.28.0 scheduler treats every cache group as an EAGLE draft
 group when no group is explicitly annotated. On hybrid GDN/Mamba models that
@@ -32,80 +32,27 @@ LIB = Path(sysconfig.get_paths()["purelib"])
 
 
 def patch_cache_group_annotation() -> None:
-    """Extend upstream's v0.30 annotation; keep its spec and DeepSeek handling."""
-    path = LIB / "vllm/v1/core/kv_cache_utils.py"
-    apply(path, "def _annotate_eagle_groups(\n",
-          '''def _dflash_draft_layer_names(
-    vllm_config: VllmConfig,
-    kv_cache_spec: dict[str, KVCacheSpec],
-) -> set[str]:
-    """Identify Qwen DFlash layers appended after the target layer range."""
-    spec_config = vllm_config.speculative_config
-    if spec_config is None or not spec_config.use_dflash():
-        return set()
-    draft_model_config = spec_config.draft_model_config
-    if draft_model_config is None:
-        return set()
-
-    # This deliberately mirrors DFlashQwen3ForCausalLM.__init__, which passes
-    # target_model.get_num_layers(...) as start_layer_id to the draft model.
-    target_layers = vllm_config.model_config.get_num_layers(
-        vllm_config.parallel_config
-    )
-    draft_layers = draft_model_config.get_num_layers(vllm_config.parallel_config)
-    end_layer = target_layers + draft_layers
-
-    draft_names: set[str] = set()
-    for name in kv_cache_spec:
-        indices = [int(part) for part in name.split(".") if part.isdigit()]
-        if len(indices) == 1 and target_layers <= indices[0] < end_layer:
-            draft_names.add(name)
-    return draft_names
-
-
-def _mtp_draft_layer_names(
-    vllm_config: VllmConfig,
-    kv_cache_spec: dict[str, KVCacheSpec],
-) -> set[str]:
-    """Identify embedded Qwen MTP attention layers by module namespace."""
-    spec_config = vllm_config.speculative_config
-    if (
-        spec_config is None
-        or not spec_config.use_eagle()
-        or spec_config.use_dflash()
-    ):
-        return set()
-    return {
-        name
-        for name in kv_cache_spec
-        if "mtp" in name.split(".") and "layers" in name.split(".")
+    """v0.33 owns layer-role marking and DFlash's no-trailing-block policy."""
+    contracts = {
+        "vllm/v1/core/kv_cache_planning.py": (
+            "spec_config.use_eagle_block_drop()",
+            "name for name, spec in merged_kv_cache_specs.items() if spec.is_draft",
+            "group.is_eagle_group = not draft_layer_names.isdisjoint(group.layer_names)",
+        ),
+        "vllm/v1/worker/gpu/attn_utils.py": (
+            "if attn_module.is_draft_layer:", "spec = replace(spec, is_draft=True)",
+        ),
+        "vllm/v1/worker/gpu_model_runner.py": ("is_draft_layer",),
+        "vllm/config/speculative.py": (
+            "return self.use_eagle() and not (self.use_dflash() or self.use_dspark())",
+        ),
     }
-
-''' + "def _annotate_eagle_groups(\n",
-          "def _dflash_draft_layer_names(", "kv-offload restore: Qwen draft identities")
-    apply(
-        path,
-        """    spec_config = vllm_config.speculative_config
-    if spec_config is None or not spec_config.use_eagle_block_drop():
-        return
-
-    for group in kv_cache_groups:
-""",
-        """    spec_config = vllm_config.speculative_config
-    if spec_config is None or not spec_config.use_eagle_block_drop():
-        return
-
-    # Radiance: preserve Qwen DFlash/MTP identity within upstream annotation.
-    draft_names = _dflash_draft_layer_names(vllm_config, kv_cache_spec)
-    draft_names.update(_mtp_draft_layer_names(vllm_config, kv_cache_spec))
-    for group in kv_cache_groups:
-        if draft_names.intersection(group.layer_names):
-            group.is_eagle_group = True
-    for group in kv_cache_groups:
-""",
-        "draft_names.intersection(group.layer_names)",
-        "kv-offload restore: extend upstream group annotation",
-    )
+    for relative, required in contracts.items():
+        source = (LIB / relative).read_text()
+        for fragment in required:
+            if fragment not in source:
+                raise SystemExit(f"Upstream draft-cache identity contract drift: {relative}: {fragment}")
+    print("OK upstream draft-cache identities and DFlash prefix safety")
 
 
 def patch_shared_prefix_convoy() -> None:
