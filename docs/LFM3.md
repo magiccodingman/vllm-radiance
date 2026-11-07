@@ -1,6 +1,6 @@
 # LFM3 text support
 
-Status: **installed config/registration and three CPU RoPE tests pass; GPU/model qualification pending**.
+Status: **installed CPU checks and 326 focused native convolution cases pass; final-image/model qualification pending**.
 This profile does not promote or replace the Qwen production deployment.
 
 ## Source ownership
@@ -16,10 +16,21 @@ Every target is validated before writing any file. Reapplication is supported.
 A narrow config adaptation preserves the upstream convolution layer labels and
 the two nested RoPE dictionaries after Transformers 5.16.1's base initializer
 normalizes legacy labels and injects global defaults. Parent validation still
-runs; the original model/kernel code and upstream tests remain unchanged. A
+runs; the original model code, immutable patch and upstream tests remain unchanged. A
 real pinned-Transformers CPU check passes checkpoint metadata, constructor and
 serialization roundtrip checks, plus invalid-layer negative controls. The first
 unadapted configuration failure is retained in the upgrade audit.
+
+Convolution hunks are scoped to their actual forward/decode functions. Complete
+kernel fingerprints, derived independently with `git apply` on the pinned stable
+source, verify the import before a narrow width-7 precision adaptation. Seven-tap
+products use explicit FP32 intermediates on RDNA4; the established four-tap
+arithmetic is unchanged. This removes premature BF16 product rounding: independent
+FP64 controls improve and all **326 unchanged upstream convolution cases pass**
+in a disposable repaired image. The initial 78 failures, stock-tiling control,
+precision controls and subsequent passes are retained in the
+[native qualification evidence](../benchmarks/results/20261107-v033-installed-native/README.md).
+The rebuilt final candidate and real FP8 checkpoint still require their gates.
 
 This includes native `Lfm3ForCausalLM`, the bundled `Lfm3Config`, model/config
 registration and width-7 causal convolution in prefill and decode. The bundled

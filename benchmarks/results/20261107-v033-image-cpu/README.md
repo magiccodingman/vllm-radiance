@@ -28,3 +28,12 @@ reruns plus nine PR CPU checks. The grammar runtime correction was applied
 only inside a disposable test container. Final corrected-image CPU/native/model
 qualification remains pending. No production deployment or TP2/performance
 claim follows from this evidence.
+
+## First corrected image
+
+Image `47637f48` from `fc28058` passes **all19** registered CPU/image checks.
+Logs and results are retained under `fc28058-corrected/`. Native testing then
+found LFM importer/precision issues, documented in
+[installed native evidence](../20261107-v033-installed-native/README.md).
+The candidate containing those additional LFM repairs still needs its rebuilt
+image and real-model qualification.

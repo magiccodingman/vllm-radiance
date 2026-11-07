@@ -95,7 +95,10 @@ The owner also requested `Lfm3ForCausalLM` and supplied an FP8 compressed-tensor
 checkpoint. The official post-release backport and its separate model/profile
 qualification are recorded in [LFM3.md](LFM3.md). A pinned Transformers 5.16.1
 CPU check caught and verified the repair for config label/RoPE normalization;
-its initial failure is retained. No LFM3 runtime pass is claimed yet.
+its initial failure is retained. Installed config/registration and CPU RoPE
+checks pass. A scoped installer correction and width-7 FP32-product adaptation
+pass all 326 unchanged native convolution cases on GPU 0 in a disposable
+repaired image; final rebuilt-image and real-checkpoint gates remain pending.
 
 ## Implemented migration (candidate)
 
@@ -203,8 +206,12 @@ separate research candidates. No new experiment is silently made a default.
   exposed one Qwen opt-in schema-strictness regression and three obsolete test
   APIs. Focused repairs pass; the corrected-image rerun is pending. See the
   [image CPU evidence](../benchmarks/results/20261107-v033-image-cpu/README.md).
-  Candidate-image serving/native GPU, TP2, release, capacity and performance
-  qualification remain pending or explicitly deferred.
+  The first corrected image passes all 19 CPU checks. Installed native attention,
+  both GDN head geometries, independent draft noise and verify-head controls also
+  pass. The subsequent LFM3 convolution failures and repairs are recorded in the
+  [installed native evidence](../benchmarks/results/20261107-v033-installed-native/README.md).
+  Final rebuilt-image/model, TP2, release, capacity and performance qualification
+  remain pending or explicitly deferred.
 
 Preserved setup failures: an isolated attention probe initially lacked required
 operand helpers; adding the actual upstream headers fixed compilation. A raw

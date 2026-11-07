@@ -1,0 +1,2 @@
+usage: probe_nvfp4_native.py [-h] --device DEVICE --out OUT
+probe_nvfp4_native.py: error: argument --device: invalid int value: 'cuda:0'
