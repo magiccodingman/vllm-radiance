@@ -1,6 +1,6 @@
 # LFM3 text support
 
-Status: **installed CPU checks and 326 focused native convolution cases pass; final-image/model qualification pending**.
+Status: **candidate-image CPU/native checks pass; bounded TP1 FP8 serving tested with a known batch-equivalence failure**.
 This profile does not promote or replace the Qwen production deployment.
 
 ## Source ownership
@@ -27,10 +27,10 @@ source, verify the import before a narrow width-7 precision adaptation. Seven-ta
 products use explicit FP32 intermediates on RDNA4; the established four-tap
 arithmetic is unchanged. This removes premature BF16 product rounding: independent
 FP64 controls improve and all **326 unchanged upstream convolution cases pass**
-in a disposable repaired image. The initial 78 failures, stock-tiling control,
+in the rebuilt candidate image. The initial 78 failures, stock-tiling control,
 precision controls and subsequent passes are retained in the
 [native qualification evidence](../benchmarks/results/20261107-v033-installed-native/README.md).
-The rebuilt final candidate and real FP8 checkpoint still require their gates.
+The rebuilt candidate passes all 19 image CPU checks and all eight registered native gates.
 
 This includes native `Lfm3ForCausalLM`, the bundled `Lfm3Config`, model/config
 registration and width-7 causal convolution in prefill and decode. The bundled
@@ -66,10 +66,10 @@ MODEL_PATH=/models/LFM3-1.7B-FP8-LiquidAI
 SERVED_MODEL_NAME=lfm3
 TP=1
 HIP_VISIBLE_DEVICES=0
-MAX_MODEL_LEN=8192
-MAX_NUM_SEQS=4
-MAX_NUM_BATCHED_TOKENS=2048
-GPU_UTIL=0.65
+MAX_MODEL_LEN=4096
+MAX_NUM_SEQS=2
+MAX_NUM_BATCHED_TOKENS=1024
+GPU_UTIL=0.20
 ```
 
 Review the resulting Compose configuration before launch. This command operates
@@ -111,3 +111,26 @@ Follow with real FP8 checkpoint startup, short and >256-token prompts, batching,
 chat, tool calls/tool results and streaming. Preserve source/version identity,
 logs and responses in immutable scratch output. A clean source application or
 CPU integrity check is not a claim of ROCm/model correctness.
+
+### Bounded local FP8 result and limitation
+
+Image revision `451d1eb9acc722b76ae2039e3fb5d8af309ff6fe` loaded the supplied
+`/mnt/world7/AI/Models/LFM3-1.7B-FP8-LiquidAI/` checkpoint natively as
+`Lfm3ForCausalLM`, compressed-tensors with `TritonFp8BlockScaledMMKernel`, on
+GPU0 only. The tested profile is V2, TP1, BF16 compute/KV, Triton attention,
+4K context, two admitted sequences, APC off and no speculation/remote model code.
+Short completion/SSE token parity, a repeated 636-token prompt spanning the
+256-token sliding window, state isolation, nested JSON schema, named tool call
+and SSE arguments, and tool-result roundtrip pass. Forced named tools correctly
+finish with `stop` under upstream's `resolve_finish_reason` contract.
+
+**Exact single-versus-batch greedy equivalence fails.** The same raw prompt
+(`The capital of France is`) yields Paris in both cases but diverges on the
+next punctuation token. Both members of the duplicate batch agree; a subsequent
+single request reproduces its original tokens. Logprobs preserve the changed
+ranking; this is not evidence of exact batch invariance or a waived gate.
+Upstream's `VLLM_BATCH_INVARIANT=1` control refuses this architecture with
+`batch_invariant mode is not supported for SHORT_CONV_ATTN`. Investigation and
+control results remain recorded. Treat LFM3 as an optional experimental profile,
+not release-qualified deterministic serving. No TP2, capacity or performance
+claim follows from these bounded tests.

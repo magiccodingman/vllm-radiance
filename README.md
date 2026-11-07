@@ -192,7 +192,7 @@ merges GDN input projections, uses libr4d's fused speculative GDN update, increa
 full K7 target verification is wasteful. Every optimization is independently reversible through the
 controls documented in `benchmarks/README.md`.
 
-Prefix caching and `MAMBA_CACHE_MODE=align` remain the deployment defaults. Disable them only for a cold,
+Prefix caching remains enabled; v0.33 hybrid state caching follows APC. Disable it only for a cold,
 nonce-disjoint benchmark or a deliberate maximum-capacity experiment. Recreate the container after changing
 modes:
 
@@ -378,7 +378,7 @@ prefill, telemetry, confidence intervals, negative results, and immutable run ID
 - **Fast speculative drafting:** dynamic MTP depth, verbatim n-gram tails, INT2 exact-rerank heads, and W4
   DFlash draft linears.
 - **Hybrid-safe prefix caching:** automatic prefix caching with GDN convolution/recurrent-state restoration
-  through `--mamba-cache-mode=align`.
+  through native hybrid prefix caching (APC).
 - **Spec-safe structured output:** upstream XGrammar termination and reasoning-boundary fixes prevent
   speculative draft batches from overrunning or desynchronizing the tool-call grammar; Qwen structural-tag
   normalization also preserves open nested objects used by generic deferred-tool wrappers.

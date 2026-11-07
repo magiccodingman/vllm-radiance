@@ -37,3 +37,7 @@ found LFM importer/precision issues, documented in
 [installed native evidence](../20261107-v033-installed-native/README.md).
 The candidate containing those additional LFM repairs still needs its rebuilt
 image and real-model qualification.
+
+## Rebuilt final candidate
+
+`final-b2/` records revision451d1eb, imageb2c1f2fe: all19 image/CPU gates pass. Earlier failures above remain preserved. No TP2/live-model/performance inference follows from these gates.

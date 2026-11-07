@@ -217,3 +217,41 @@ Preserved setup failures: an isolated attention probe initially lacked required
 operand helpers; adding the actual upstream headers fixed compilation. A raw
 ROCm-base import initially lacked `/opt/rocm/lib` in its library search path;
 setting that path allowed import. Neither was a GPU correctness test.
+
+## Rebuilt-image and local-model follow-up
+
+Candidate `sha256:b2c1f2fe8e3f323e90b017890843ef614a6cfc5e50498a8eb6e242ea11e60f83`
+(source `451d1eb9acc722b76ae2039e3fb5d8af309ff6fe`) passes all **19 installed
+CPU/image checks and eight registered native gates** on GPU0. The latter include
+all **326 unchanged upstream LFM convolution tests**, 138 verify-head tests,
+attention, both GDN head geometries, independent DFlash noise, native loader
+conversion and upstream native graph/stride contracts. See each report's
+`final-b2/` directory; earlier failed candidates remain intact.
+
+The local LFM3 compressed-tensors FP8 checkpoint starts natively and passes
+seven bounded wire checks, including tools, tool-result roundtrip and SSE.
+**Exact single-versus-batch greedy equivalence fails** and upstream's optional
+batch-invariant mode rejects SHORT_CONV_ATTN at startup. The negative evidence
+is preserved in [the live report](../benchmarks/results/20261107-v033-lfm3-live/README.md)
+and discussed in [the model profile](LFM3.md). No deterministic-batch or production
+qualification is claimed. Real Quark target/default-runner and optional DFlash
+model checks remain in progress.
+
+### Current configuration deprecations
+
+- vLLM 0.33 ignores `--mamba-cache-mode`. Remove it from active launch profiles;
+  native hybrid state caching follows explicit APC. Portable APC stays on, and
+  the separate LFM experimental profile keeps it off. The benchmark wrapper
+  rejects an obsolete nonempty `MAMBA_CACHE_MODE` rather than silently ignoring
+  a requested cache policy. Historical reports retain their original commands.
+- AITER 0.1.26 uses `AITER_JIT_DIR` for writable binary caches. `AITER_ROOT_DIR`
+  is an internal constant, not an effective environment override. Current Compose
+  examples use JIT_DIR; conformance isolates that cache separately from an
+  optional `AITER_META_DIR` source copy, verifies csrc exists to prevent upstream
+  fallback, and binds the copied source bytes. The old ignored ROOT variable
+  fails closed. All **200 conformance CPU tests** pass, including isolation and
+  fallback-negative controls; no hardware conformance campaign was run.
+- Keep portable Qwen's explicit V1 override (`0`), even though upstream now
+  auto-selects V2. LFM's separate profile explicitly chooses the tested V2 runner.
+  The opt-in localhost worker probe can validate either exact expected runner;
+  V2 remains its default. Its inventory recognizes current FP8 scheme owners.

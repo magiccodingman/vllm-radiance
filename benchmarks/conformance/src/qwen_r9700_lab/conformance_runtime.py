@@ -48,6 +48,8 @@ def isolated_config(config, root, nonce, port, *, graphs, speculation, asynchron
         raise DiagnosticError("the qualification server admits TP1/PP1 only")
     if config.get("data_parallel_size", 1) != 1:
         raise DiagnosticError("distributed qualification is not implemented")
+    # v0.33 ignores this option; APC now owns hybrid state caching.
+    config.pop("mamba_cache_mode", None)
     config.update(
         host="127.0.0.1",
         port=port,
@@ -56,7 +58,6 @@ def isolated_config(config, root, nonce, port, *, graphs, speculation, asynchron
         async_scheduling=asynchronous,
         enforce_eager=not graphs,
         enable_prefix_caching=True,
-        mamba_cache_mode="align",
         middleware=[
             "qwen_r9700_lab.conformance_runtime.identity_middleware",
             "qwen_radiance_request_guard.require_snapshot_abi",
@@ -140,18 +141,23 @@ def worker_environment(spec, root):
         "XDG_CACHE_HOME": "xdg-cache",
         "TORCH_EXTENSIONS_DIR": "torch-extensions",
         "CUDA_CACHE_PATH": "cuda",
+        "AITER_JIT_DIR": "aiter-jit",
     }.items():
         path = root / "runtime" / directory
         path.mkdir(parents=True, mode=0o700, exist_ok=True)
         env[key] = str(path)
-    # AITER_ROOT_DIR includes its source/JIT tree, not just an empty cache.
-    # Clone a configured tree before allowing the qualifier to compile in it.
+    # AITER 0.1.26 ignores the old ROOT environment variable. Never qualify
+    # a silently substituted source tree. META must have csrc or AITER falls back.
     if env.get("AITER_ROOT_DIR"):
-        aiter_source = Path(env["AITER_ROOT_DIR"]).resolve()
-        aiter_copy = root / "runtime/aiter"
+        raise DiagnosticError("AITER_ROOT_DIR is ignored; use AITER_META_DIR for source or AITER_JIT_DIR for cache")
+    if env.get("AITER_META_DIR"):
+        aiter_source = Path(env["AITER_META_DIR"]).resolve()
+        if not (aiter_source / "csrc").is_dir():
+            raise DiagnosticError("AITER_META_DIR must contain csrc; implicit source fallback is forbidden")
+        aiter_copy = root / "runtime/aiter-meta"
         if not aiter_copy.exists():
             shutil.copytree(aiter_source, aiter_copy)
-        env["AITER_ROOT_DIR"] = str(aiter_copy)
+        env["AITER_META_DIR"] = str(aiter_copy)
     env.update(
         QWEN_CONFORMANCE_GPU="1",
         QWEN_RADIANCE_CACHE_ABI=spec["binding"]["live_data_abi"],

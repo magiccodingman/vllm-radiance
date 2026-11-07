@@ -20,6 +20,7 @@ def main():
     p.add_argument("--model", required=True)
     p.add_argument("--out", type=Path, required=True)
     p.add_argument("--vision", action="store_true")
+    p.add_argument("--expected-runner", choices=("v1", "v2"), default="v2")
     p.add_argument("--profile", action="store_true")
     p.add_argument("--performance-only", action="store_true",
                    help="Same three short requests only, for an old-image matched control")
@@ -36,7 +37,10 @@ def main():
     # The old-image timing control may legitimately use Runner V1. Its
     # installed runner is retained in server logs; it is not V2 qualification.
     if not a.performance_only:
-        call("owners", "/collective_rpc", {"method": "platform_snapshot"})
+        rpc = {"method": "platform_snapshot"}
+        if a.expected_runner != "v2":
+            rpc["kwargs"] = {"expected_runner": a.expected_runner}
+        call("owners", "/collective_rpc", rpc)
     common = {"model": a.model, "temperature": 0, "seed": 0,
               "return_token_ids": True, "max_tokens": 32}
     prompt = "The capital of France is"

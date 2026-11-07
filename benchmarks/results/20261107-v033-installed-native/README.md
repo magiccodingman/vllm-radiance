@@ -33,3 +33,7 @@ corrected harness setup; no numerical pass is inferred.
 The LFM repairs were applied inside disposable copies of the base image. Final
 rebuilt-image checks, real Quark/LFM FP8 serving, tools and streaming remain
 pending. No model-quality, capacity, performance, TP2 or release claim follows.
+
+## Rebuilt final candidate
+
+`final-b2/` records revision451d1eb, imageb2c1f2fe: all8 registered native gates pass, including326 unchanged LFM and138 verify-head tests. Earlier failures above remain preserved. No TP2/live-model/performance inference follows from these gates.

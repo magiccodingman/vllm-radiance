@@ -39,20 +39,11 @@ services:
       # R4D is the fastest qualified head-256/GQA6 backend on gfx1201. Set
       # ATTENTION_BACKEND=ROCM_AITER_UNIFIED_ATTN for the measured fallback.
       - --attention-backend=${ATTENTION_BACKEND:-R4D}
-      # Automatic prefix caching (APC) for shared prefixes (system prompts, RAG / agentic context).
-      # Both flags are required and ON here: this is a GDN hybrid, and hybrid models default their APC
-      # support flag off ("experimental"), so vLLM SILENTLY disables prefix caching unless
-      # --enable-prefix-caching is passed explicitly. --mamba-cache-mode=align makes the linear-attention
-      # (GDN) layers prefix-cacheable too, snapshotting + restoring their conv + recurrent state at block
-      # boundaries; this is verified bit-identical to full recompute (including under MTP). Effect:
-      # large TTFT drop on shared prefixes (~3.6x earlier and 12.8x at 32K in the measured
-      # MXFP4+DFlash production profile). Note: align reconciles the mamba/attention
-      # page sizes, which raises the attention block size to 1664 tokens and uses one extra state block
-      # per linear-attn layer (slightly lower max concurrency at full context). Remove both flags to
-      # disable. Do NOT use --mamba-cache-mode=all (unsupported by this model) and do NOT set
-      # VLLM_SSM_CONV_STATE_LAYOUT=DS (asserts under MTP + align).
+      # Explicit APC remains enabled for shared prefixes. In vLLM 0.33 hybrid
+      # conv/recurrent cache state follows this flag; --mamba-cache-mode is ignored.
+      # Page alignment and cache capacity remain model-dependent. Cold controls
+      # should set PREFIX_CACHING_FLAG=--no-enable-prefix-caching.
       - ${PREFIX_CACHING_FLAG:---enable-prefix-caching}
-      - --mamba-cache-mode=${MAMBA_CACHE_MODE:-align}
       # Baseline serving is deliberately non-speculative. For Qwen's in-checkpoint
       # MTP head, opt in from .env without editing this file; see
       # RADIANCE_SPECULATIVE_CONFIG and RADIANCE_FAST_DRAFT below.
@@ -198,8 +189,8 @@ services:
       # Experimental until qualified per host; 0 preserves one whole-region
       # registration. A positive GiB value requests row-aligned chunks.
       RADIANCE_KV_OFFLOAD_REGISTER_CHUNK_GIB: "${RADIANCE_KV_OFFLOAD_REGISTER_CHUNK_GIB:-0}"
-      # DFlash2 requires the V2-compatible model runner. Normal Radiance retains
-      # the pinned stack's default unless this is explicitly enabled.
+      # DFlash2 requires V2. Preserve Radiance's explicit V1 default here;
+      # upstream 0.33 now auto-selects V2 when this override is absent.
       VLLM_USE_V2_MODEL_RUNNER: "${VLLM_USE_V2_MODEL_RUNNER:-0}"
       NCCL_PROTO: Simple
       # throttle inductor compile workers to limit peak compile-time RAM (defensive).
@@ -209,7 +200,7 @@ services:
       VLLM_CACHE_ROOT: /cache/vllm
       TORCHINDUCTOR_CACHE_DIR: /cache/inductor
       TRITON_CACHE_DIR: /cache/triton
-      AITER_ROOT_DIR: /cache/aiter
+      AITER_JIT_DIR: /cache/aiter
       TRITON_CACHE_AUTOTUNING: "1"
       # Optional persisted PyTorch TunableOp workflow. Keep off for generic
       # serving. `collect` records encountered GEMMs without live tuning;

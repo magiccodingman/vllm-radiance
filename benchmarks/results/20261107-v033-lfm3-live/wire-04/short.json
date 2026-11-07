@@ -1,0 +1,66 @@
+{
+  "request": {
+    "model": "radiance-v033-lfm3",
+    "temperature": 0,
+    "seed": 0,
+    "max_tokens": 16,
+    "return_token_ids": true,
+    "prompt": "The capital of France is"
+  },
+  "response": {
+    "id": "cmpl-989e4f7d5e4425ed",
+    "object": "text_completion",
+    "created": 1794014140,
+    "model": "radiance-v033-lfm3",
+    "choices": [
+      {
+        "index": 0,
+        "text": " Paris.\n\nThe capital of Japan is Tokyo.\n\nThe capital of Australia is Canberra",
+        "logprobs": null,
+        "finish_reason": "length",
+        "stop_reason": null,
+        "token_ids": [
+          4741,
+          63908,
+          597,
+          5205,
+          302,
+          3888,
+          355,
+          18943,
+          63908,
+          597,
+          5205,
+          302,
+          5881,
+          355,
+          2076,
+          59405
+        ],
+        "prompt_logprobs": null,
+        "prompt_token_ids": [
+          597,
+          5205,
+          302,
+          3980,
+          355
+        ],
+        "routed_experts": null,
+        "weight_versions": null
+      }
+    ],
+    "service_tier": null,
+    "system_fingerprint": "vllm-0.33.0-aad2c3fd",
+    "usage": {
+      "prompt_tokens": 5,
+      "total_tokens": 21,
+      "completion_tokens": 16,
+      "prompt_tokens_details": null,
+      "completion_tokens_details": null
+    },
+    "kv_transfer_params": null,
+    "ec_transfer_params": null,
+    "metrics": null
+  },
+  "seconds": 0.18876349995844066
+}
