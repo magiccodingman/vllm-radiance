@@ -1,0 +1,11 @@
+{
+  "torch": "2.13.0+rocm10.0",
+  "vllm": "0.33.0",
+  "triton": "3.8.0+git669b31ac",
+  "amd-aiter": "0.1.26",
+  "torchvision": "0.28.0+8fb8771",
+  "transformers": "5.16.1",
+  "xgrammar": "0.2.8",
+  "flydsl": "0.4.0",
+  "pytest": "9.2.0"
+}

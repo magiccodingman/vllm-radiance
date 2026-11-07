@@ -1,0 +1,13 @@
+Traceback (most recent call last):
+  File "/work/benchmarks/bin/check_xgrammar_spec_termination.py", line 99, in <module>
+    main()
+  File "/work/benchmarks/bin/check_xgrammar_spec_termination.py", line 60, in main
+    assert manager.validate_tokens(request, [1, 99, 2, -1]) == [1, 99]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/vllm/lib/python3.12/site-packages/vllm/v1/structured_output/__init__.py", line 368, in validate_tokens
+    grammar_start, _ = self._get_constraint_bounds(request, spec_tokens)
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/vllm/lib/python3.12/site-packages/vllm/v1/structured_output/__init__.py", line 300, in _get_constraint_bounds
+    if self.enable_in_reasoning:
+       ^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'StructuredOutputManager' object has no attribute 'enable_in_reasoning'

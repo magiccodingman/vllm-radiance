@@ -30,6 +30,11 @@ Two optional environment switches default to **off**:
   tool choice even without a tool's strict flag. Applies only to the three
   Qwen XML formats. It does not force a tool call, alter `tool_choice=none`,
   or override vLLM's global `VLLM_ENFORCE_STRICT_TOOL_CALLING` opt-out.
+  On vLLM 0.33 it restores the legacy parameter-schema default for omitted
+  `strict` flags; an explicit `strict=false` still leaves arguments free.
+  With this switch off, native vLLM strictness rules apply. The independent
+  server floor `--tool-strict-level=parameter` forces parameter schemas for
+  all tools according to upstream policy, including explicitly non-strict tools.
 - `RADIANCE_QWEN_INT64_BOUND_COMPAT=1`: for schema exporters that round an
   Int64 maximum to the floating-point value `2**63`, explicitly narrows only
   that inclusive maximum to exact `9223372036854775807`. This is an operator

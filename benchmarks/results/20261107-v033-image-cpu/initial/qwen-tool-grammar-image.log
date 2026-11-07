@@ -1,0 +1,7 @@
+Traceback (most recent call last):
+  File "/work/benchmarks/bin/check_qwen_tool_grammar_image.py", line 91, in <module>
+    main()
+  File "/work/benchmarks/bin/check_qwen_tool_grammar_image.py", line 59, in main
+    assert '9223372036854775807' in raw
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError

@@ -1,6 +1,6 @@
 # LFM3 text support
 
-Status: **backport integrated; candidate-image and GPU qualification pending**.
+Status: **installed config/registration and three CPU RoPE tests pass; GPU/model qualification pending**.
 This profile does not promote or replace the Qwen production deployment.
 
 ## Source ownership

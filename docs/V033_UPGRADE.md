@@ -166,9 +166,9 @@ separate research candidates. No new experiment is silently made a default.
 
 ## Evidence so far
 
-- All **36** active source overlays apply to disposable exact-source snapshots;
+- All **37** active source overlays apply to disposable exact-source snapshots;
   repeated application is idempotent. This is source evidence only.
-- Eight PR CPU checks pass, including negative controls for FP8 draft aliases,
+- Nine PR CPU checks pass, including negative controls for FP8 draft aliases,
   asymmetric-head LDS bounds, fail-closed oversized configurations and native
   plugin metadata discovery.
 - Real Torch CPU INT2/INT4 packing agrees bit-for-bit with an independent
@@ -196,8 +196,15 @@ separate research candidates. No new experiment is silently made a default.
 - Source, results, hashes and preflight limits are preserved in
   [native kernel evidence](../benchmarks/results/20261106-v033-native-kernels/README.md).
   These direct HIP checks do not qualify the pending Torch/vLLM/model integration.
-- The full foundation source build is still running. No candidate-image serving,
-  native GPU correctness, TP2, release, capacity or performance pass is claimed.
+- The full source image built successfully: pinned component imports, `pip check`
+  and a HIP/pybind11 compile-link-import probe pass in the final pruned image.
+  Its first CPU run passed 15 of 19 checks, including installed LFM3 config,
+  registration and all three upstream CPU RoPE cases. The preserved failures
+  exposed one Qwen opt-in schema-strictness regression and three obsolete test
+  APIs. Focused repairs pass; the corrected-image rerun is pending. See the
+  [image CPU evidence](../benchmarks/results/20261107-v033-image-cpu/README.md).
+  Candidate-image serving/native GPU, TP2, release, capacity and performance
+  qualification remain pending or explicitly deferred.
 
 Preserved setup failures: an isolated attention probe initially lacked required
 operand helpers; adding the actual upstream headers fixed compilation. A raw

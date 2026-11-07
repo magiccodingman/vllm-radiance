@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Guarded v0.30 Qwen grammar interoperability and diagnostic overlay.
+"""Guarded Qwen grammar interoperability and diagnostic overlay.
 
 Both compatibility switches default off. No caller schema is mutated and no
 constraint is silently removed. See docs/QWEN_TOOL_GRAMMAR_COMPATIBILITY.md.
@@ -89,13 +89,30 @@ def main() -> None:
           '    dumped_tools = [deepcopy(_dump_tool_for_xgrammar(tool)) for tool in tools]\n',
           '# radiance: Responses tool parameters may otherwise alias caller schemas.',
           "qwen-tool-schema-copy")
-    apply(REGISTRY,
-          '    tools = resolve_tool_strictness(tools, tool_choice, strict_level)\n',
+    resolve = '    tools = resolve_tool_strictness(tools, tool_choice, strict_level)\n'
+    previous = (
+        '    # Preserve the legacy opt-in using v0.33 native strictness semantics.\n'
+        '    if _radiance_qwen_auto_grammar(model):\n'
+        '        strict_level = max(strict_level, ToolStrictLevel.FUNCTION)\n'
+        + resolve
+    )
+    # Exact upgrade of the initial v0.33 development overlay, or a clean wheel.
+    anchor = previous if REGISTRY.is_file() and previous in REGISTRY.read_text() else resolve
+    apply(REGISTRY, anchor,
           '    # Preserve the legacy opt-in using v0.33 native strictness semantics.\n'
           '    if _radiance_qwen_auto_grammar(model):\n'
           '        strict_level = max(strict_level, ToolStrictLevel.FUNCTION)\n'
+          '        # Legacy XGrammar treated an omitted strict flag as schema-strict.\n'
+          '        # Preserve that opt-in contract while respecting explicit false.\n'
+          '        tools = [\n'
+          '            _with_tool_strict(tool, True)\n'
+          '            if ((isinstance(tool, FunctionTool) and tool.strict is None)\n'
+          '                or (isinstance(tool, ChatCompletionToolsParam)\n'
+          '                    and tool.function.strict is None))\n'
+          '            else tool for tool in tools\n'
+          '        ]\n'
           '    tools = resolve_tool_strictness(tools, tool_choice, strict_level)\n',
-          'strict_level = max(strict_level, ToolStrictLevel.FUNCTION)',
+          '# Legacy XGrammar treated an omitted strict flag as schema-strict.',
           "qwen-auto-grammar-opt-in")
     apply(REGISTRY,
           '        _normalize_qwen_tool_schemas(dumped_tools)\n',
