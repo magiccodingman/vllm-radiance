@@ -1,0 +1,4 @@
+*.log -whitespace
+*.sse -whitespace
+*.jsonl -whitespace
+*.prom -whitespace

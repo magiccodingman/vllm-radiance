@@ -1,0 +1,24 @@
+{
+  "status": "PASS",
+  "gates": [
+    {
+      "gate": "actual-native-fp8-draft-owner",
+      "pass": true
+    },
+    {
+      "gate": "short-sse-token-parity",
+      "pass": true
+    },
+    {
+      "gate": "named-tool",
+      "pass": true
+    },
+    {
+      "gate": "actual-draft-and-acceptance",
+      "pass": true,
+      "draft_tokens": 148.0,
+      "accepted_tokens": 80.0
+    }
+  ],
+  "scope": "boundedTP1FP8DFlash7smoke only; no matched-performance, TP2 or strict speculative-versus-serial equivalence claim"
+}

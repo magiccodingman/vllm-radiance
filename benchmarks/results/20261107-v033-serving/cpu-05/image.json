@@ -1,0 +1,118 @@
+{
+  "Id": "sha256:0544917159f9d858ac74408ee3afa0a189104b4970b234f92e504495860034f4",
+  "RepoTags": [
+    "radiance-local:v033-candidate",
+    "vllm-radiance:1.2.0-rc1.vllm0.33.0"
+  ],
+  "RepoDigests": [],
+  "Comment": "buildkit.dockerfile.v0",
+  "Created": "2026-11-06T20:26:23.928316135-05:00",
+  "Config": {
+    "Env": [
+      "PATH=/opt/vllm/bin:/opt/rocm/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+      "DEBIAN_FRONTEND=noninteractive",
+      "VIRTUAL_ENV=/opt/vllm",
+      "ROCM_PATH=/opt/rocm",
+      "HIP_PATH=/opt/rocm",
+      "HIP_PLATFORM=amd",
+      "VLLM_TARGET_DEVICE=rocm",
+      "PYTORCH_ROCM_ARCH=gfx1201",
+      "RADIANCE_GFX_ARCH=gfx1201",
+      "HIP_ARCHITECTURES=gfx1201",
+      "AMDGPU_TARGETS=gfx1201",
+      "GPU_ARCHS=gfx1201",
+      "SAFETENSORS_FAST_GPU=1",
+      "TOKENIZERS_PARALLELISM=false",
+      "TRITON_CACHE_AUTOTUNING=1",
+      "PYTHONDONTWRITEBYTECODE=1",
+      "RADIANCE_USE_R4D=1",
+      "RADIANCE_USE_R4D_GDN=1",
+      "RADIANCE_R4D_REPORT=1",
+      "RADIANCE_USE_R4D_AR=1",
+      "RADIANCE_USE_R4D_AR_QUANT=1",
+      "RADIANCE_SKINNY_GEMM=1",
+      "RADIANCE_GDN_META=1",
+      "RADIANCE_GDN_MERGE_INPROJ=1",
+      "RADIANCE_GDN_FUSED_UPDATE=1",
+      "RADIANCE_GDN_FUSED_MAX_ITEMS=32",
+      "RADIANCE_TOPK_TRITON_MIN_ROWS=1",
+      "RADIANCE_TOPK_COMPOSITE=1",
+      "RADIANCE_TOPK_COMPOSITE_KCAP=64",
+      "RADIANCE_MXFP4=0",
+      "RADIANCE_MXFP4_W4A8=0",
+      "RADIANCE_MXFP4_W4A8_MIN_M=0",
+      "RADIANCE_QUARK_BF16_MTP=0",
+      "RADIANCE_MXFP4_DECODE_MAX_M=64",
+      "RADIANCE_MXFP4_TN4_MIN_M=2048",
+      "RADIANCE_MXFP4_EPIFAST=1",
+      "RADIANCE_MXFP4_WPERM=0",
+      "RADIANCE_MXFP4_DECODE_NT=0",
+      "RADIANCE_MXFP4_A_TILED_MIN_M=0",
+      "RADIANCE_GDN_NORM_QUANT=0",
+      "RADIANCE_NORMQUANT_FUSION=0",
+      "RADIANCE_MXFP4_HOIST_QUANT=0",
+      "RADIANCE_MXFP4_TRACED_QUANT=0",
+      "RADIANCE_FP8_STREAM=0",
+      "RADIANCE_KV_GROUP_OPT=1",
+      "RADIANCE_AR_QNT=1024",
+      "RADIANCE_AR_QNB=96",
+      "RADIANCE_PRESHUFFLE=1",
+      "RADIANCE_ATTN_TUNE=1",
+      "RADIANCE_FUSE_RMS_QUANT=1",
+      "RADIANCE_DYNAMIC_DRAFT=1",
+      "RADIANCE_DRAFT_SCHEDULE=1:8,2:7,4:6,8:5,16:4",
+      "RADIANCE_DRAFT_TAU=0.28",
+      "RADIANCE_DYNAMIC_WIDTH=1",
+      "RADIANCE_DYNW_MIN_BATCH=5",
+      "RADIANCE_DRAFT_RERANK=64",
+      "RADIANCE_VERIFY_HEAD=1",
+      "R4D_ATTN_FP8=0",
+      "RADIANCE_FAST_DRAFT=0",
+      "RADIANCE_RUN_BWTEST=1",
+      "RADIANCE_VERSION=1.2.0-rc1.vllm0.33.0"
+    ],
+    "Entrypoint": [
+      "/opt/radiance_entrypoint.sh"
+    ],
+    "Labels": {
+      "org.opencontainers.image.ref.name": "ubuntu",
+      "org.opencontainers.image.revision": "1d485b3c5f18c5db15b58a0b26ab27fac685ed6a",
+      "org.opencontainers.image.source": "https://gitlab.sayou.io/lance-wright/vllm-radiance",
+      "org.opencontainers.image.version": "1.2.0-rc1.vllm0.33.0"
+    }
+  },
+  "Architecture": "amd64",
+  "Os": "linux",
+  "Size": 10201306070,
+  "GraphDriver": {
+    "Data": {
+      "LowerDir": "/var/lib/docker/overlay2/lz2n1instq5qsguh3oibsyg8p/diff:/var/lib/docker/overlay2/h37xj6edr4p80f0ze78nz19zm/diff:/var/lib/docker/overlay2/l8zdiey6lqy6zbn5utfj6t4z3/diff:/var/lib/docker/overlay2/a7kjlcxk03lgsxpx6a8q5sbcp/diff:/var/lib/docker/overlay2/2f68vrino3ohsf6rpxximldgd/diff:/var/lib/docker/overlay2/sy05o4i8g88apeg3dvmqjh42a/diff:/var/lib/docker/overlay2/mcwolul1x75kswpylc0tf14jb/diff:/var/lib/docker/overlay2/7fzxjdtpju9jgcrhghgg3qkyz/diff:/var/lib/docker/overlay2/1n1yasi36l4i8uwb86b9im9sm/diff:/var/lib/docker/overlay2/v6yf1krqlff2d7x9tbdq3ajdk/diff:/var/lib/docker/overlay2/yz2h9gc996wqxb8sv5f6uxmjn/diff:/var/lib/docker/overlay2/p0cek8ice9j68f1dy47438fsn/diff:/var/lib/docker/overlay2/040c4210c0fe341f62b011c23a0e1d4c2f1e10ee0c14a2c8d2ede528143ca507/diff",
+      "MergedDir": "/var/lib/docker/overlay2/apn9q1td6j04oy66o6875825j/merged",
+      "UpperDir": "/var/lib/docker/overlay2/apn9q1td6j04oy66o6875825j/diff",
+      "WorkDir": "/var/lib/docker/overlay2/apn9q1td6j04oy66o6875825j/work"
+    },
+    "Name": "overlay2"
+  },
+  "RootFS": {
+    "Type": "layers",
+    "Layers": [
+      "sha256:107cbdaeec042e6154640c94972c638f4e2fee795902b149e8ce9acbd03d59d7",
+      "sha256:54d51bd9b4f0897366626e06cfff8f103b2fcdcc0adda3e216fbaed17cb1c6db",
+      "sha256:438db4829ce0207665097f0e18378e422ba50f22e1e019e672f1d63b4801c874",
+      "sha256:44e78798d4bdc0c544bb6db1deaacbdac833cc3d6bc0f17c0d9bb4c08e7c461c",
+      "sha256:73e2a603ac7f1aba74282ee32ee6efd842ced111c146e25a5ef736bac454e407",
+      "sha256:fe15f8ed27fe365750786a7075b93c32207a4dc6d03cfece315490b006dcd15c",
+      "sha256:06cba365ecfc52193914bd07dd2ba7cdba558f6caa664b1e3b082f6b7eec680e",
+      "sha256:8af5d0653ea307d06da8d76d01c9aae0650e4ed59bd901cca2aa6c36e7a5ad23",
+      "sha256:4c83c8eefbe31aa8307c20812e76430f32a784ae352120906c224031a781e9a9",
+      "sha256:f4732caa715d9c340d9d183777bfb5034dfaef60be9eddb57451dc93af37444c",
+      "sha256:6ea0d41b2745c7c8081730c3ad388365cba127eacaee6b9ab2b238ad44e896b8",
+      "sha256:65b7d8b0230718431134ceb100045c712ca87b2a7b685c7918fbc7a48c453a11",
+      "sha256:a63240d3eff41e935d99bac3e726a6beca00343739f0ff813a81f5d155a0b88e",
+      "sha256:a63240d3eff41e935d99bac3e726a6beca00343739f0ff813a81f5d155a0b88e"
+    ]
+  },
+  "Metadata": {
+    "LastTagTime": "2026-11-06T20:26:31.943076407-05:00"
+  }
+}

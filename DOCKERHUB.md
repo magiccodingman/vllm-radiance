@@ -10,8 +10,10 @@ see `docs/LFM3.md` for its separate optional text/FP8 profile. The ordinary Qwen
 Compose retains TP2, FP8 KV, 16K context, 85% GPU allocation, eight sequences,
 prefix caching and its explicit V1 override; speculation remains opt-in.
 
-The candidate has passed installed-image CPU checks and bounded GPU0 native
-kernel checks. TP2, performance, capacity and release qualification are deferred.
+The candidate passes installed-image CPU checks, native kernel gates and bounded
+GPU0 Quark V1/V2 serving/tool/cache/vision gates. LFM3 remains experimental with
+a recorded greedy batch-parity failure. TP2, performance, capacity and release
+qualification are deferred.
 Older measurements and deployment reports below describe their recorded stacks;
 they are not new-compiler-stack performance claims.
 

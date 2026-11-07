@@ -130,7 +130,11 @@ next punctuation token. Both members of the duplicate batch agree; a subsequent
 single request reproduces its original tokens. Logprobs preserve the changed
 ranking; this is not evidence of exact batch invariance or a waived gate.
 Upstream's `VLLM_BATCH_INVARIANT=1` control refuses this architecture with
-`batch_invariant mode is not supported for SHORT_CONV_ATTN`. Investigation and
-control results remain recorded. Treat LFM3 as an optional experimental profile,
+`batch_invariant mode is not supported for SHORT_CONV_ATTN`. The original
+convolution control passes this particular token fixture (its logprobs still
+vary across batch rows); the width-7 FP32-products correction is
+required to pass the unchanged numerical oracle. Both results remain recorded
+in the [serving evidence](../benchmarks/results/20261107-v033-serving/README.md).
+Treat LFM3 as an optional experimental profile,
 not release-qualified deterministic serving. No TP2, capacity or performance
 claim follows from these bounded tests.

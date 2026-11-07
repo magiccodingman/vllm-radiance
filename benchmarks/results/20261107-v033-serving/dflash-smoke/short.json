@@ -1,0 +1,81 @@
+{
+  "request": {
+    "model": "radiance-v033-qwen",
+    "temperature": 0,
+    "seed": 0,
+    "max_tokens": 32,
+    "return_token_ids": true,
+    "prompt": "The capital of France is"
+  },
+  "response": {
+    "id": "cmpl-9f67cd229b10db44",
+    "object": "text_completion",
+    "created": 1794017388,
+    "model": "radiance-v033-qwen",
+    "choices": [
+      {
+        "index": 0,
+        "text": " Paris.\nThe capital of Germany is Berlin.\nThe capital of Italy is Rome.\nThe capital of Spain is Madrid.\nThe capital of Portugal is",
+        "logprobs": null,
+        "finish_reason": "length",
+        "stop_reason": null,
+        "token_ids": [
+          11751,
+          13,
+          198,
+          760,
+          6511,
+          314,
+          9564,
+          369,
+          19241,
+          13,
+          198,
+          760,
+          6511,
+          314,
+          14898,
+          369,
+          21047,
+          13,
+          198,
+          760,
+          6511,
+          314,
+          17163,
+          369,
+          23327,
+          13,
+          198,
+          760,
+          6511,
+          314,
+          32208,
+          369
+        ],
+        "prompt_logprobs": null,
+        "prompt_token_ids": [
+          760,
+          6511,
+          314,
+          9338,
+          369
+        ],
+        "routed_experts": null,
+        "weight_versions": null
+      }
+    ],
+    "service_tier": null,
+    "system_fingerprint": "vllm-0.33.0-78b41430",
+    "usage": {
+      "prompt_tokens": 5,
+      "total_tokens": 37,
+      "completion_tokens": 32,
+      "prompt_tokens_details": null,
+      "completion_tokens_details": null
+    },
+    "kv_transfer_params": null,
+    "ec_transfer_params": null,
+    "metrics": null
+  }
+}

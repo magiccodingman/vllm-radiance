@@ -1,0 +1,6 @@
+{
+  "status": "FAIL",
+  "phase": "post weight load cache planner",
+  "error": "R4DAttentionBackend.get_supported_kernel_block_sizes() takes 0 positional arguments but 1 was given",
+  "scope": "native model loaded; no serving or numerical claim"
+}

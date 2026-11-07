@@ -1,0 +1,18 @@
+{
+  "owners_sha256": "490d798446b180781bf06fc3d8ddbef2739948ef293a5a166d1e059672557bba",
+  "runner": {
+    "class": "GPUModelRunner",
+    "module": "vllm.v1.worker.gpu.model_runner",
+    "source_sha256": "bc952e2975d1598c4c2689cfe17529b572a08ee0ad0ef4aaead9cad256e19363"
+  },
+  "model": {
+    "class": "Qwen3_5ForConditionalGeneration",
+    "module": "vllm.model_executor.models.qwen3_5",
+    "source_sha256": "ea7e71303c902b9678e85ff3e9a75a7ab6e69b5770605d540ad6ab1084e18187"
+  },
+  "w4a8_layers": 304,
+  "fallback_layers": 0,
+  "head_policy": "RADIANCE_FAST_DRAFT=0; full target head",
+  "prefix_hit_tokens": 1568.0,
+  "scope": "TP1V2actualloadedQuark checkpoint; not TP2/performance/capacity"
+}

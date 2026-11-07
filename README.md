@@ -8,9 +8,9 @@ This branch upgrades the source platform to **stable vLLM 0.33.0** and a pinned 
 AMD Torch 2.13 / Triton 3.8 / AITER 0.1.26 stack. It retains Radiance's MXFP4 W4A8,
 GDN correction, FP8 GEMM, structured-output and opt-in speculative paths.
 
-> **Upgrade candidate; not production-qualified.** CPU/source checks are recorded in
-> [V033_UPGRADE.md](docs/V033_UPGRADE.md). Candidate-image, GPU 0 serving and native checks
-> are still in progress. TP2, full performance and release qualification are deferred.
+> **Upgrade candidate; not production-qualified.** CPU/image, native kernels and bounded
+> GPU0 Quark V1/V2 checks pass; see [V033_UPGRADE.md](docs/V033_UPGRADE.md).
+> TP2, full performance, capacity and release qualification are deferred.
 > Historical results below describe their original versions and do not qualify this stack.
 
 The primary qualified production topology remains two R9700s (TP2), native FP8 or AMD Quark
@@ -33,7 +33,7 @@ residual BLAS GEMMs. Neither is enabled until its exact model/profile passes
 the normal correctness and benchmark gates. See
 [FP8-KV calibration and persisted TunableOp](docs/FP8_KV_TUNABLEOP.md).
 
-LFM3 text is an additional candidate backport with a separate serving profile; see
+Native LFM3 FP8 text is experimental: exact greedy batch parity fails. See
 [LFM3 source, configuration and qualification](docs/LFM3.md).
 
 ## Runtime defaults and optional research

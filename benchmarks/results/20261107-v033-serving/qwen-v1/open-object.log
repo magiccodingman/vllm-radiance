@@ -1,0 +1,46 @@
+{"run":1,"case":"command","stream":true,"request_id":"open-object-20261107T015823Z-1-command-s","finish_reason":"stop","passed":true,"issues":[],"elapsed_seconds":4.454}
+{"run":1,"case":"command","stream":false,"request_id":"open-object-20261107T015823Z-1-command-n","finish_reason":"stop","passed":true,"issues":[],"elapsed_seconds":4.438}
+{"run":1,"case":"lan","stream":true,"request_id":"open-object-20261107T015823Z-1-lan-s","finish_reason":"stop","passed":true,"issues":[],"elapsed_seconds":2.713}
+{"run":1,"case":"lan","stream":false,"request_id":"open-object-20261107T015823Z-1-lan-n","finish_reason":"stop","passed":true,"issues":[],"elapsed_seconds":2.694}
+{"run":1,"case":"parallel","stream":true,"request_id":"open-object-20261107T015823Z-1-parallel-s","finish_reason":"tool_calls","passed":true,"issues":[],"elapsed_seconds":4.616}
+{"run":1,"case":"parallel","stream":false,"request_id":"open-object-20261107T015823Z-1-parallel-n","finish_reason":"tool_calls","passed":true,"issues":[],"elapsed_seconds":4.617}
+{"run":1,"case":"memory","stream":true,"request_id":"open-object-20261107T015823Z-1-memory-s","finish_reason":"stop","passed":true,"issues":[],"elapsed_seconds":3.346}
+{"run":1,"case":"memory","stream":false,"request_id":"open-object-20261107T015823Z-1-memory-n","finish_reason":"stop","passed":true,"issues":[],"elapsed_seconds":3.369}
+{"run":2,"case":"command","stream":true,"request_id":"open-object-20261107T015823Z-2-command-s","finish_reason":"stop","passed":true,"issues":[],"elapsed_seconds":4.477}
+{"run":2,"case":"command","stream":false,"request_id":"open-object-20261107T015823Z-2-command-n","finish_reason":"stop","passed":true,"issues":[],"elapsed_seconds":4.47}
+{"run":2,"case":"lan","stream":true,"request_id":"open-object-20261107T015823Z-2-lan-s","finish_reason":"stop","passed":true,"issues":[],"elapsed_seconds":2.693}
+{"run":2,"case":"lan","stream":false,"request_id":"open-object-20261107T015823Z-2-lan-n","finish_reason":"stop","passed":true,"issues":[],"elapsed_seconds":2.691}
+{"run":2,"case":"parallel","stream":true,"request_id":"open-object-20261107T015823Z-2-parallel-s","finish_reason":"tool_calls","passed":true,"issues":[],"elapsed_seconds":4.608}
+{"run":2,"case":"parallel","stream":false,"request_id":"open-object-20261107T015823Z-2-parallel-n","finish_reason":"tool_calls","passed":true,"issues":[],"elapsed_seconds":4.605}
+{"run":2,"case":"memory","stream":true,"request_id":"open-object-20261107T015823Z-2-memory-s","finish_reason":"stop","passed":true,"issues":[],"elapsed_seconds":3.355}
+{"run":2,"case":"memory","stream":false,"request_id":"open-object-20261107T015823Z-2-memory-n","finish_reason":"stop","passed":true,"issues":[],"elapsed_seconds":3.35}
+{"run":3,"case":"command","stream":true,"request_id":"open-object-20261107T015823Z-3-command-s","finish_reason":"stop","passed":true,"issues":[],"elapsed_seconds":4.442}
+{"run":3,"case":"command","stream":false,"request_id":"open-object-20261107T015823Z-3-command-n","finish_reason":"stop","passed":true,"issues":[],"elapsed_seconds":4.461}
+{"run":3,"case":"lan","stream":true,"request_id":"open-object-20261107T015823Z-3-lan-s","finish_reason":"stop","passed":true,"issues":[],"elapsed_seconds":2.729}
+{"run":3,"case":"lan","stream":false,"request_id":"open-object-20261107T015823Z-3-lan-n","finish_reason":"stop","passed":true,"issues":[],"elapsed_seconds":2.697}
+{"run":3,"case":"parallel","stream":true,"request_id":"open-object-20261107T015823Z-3-parallel-s","finish_reason":"tool_calls","passed":true,"issues":[],"elapsed_seconds":4.597}
+{"run":3,"case":"parallel","stream":false,"request_id":"open-object-20261107T015823Z-3-parallel-n","finish_reason":"tool_calls","passed":true,"issues":[],"elapsed_seconds":4.606}
+{"run":3,"case":"memory","stream":true,"request_id":"open-object-20261107T015823Z-3-memory-s","finish_reason":"stop","passed":true,"issues":[],"elapsed_seconds":3.334}
+{"run":3,"case":"memory","stream":false,"request_id":"open-object-20261107T015823Z-3-memory-n","finish_reason":"stop","passed":true,"issues":[],"elapsed_seconds":3.334}
+{"run":4,"case":"command","stream":true,"request_id":"open-object-20261107T015823Z-4-command-s","finish_reason":"stop","passed":true,"issues":[],"elapsed_seconds":4.422}
+{"run":4,"case":"command","stream":false,"request_id":"open-object-20261107T015823Z-4-command-n","finish_reason":"stop","passed":true,"issues":[],"elapsed_seconds":4.444}
+{"run":4,"case":"lan","stream":true,"request_id":"open-object-20261107T015823Z-4-lan-s","finish_reason":"stop","passed":true,"issues":[],"elapsed_seconds":2.7}
+{"run":4,"case":"lan","stream":false,"request_id":"open-object-20261107T015823Z-4-lan-n","finish_reason":"stop","passed":true,"issues":[],"elapsed_seconds":2.696}
+{"run":4,"case":"parallel","stream":true,"request_id":"open-object-20261107T015823Z-4-parallel-s","finish_reason":"tool_calls","passed":true,"issues":[],"elapsed_seconds":4.599}
+{"run":4,"case":"parallel","stream":false,"request_id":"open-object-20261107T015823Z-4-parallel-n","finish_reason":"tool_calls","passed":true,"issues":[],"elapsed_seconds":4.601}
+{"run":4,"case":"memory","stream":true,"request_id":"open-object-20261107T015823Z-4-memory-s","finish_reason":"stop","passed":true,"issues":[],"elapsed_seconds":3.34}
+{"run":4,"case":"memory","stream":false,"request_id":"open-object-20261107T015823Z-4-memory-n","finish_reason":"stop","passed":true,"issues":[],"elapsed_seconds":3.34}
+{"run":5,"case":"command","stream":true,"request_id":"open-object-20261107T015823Z-5-command-s","finish_reason":"stop","passed":true,"issues":[],"elapsed_seconds":4.445}
+{"run":5,"case":"command","stream":false,"request_id":"open-object-20261107T015823Z-5-command-n","finish_reason":"stop","passed":true,"issues":[],"elapsed_seconds":4.445}
+{"run":5,"case":"lan","stream":true,"request_id":"open-object-20261107T015823Z-5-lan-s","finish_reason":"stop","passed":true,"issues":[],"elapsed_seconds":2.688}
+{"run":5,"case":"lan","stream":false,"request_id":"open-object-20261107T015823Z-5-lan-n","finish_reason":"stop","passed":true,"issues":[],"elapsed_seconds":2.699}
+{"run":5,"case":"parallel","stream":true,"request_id":"open-object-20261107T015823Z-5-parallel-s","finish_reason":"tool_calls","passed":true,"issues":[],"elapsed_seconds":4.597}
+{"run":5,"case":"parallel","stream":false,"request_id":"open-object-20261107T015823Z-5-parallel-n","finish_reason":"tool_calls","passed":true,"issues":[],"elapsed_seconds":4.592}
+{"run":5,"case":"memory","stream":true,"request_id":"open-object-20261107T015823Z-5-memory-s","finish_reason":"stop","passed":true,"issues":[],"elapsed_seconds":3.354}
+{"run":5,"case":"memory","stream":false,"request_id":"open-object-20261107T015823Z-5-memory-n","finish_reason":"stop","passed":true,"issues":[],"elapsed_seconds":3.345}
+{
+  "requests": 40,
+  "passed": 40,
+  "failed": 0,
+  "run_dir": "/home/slurp/Documents/ChatGPT/AI/work/radiance-upgrade-audit/qwen-live-v1-01/open-object/20261107T015823Z_open-object-tool-gate"
+}

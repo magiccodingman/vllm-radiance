@@ -1,0 +1,852 @@
+{
+  "request": {
+    "model": "radiance-v033-qwen",
+    "temperature": 0,
+    "seed": 0,
+    "return_token_ids": true,
+    "max_tokens": 32,
+    "prompt": "The capital of France is",
+    "cache_salt": "d9b930fdc7264876981b8a5d475b1545",
+    "stream": true,
+    "stream_options": {
+      "include_usage": true
+    }
+  },
+  "events": [
+    {
+      "t_s": 0.048813323955982924,
+      "event": {
+        "id": "cmpl-b480c8bf52a9bf10",
+        "object": "text_completion",
+        "created": 1794016538,
+        "model": "radiance-v033-qwen",
+        "choices": [
+          {
+            "index": 0,
+            "text": " Paris",
+            "logprobs": null,
+            "finish_reason": null,
+            "stop_reason": null,
+            "prompt_token_ids": [
+              760,
+              6511,
+              314,
+              9338,
+              369
+            ],
+            "token_ids": [
+              11751
+            ],
+            "weight_versions": null
+          }
+        ],
+        "kv_transfer_params": null
+      }
+    },
+    {
+      "t_s": 0.08280549291521311,
+      "event": {
+        "id": "cmpl-b480c8bf52a9bf10",
+        "object": "text_completion",
+        "created": 1794016538,
+        "model": "radiance-v033-qwen",
+        "choices": [
+          {
+            "index": 0,
+            "text": ".",
+            "logprobs": null,
+            "finish_reason": null,
+            "stop_reason": null,
+            "prompt_token_ids": null,
+            "token_ids": [
+              13
+            ],
+            "weight_versions": null
+          }
+        ],
+        "kv_transfer_params": null
+      }
+    },
+    {
+      "t_s": 0.11674684192985296,
+      "event": {
+        "id": "cmpl-b480c8bf52a9bf10",
+        "object": "text_completion",
+        "created": 1794016538,
+        "model": "radiance-v033-qwen",
+        "choices": [
+          {
+            "index": 0,
+            "text": "\n",
+            "logprobs": null,
+            "finish_reason": null,
+            "stop_reason": null,
+            "prompt_token_ids": null,
+            "token_ids": [
+              198
+            ],
+            "weight_versions": null
+          }
+        ],
+        "kv_transfer_params": null
+      }
+    },
+    {
+      "t_s": 0.15072417096234858,
+      "event": {
+        "id": "cmpl-b480c8bf52a9bf10",
+        "object": "text_completion",
+        "created": 1794016538,
+        "model": "radiance-v033-qwen",
+        "choices": [
+          {
+            "index": 0,
+            "text": "The",
+            "logprobs": null,
+            "finish_reason": null,
+            "stop_reason": null,
+            "prompt_token_ids": null,
+            "token_ids": [
+              760
+            ],
+            "weight_versions": null
+          }
+        ],
+        "kv_transfer_params": null
+      }
+    },
+    {
+      "t_s": 0.18511342583224177,
+      "event": {
+        "id": "cmpl-b480c8bf52a9bf10",
+        "object": "text_completion",
+        "created": 1794016538,
+        "model": "radiance-v033-qwen",
+        "choices": [
+          {
+            "index": 0,
+            "text": " capital",
+            "logprobs": null,
+            "finish_reason": null,
+            "stop_reason": null,
+            "prompt_token_ids": null,
+            "token_ids": [
+              6511
+            ],
+            "weight_versions": null
+          }
+        ],
+        "kv_transfer_params": null
+      }
+    },
+    {
+      "t_s": 0.21952314185909927,
+      "event": {
+        "id": "cmpl-b480c8bf52a9bf10",
+        "object": "text_completion",
+        "created": 1794016538,
+        "model": "radiance-v033-qwen",
+        "choices": [
+          {
+            "index": 0,
+            "text": " of",
+            "logprobs": null,
+            "finish_reason": null,
+            "stop_reason": null,
+            "prompt_token_ids": null,
+            "token_ids": [
+              314
+            ],
+            "weight_versions": null
+          }
+        ],
+        "kv_transfer_params": null
+      }
+    },
+    {
+      "t_s": 0.2538490060251206,
+      "event": {
+        "id": "cmpl-b480c8bf52a9bf10",
+        "object": "text_completion",
+        "created": 1794016538,
+        "model": "radiance-v033-qwen",
+        "choices": [
+          {
+            "index": 0,
+            "text": " Germany",
+            "logprobs": null,
+            "finish_reason": null,
+            "stop_reason": null,
+            "prompt_token_ids": null,
+            "token_ids": [
+              9564
+            ],
+            "weight_versions": null
+          }
+        ],
+        "kv_transfer_params": null
+      }
+    },
+    {
+      "t_s": 0.28832357400096953,
+      "event": {
+        "id": "cmpl-b480c8bf52a9bf10",
+        "object": "text_completion",
+        "created": 1794016538,
+        "model": "radiance-v033-qwen",
+        "choices": [
+          {
+            "index": 0,
+            "text": " is",
+            "logprobs": null,
+            "finish_reason": null,
+            "stop_reason": null,
+            "prompt_token_ids": null,
+            "token_ids": [
+              369
+            ],
+            "weight_versions": null
+          }
+        ],
+        "kv_transfer_params": null
+      }
+    },
+    {
+      "t_s": 0.3225692268460989,
+      "event": {
+        "id": "cmpl-b480c8bf52a9bf10",
+        "object": "text_completion",
+        "created": 1794016538,
+        "model": "radiance-v033-qwen",
+        "choices": [
+          {
+            "index": 0,
+            "text": " Berlin",
+            "logprobs": null,
+            "finish_reason": null,
+            "stop_reason": null,
+            "prompt_token_ids": null,
+            "token_ids": [
+              19241
+            ],
+            "weight_versions": null
+          }
+        ],
+        "kv_transfer_params": null
+      }
+    },
+    {
+      "t_s": 0.3569076210260391,
+      "event": {
+        "id": "cmpl-b480c8bf52a9bf10",
+        "object": "text_completion",
+        "created": 1794016538,
+        "model": "radiance-v033-qwen",
+        "choices": [
+          {
+            "index": 0,
+            "text": ".",
+            "logprobs": null,
+            "finish_reason": null,
+            "stop_reason": null,
+            "prompt_token_ids": null,
+            "token_ids": [
+              13
+            ],
+            "weight_versions": null
+          }
+        ],
+        "kv_transfer_params": null
+      }
+    },
+    {
+      "t_s": 0.39141266886144876,
+      "event": {
+        "id": "cmpl-b480c8bf52a9bf10",
+        "object": "text_completion",
+        "created": 1794016538,
+        "model": "radiance-v033-qwen",
+        "choices": [
+          {
+            "index": 0,
+            "text": "\n",
+            "logprobs": null,
+            "finish_reason": null,
+            "stop_reason": null,
+            "prompt_token_ids": null,
+            "token_ids": [
+              198
+            ],
+            "weight_versions": null
+          }
+        ],
+        "kv_transfer_params": null
+      }
+    },
+    {
+      "t_s": 0.42592370603233576,
+      "event": {
+        "id": "cmpl-b480c8bf52a9bf10",
+        "object": "text_completion",
+        "created": 1794016538,
+        "model": "radiance-v033-qwen",
+        "choices": [
+          {
+            "index": 0,
+            "text": "The",
+            "logprobs": null,
+            "finish_reason": null,
+            "stop_reason": null,
+            "prompt_token_ids": null,
+            "token_ids": [
+              760
+            ],
+            "weight_versions": null
+          }
+        ],
+        "kv_transfer_params": null
+      }
+    },
+    {
+      "t_s": 0.4604112028609961,
+      "event": {
+        "id": "cmpl-b480c8bf52a9bf10",
+        "object": "text_completion",
+        "created": 1794016538,
+        "model": "radiance-v033-qwen",
+        "choices": [
+          {
+            "index": 0,
+            "text": " capital",
+            "logprobs": null,
+            "finish_reason": null,
+            "stop_reason": null,
+            "prompt_token_ids": null,
+            "token_ids": [
+              6511
+            ],
+            "weight_versions": null
+          }
+        ],
+        "kv_transfer_params": null
+      }
+    },
+    {
+      "t_s": 0.49453716492280364,
+      "event": {
+        "id": "cmpl-b480c8bf52a9bf10",
+        "object": "text_completion",
+        "created": 1794016538,
+        "model": "radiance-v033-qwen",
+        "choices": [
+          {
+            "index": 0,
+            "text": " of",
+            "logprobs": null,
+            "finish_reason": null,
+            "stop_reason": null,
+            "prompt_token_ids": null,
+            "token_ids": [
+              314
+            ],
+            "weight_versions": null
+          }
+        ],
+        "kv_transfer_params": null
+      }
+    },
+    {
+      "t_s": 0.5285099339671433,
+      "event": {
+        "id": "cmpl-b480c8bf52a9bf10",
+        "object": "text_completion",
+        "created": 1794016538,
+        "model": "radiance-v033-qwen",
+        "choices": [
+          {
+            "index": 0,
+            "text": " Italy",
+            "logprobs": null,
+            "finish_reason": null,
+            "stop_reason": null,
+            "prompt_token_ids": null,
+            "token_ids": [
+              14898
+            ],
+            "weight_versions": null
+          }
+        ],
+        "kv_transfer_params": null
+      }
+    },
+    {
+      "t_s": 0.5626100639346987,
+      "event": {
+        "id": "cmpl-b480c8bf52a9bf10",
+        "object": "text_completion",
+        "created": 1794016538,
+        "model": "radiance-v033-qwen",
+        "choices": [
+          {
+            "index": 0,
+            "text": " is",
+            "logprobs": null,
+            "finish_reason": null,
+            "stop_reason": null,
+            "prompt_token_ids": null,
+            "token_ids": [
+              369
+            ],
+            "weight_versions": null
+          }
+        ],
+        "kv_transfer_params": null
+      }
+    },
+    {
+      "t_s": 0.5968808578327298,
+      "event": {
+        "id": "cmpl-b480c8bf52a9bf10",
+        "object": "text_completion",
+        "created": 1794016538,
+        "model": "radiance-v033-qwen",
+        "choices": [
+          {
+            "index": 0,
+            "text": " Rome",
+            "logprobs": null,
+            "finish_reason": null,
+            "stop_reason": null,
+            "prompt_token_ids": null,
+            "token_ids": [
+              21047
+            ],
+            "weight_versions": null
+          }
+        ],
+        "kv_transfer_params": null
+      }
+    },
+    {
+      "t_s": 0.6309994789771736,
+      "event": {
+        "id": "cmpl-b480c8bf52a9bf10",
+        "object": "text_completion",
+        "created": 1794016538,
+        "model": "radiance-v033-qwen",
+        "choices": [
+          {
+            "index": 0,
+            "text": ".",
+            "logprobs": null,
+            "finish_reason": null,
+            "stop_reason": null,
+            "prompt_token_ids": null,
+            "token_ids": [
+              13
+            ],
+            "weight_versions": null
+          }
+        ],
+        "kv_transfer_params": null
+      }
+    },
+    {
+      "t_s": 0.6647737249732018,
+      "event": {
+        "id": "cmpl-b480c8bf52a9bf10",
+        "object": "text_completion",
+        "created": 1794016538,
+        "model": "radiance-v033-qwen",
+        "choices": [
+          {
+            "index": 0,
+            "text": "\n",
+            "logprobs": null,
+            "finish_reason": null,
+            "stop_reason": null,
+            "prompt_token_ids": null,
+            "token_ids": [
+              198
+            ],
+            "weight_versions": null
+          }
+        ],
+        "kv_transfer_params": null
+      }
+    },
+    {
+      "t_s": 0.6984321789350361,
+      "event": {
+        "id": "cmpl-b480c8bf52a9bf10",
+        "object": "text_completion",
+        "created": 1794016538,
+        "model": "radiance-v033-qwen",
+        "choices": [
+          {
+            "index": 0,
+            "text": "The",
+            "logprobs": null,
+            "finish_reason": null,
+            "stop_reason": null,
+            "prompt_token_ids": null,
+            "token_ids": [
+              760
+            ],
+            "weight_versions": null
+          }
+        ],
+        "kv_transfer_params": null
+      }
+    },
+    {
+      "t_s": 0.7320380618330091,
+      "event": {
+        "id": "cmpl-b480c8bf52a9bf10",
+        "object": "text_completion",
+        "created": 1794016538,
+        "model": "radiance-v033-qwen",
+        "choices": [
+          {
+            "index": 0,
+            "text": " capital",
+            "logprobs": null,
+            "finish_reason": null,
+            "stop_reason": null,
+            "prompt_token_ids": null,
+            "token_ids": [
+              6511
+            ],
+            "weight_versions": null
+          }
+        ],
+        "kv_transfer_params": null
+      }
+    },
+    {
+      "t_s": 0.7656623949296772,
+      "event": {
+        "id": "cmpl-b480c8bf52a9bf10",
+        "object": "text_completion",
+        "created": 1794016538,
+        "model": "radiance-v033-qwen",
+        "choices": [
+          {
+            "index": 0,
+            "text": " of",
+            "logprobs": null,
+            "finish_reason": null,
+            "stop_reason": null,
+            "prompt_token_ids": null,
+            "token_ids": [
+              314
+            ],
+            "weight_versions": null
+          }
+        ],
+        "kv_transfer_params": null
+      }
+    },
+    {
+      "t_s": 0.7996267438866198,
+      "event": {
+        "id": "cmpl-b480c8bf52a9bf10",
+        "object": "text_completion",
+        "created": 1794016538,
+        "model": "radiance-v033-qwen",
+        "choices": [
+          {
+            "index": 0,
+            "text": " Spain",
+            "logprobs": null,
+            "finish_reason": null,
+            "stop_reason": null,
+            "prompt_token_ids": null,
+            "token_ids": [
+              17163
+            ],
+            "weight_versions": null
+          }
+        ],
+        "kv_transfer_params": null
+      }
+    },
+    {
+      "t_s": 0.8337001949548721,
+      "event": {
+        "id": "cmpl-b480c8bf52a9bf10",
+        "object": "text_completion",
+        "created": 1794016538,
+        "model": "radiance-v033-qwen",
+        "choices": [
+          {
+            "index": 0,
+            "text": " is",
+            "logprobs": null,
+            "finish_reason": null,
+            "stop_reason": null,
+            "prompt_token_ids": null,
+            "token_ids": [
+              369
+            ],
+            "weight_versions": null
+          }
+        ],
+        "kv_transfer_params": null
+      }
+    },
+    {
+      "t_s": 0.8679735779296607,
+      "event": {
+        "id": "cmpl-b480c8bf52a9bf10",
+        "object": "text_completion",
+        "created": 1794016538,
+        "model": "radiance-v033-qwen",
+        "choices": [
+          {
+            "index": 0,
+            "text": " Madrid",
+            "logprobs": null,
+            "finish_reason": null,
+            "stop_reason": null,
+            "prompt_token_ids": null,
+            "token_ids": [
+              23327
+            ],
+            "weight_versions": null
+          }
+        ],
+        "kv_transfer_params": null
+      }
+    },
+    {
+      "t_s": 0.9022103620227426,
+      "event": {
+        "id": "cmpl-b480c8bf52a9bf10",
+        "object": "text_completion",
+        "created": 1794016538,
+        "model": "radiance-v033-qwen",
+        "choices": [
+          {
+            "index": 0,
+            "text": ".",
+            "logprobs": null,
+            "finish_reason": null,
+            "stop_reason": null,
+            "prompt_token_ids": null,
+            "token_ids": [
+              13
+            ],
+            "weight_versions": null
+          }
+        ],
+        "kv_transfer_params": null
+      }
+    },
+    {
+      "t_s": 0.9359577668365091,
+      "event": {
+        "id": "cmpl-b480c8bf52a9bf10",
+        "object": "text_completion",
+        "created": 1794016538,
+        "model": "radiance-v033-qwen",
+        "choices": [
+          {
+            "index": 0,
+            "text": "\n",
+            "logprobs": null,
+            "finish_reason": null,
+            "stop_reason": null,
+            "prompt_token_ids": null,
+            "token_ids": [
+              198
+            ],
+            "weight_versions": null
+          }
+        ],
+        "kv_transfer_params": null
+      }
+    },
+    {
+      "t_s": 0.9695075689814985,
+      "event": {
+        "id": "cmpl-b480c8bf52a9bf10",
+        "object": "text_completion",
+        "created": 1794016538,
+        "model": "radiance-v033-qwen",
+        "choices": [
+          {
+            "index": 0,
+            "text": "The",
+            "logprobs": null,
+            "finish_reason": null,
+            "stop_reason": null,
+            "prompt_token_ids": null,
+            "token_ids": [
+              760
+            ],
+            "weight_versions": null
+          }
+        ],
+        "kv_transfer_params": null
+      }
+    },
+    {
+      "t_s": 1.0035044478718191,
+      "event": {
+        "id": "cmpl-b480c8bf52a9bf10",
+        "object": "text_completion",
+        "created": 1794016538,
+        "model": "radiance-v033-qwen",
+        "choices": [
+          {
+            "index": 0,
+            "text": " capital",
+            "logprobs": null,
+            "finish_reason": null,
+            "stop_reason": null,
+            "prompt_token_ids": null,
+            "token_ids": [
+              6511
+            ],
+            "weight_versions": null
+          }
+        ],
+        "kv_transfer_params": null
+      }
+    },
+    {
+      "t_s": 1.037394855869934,
+      "event": {
+        "id": "cmpl-b480c8bf52a9bf10",
+        "object": "text_completion",
+        "created": 1794016538,
+        "model": "radiance-v033-qwen",
+        "choices": [
+          {
+            "index": 0,
+            "text": " of",
+            "logprobs": null,
+            "finish_reason": null,
+            "stop_reason": null,
+            "prompt_token_ids": null,
+            "token_ids": [
+              314
+            ],
+            "weight_versions": null
+          }
+        ],
+        "kv_transfer_params": null
+      }
+    },
+    {
+      "t_s": 1.0710559599101543,
+      "event": {
+        "id": "cmpl-b480c8bf52a9bf10",
+        "object": "text_completion",
+        "created": 1794016538,
+        "model": "radiance-v033-qwen",
+        "choices": [
+          {
+            "index": 0,
+            "text": " Portugal",
+            "logprobs": null,
+            "finish_reason": null,
+            "stop_reason": null,
+            "prompt_token_ids": null,
+            "token_ids": [
+              32208
+            ],
+            "weight_versions": null
+          }
+        ],
+        "kv_transfer_params": null
+      }
+    },
+    {
+      "t_s": 1.1047223040368408,
+      "event": {
+        "id": "cmpl-b480c8bf52a9bf10",
+        "object": "text_completion",
+        "created": 1794016538,
+        "model": "radiance-v033-qwen",
+        "choices": [
+          {
+            "index": 0,
+            "text": " is",
+            "logprobs": null,
+            "finish_reason": "length",
+            "stop_reason": null,
+            "prompt_token_ids": null,
+            "token_ids": [
+              369
+            ],
+            "weight_versions": null
+          }
+        ],
+        "kv_transfer_params": null
+      }
+    },
+    {
+      "t_s": 1.1047505338210613,
+      "event": {
+        "id": "cmpl-b480c8bf52a9bf10",
+        "object": "text_completion",
+        "created": 1794016538,
+        "model": "radiance-v033-qwen",
+        "choices": [],
+        "usage": {
+          "prompt_tokens": 5,
+          "total_tokens": 37,
+          "completion_tokens": 32
+        },
+        "system_fingerprint": "vllm-0.33.0-6143f762"
+      }
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 5,
+    "total_tokens": 37,
+    "completion_tokens": 32
+  },
+  "ids": [
+    11751,
+    13,
+    198,
+    760,
+    6511,
+    314,
+    9564,
+    369,
+    19241,
+    13,
+    198,
+    760,
+    6511,
+    314,
+    14898,
+    369,
+    21047,
+    13,
+    198,
+    760,
+    6511,
+    314,
+    17163,
+    369,
+    23327,
+    13,
+    198,
+    760,
+    6511,
+    314,
+    32208,
+    369
+  ],
+  "text": " Paris.\nThe capital of Germany is Berlin.\nThe capital of Italy is Rome.\nThe capital of Spain is Madrid.\nThe capital of Portugal is",
+  "done": true,
+  "elapsed_s": 1.1047973548993468,
+  "ttft_s": 0.048813323955982924,
+  "steady_tps": 29.35859111419445,
+  "token_sha256": "20b490d92586d7ce3787238a95c8b320c5c8b07f4b9d6d2304580bbac23fb33f"
+}

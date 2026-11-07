@@ -1,6 +1,6 @@
 # vLLM 0.33 / maintained RDNA4 upgrade
 
-Status: **migration in progress; not qualified for production**.
+Status: **bounded GPU0 Quark V1/V2 qualification passes; not qualified for production**.
 
 ## Scope and identities
 
@@ -188,7 +188,7 @@ separate research candidates. No new experiment is silently made a default.
   references. Both BF16 and FP8 caches, shuffled/partial pages, guards and
   changed-input HIP graph replay pass; maximum relative error is 0.001772.
   The previous image also passes its independent oracle control. This is
-  native-kernel evidence, not the still-pending new Torch/vLLM integration.
+  native-kernel evidence, not by itself a Torch/vLLM integration check.
 - Twenty-four maintained GDN extreme-decay cases pass on GPU 0 under ROCm 10,
   with FP64 output/state references and changed-query graphs for both 48/16 and
   24/8 geometries; maximum relative error is 0.003572.
@@ -198,20 +198,20 @@ separate research candidates. No new experiment is silently made a default.
   relative error to exact stored-operand FP64 dots is 0.001683.
 - Source, results, hashes and preflight limits are preserved in
   [native kernel evidence](../benchmarks/results/20261106-v033-native-kernels/README.md).
-  These direct HIP checks do not qualify the pending Torch/vLLM/model integration.
+  These direct HIP checks do not qualify Torch/vLLM/model integration.
 - The full source image built successfully: pinned component imports, `pip check`
   and a HIP/pybind11 compile-link-import probe pass in the final pruned image.
   Its first CPU run passed 15 of 19 checks, including installed LFM3 config,
   registration and all three upstream CPU RoPE cases. The preserved failures
   exposed one Qwen opt-in schema-strictness regression and three obsolete test
-  APIs. Focused repairs pass; the corrected-image rerun is pending. See the
+  APIs. Focused repairs and the corrected-image rerun pass. See the
   [image CPU evidence](../benchmarks/results/20261107-v033-image-cpu/README.md).
   The first corrected image passes all 19 CPU checks. Installed native attention,
   both GDN head geometries, independent draft noise and verify-head controls also
   pass. The subsequent LFM3 convolution failures and repairs are recorded in the
   [installed native evidence](../benchmarks/results/20261107-v033-installed-native/README.md).
-  Final rebuilt-image/model, TP2, release, capacity and performance qualification
-  remain pending or explicitly deferred.
+  Current rebuilt-image/model results are below. TP2, release, capacity and
+  performance qualification remain explicitly deferred.
 
 Preserved setup failures: an isolated attention probe initially lacked required
 operand helpers; adding the actual upstream headers fixed compilation. A raw
@@ -234,8 +234,8 @@ seven bounded wire checks, including tools, tool-result roundtrip and SSE.
 batch-invariant mode rejects SHORT_CONV_ATTN at startup. The negative evidence
 is preserved in [the live report](../benchmarks/results/20261107-v033-lfm3-live/README.md)
 and discussed in [the model profile](LFM3.md). No deterministic-batch or production
-qualification is claimed. Real Quark target/default-runner and optional DFlash
-model checks remain in progress.
+qualification is claimed. Real Quark target/default-runner checks now pass; the optional FP8 DFlash
+model smoke also passes.
 
 ### Current configuration deprecations
 
@@ -255,3 +255,48 @@ model checks remain in progress.
   auto-selects V2. LFM's separate profile explicitly chooses the tested V2 runner.
   The opt-in localhost worker probe can validate either exact expected runner;
   V2 remains its default. Its inventory recognizes current FP8 scheme owners.
+
+## Preserved default-runner and current serving results
+
+Latest runtime image `sha256:0544917159f9d858ac74408ee3afa0a189104b4970b234f92e504495860034f4`
+is source `1d485b3c5f18c5db15b58a0b26ab27fac685ed6a`. All 19 CPU/image checks
+pass on that stable checkout. The R4D v0.33 cache-spec API repair is covered by
+the real upstream cache planner plus subsequent model startup, not merely a
+signature assertion. LFM model/convolution source and both native shared objects
+are byte-identical to the eight-native-gate-qualified b2 payload; hash receipts
+and original failures are preserved in the [serving report](../benchmarks/results/20261107-v033-serving/README.md).
+
+| GPU0 TP1 Quark profile | Resident/cache/vision | Sampled tool-schema | Open-object wire | Client-shaped wire |
+|---|---|---|---|---|
+| V2,4K / 2 sequences,full head | PASS,1,568-token actual prefix hit,304 W4A8/0 fallback |30/30|40/40|not claimed|
+| V1,8K / 2 sequences,full head | PASS,1,568-token actual prefix hit,304 W4A8/0 fallback |30/30|40/40|40/40|
+
+Both profiles explicitly enable `RADIANCE_QWEN_AUTO_TOOL_GRAMMAR=1` and
+`RADIANCE_QWEN_INT64_BOUND_COMPAT=1`; their global defaults remain0. This
+is the Qwen client-integration lane, not a claim for the controls-disabled lane.
+V1 names the preserved runner default, while hardware/context are bounded TP1.
+
+The larger V1 context admits the unchanged client fixture's6,144-token completion
+budget plus up to1,311 prompt tokens. No fixture, sampling count, schema or required
+field was relaxed. These are bounded correctness checks, not capacity/performance
+qualification. Both own test servers were stopped after their gates.
+
+GitHub's latest stable release was rechecked 2026-11-07: name v0.33.0, prerelease=false
+(the release URL retains tag v0.33.0rc3), matching this MR's target. Main remains
+the recorded base. No release merge or production deployment is included.
+
+### Actual FP8 DFlash smoke
+
+The same054/source 1d image passes a bounded Quark-target + native FP8 DFlash2 K7
+smoke on GPU0 / TP1, with PIECEWISE graphs,4K / 2 sequences and full target head. Installed
+owner inspection, short completion/SSE exact token parity, a strict tool call
+and positive native draft/acceptance counters pass (148 draft / 80 accepted tokens
+across the tiny smoke). See the serving report's `dflash-smoke/` directory.
+
+The initial80% budget was refused by the native cache planner
+(1.29 GiB available versus1.58 GiB required). The preserved retry uses83%,
+with unchanged context/graphs/gates/source and a HIP memory/headroom guard.
+This does not qualify a generic production memory budget, speculative-versus-
+serial equivalence, throughput, TP2, or capacity. Speculation remains opt-in.
+Both dev Dockerfile preflights and the final nine CPU PR checks also pass.
+All owned test servers are stopped. No production or GPU1 changes occurred.

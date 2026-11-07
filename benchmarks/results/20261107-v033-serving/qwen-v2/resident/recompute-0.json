@@ -1,0 +1,58 @@
+{
+  "request": {
+    "model": "radiance-v033-qwen",
+    "temperature": 0,
+    "seed": 0,
+    "return_token_ids": true,
+    "max_tokens": 1,
+    "prompt": [
+      760,
+      6511,
+      314,
+      9338,
+      369
+    ],
+    "cache_salt": "ef951949e167438ea6111204d5d68c21"
+  },
+  "response": {
+    "id": "cmpl-b36838f96522027b",
+    "object": "text_completion",
+    "created": 1794015144,
+    "model": "radiance-v033-qwen",
+    "choices": [
+      {
+        "index": 0,
+        "text": " Paris",
+        "logprobs": null,
+        "finish_reason": "length",
+        "stop_reason": null,
+        "token_ids": [
+          11751
+        ],
+        "prompt_logprobs": null,
+        "prompt_token_ids": [
+          760,
+          6511,
+          314,
+          9338,
+          369
+        ],
+        "routed_experts": null,
+        "weight_versions": null
+      }
+    ],
+    "service_tier": null,
+    "system_fingerprint": "vllm-0.33.0-08981994",
+    "usage": {
+      "prompt_tokens": 5,
+      "total_tokens": 6,
+      "completion_tokens": 1,
+      "prompt_tokens_details": null,
+      "completion_tokens_details": null
+    },
+    "kv_transfer_params": null,
+    "ec_transfer_params": null,
+    "metrics": null
+  },
+  "elapsed_s": 0.0446863598190248
+}

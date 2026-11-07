@@ -1,0 +1,19 @@
+{
+  "request": {
+    "model": "radiance-v033-qwen",
+    "prompt": "The capital of France is"
+  },
+  "response": {
+    "count": 5,
+    "max_model_len": 8192,
+    "tokens": [
+      760,
+      6511,
+      314,
+      9338,
+      369
+    ],
+    "token_strs": null
+  },
+  "elapsed_s": 0.001402681926265359
+}

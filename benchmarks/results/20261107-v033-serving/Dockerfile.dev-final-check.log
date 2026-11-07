@@ -1,0 +1,28 @@
+#0 building with "default" instance using docker driver
+
+#1 [internal] load build definition from Dockerfile.dev
+#1 transferring dockerfile: 8.36kB done
+#1 DONE 0.1s
+
+#2 resolve image config for docker-image://docker.io/docker/dockerfile:1.7
+#2 DONE 0.5s
+
+#3 docker-image://docker.io/docker/dockerfile:1.7@sha256:a57df69d0ea827fb7266491f2813635de6f17269be881f696fbfdf2d83dda33e
+#3 CACHED
+
+#4 resolve image config for docker-image://docker.io/docker/dockerfile:1.8.1@sha256:e87caa74dcb7d46cd820352bfea12591f3dba3ddc4285e19c7dcd13359f7cefd
+#4 DONE 0.0s
+
+#5 docker-image://docker.io/docker/dockerfile:1.8.1@sha256:e87caa74dcb7d46cd820352bfea12591f3dba3ddc4285e19c7dcd13359f7cefd
+#5 CACHED
+
+#6 [internal] load metadata for docker.io/rocm/dev-ubuntu-24.04:10.0.0-full@sha256:a90cf047f615abe70fbef83c64def0a2d549ef37a39c8ea545430aba4981b374
+#6 DONE 0.0s
+
+#7 [internal] load metadata for docker.io/library/vllm-radiance:1.2.0-rc1.vllm0.33.0
+#7 DONE 0.0s
+
+#8 [internal] load .dockerignore
+#8 transferring context: 500B done
+#8 DONE 0.1s
+Check complete, no warnings found.

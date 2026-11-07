@@ -1,0 +1,22 @@
+[
+  {
+    "fixture": "keypress_auto",
+    "prompt_tokens": 711,
+    "requested_total": 6855
+  },
+  {
+    "fixture": "keypress_parallel",
+    "prompt_tokens": 711,
+    "requested_total": 6855
+  },
+  {
+    "fixture": "package_auto",
+    "prompt_tokens": 1306,
+    "requested_total": 7450
+  },
+  {
+    "fixture": "package_strict",
+    "prompt_tokens": 1311,
+    "requested_total": 7455
+  }
+]
