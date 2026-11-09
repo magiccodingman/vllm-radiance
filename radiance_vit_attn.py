@@ -144,6 +144,15 @@ def radiance_vit_flash_attn(module, query, key, value, attention_mask,
         s = scaling if scaling is not None else _HEAD_DIM ** -0.5
         return _r4d_bhsd(query, key, value, s), None
     from transformers.models.gemma4.modeling_gemma4 import eager_attention_forward
+    if attention_mask is not None:
+        # The first forward may still carry the original SDPA boolean mask,
+        # or a flash-attention 2D padding mask. Eager attention adds its mask
+        # to logits, so True/False must become zero/negative bias, not 1/0.
+        if attention_mask.dim() == 2:
+            attention_mask = attention_mask[:, None, None, :].to(torch.bool)
+        if attention_mask.dtype is torch.bool:
+            attention_mask = torch.zeros_like(attention_mask, dtype=query.dtype).masked_fill_(
+                ~attention_mask, torch.finfo(query.dtype).min)
     return eager_attention_forward(module, query, key, value, attention_mask,
                                    dropout=dropout, scaling=scaling, softcap=softcap, **kwargs)
 
@@ -163,10 +172,16 @@ def install_gemma_vision():
         return
     try:
         from transformers.models.gemma4 import modeling_gemma4 as G
+        from transformers.masking_utils import ALL_MASK_ATTENTION_FUNCTIONS, eager_mask
     except Exception:
         return
     if getattr(G, "_radiance_vit_installed", False):
         return
+    # Without a matching mask registry entry Transformers treats a custom
+    # backend as unmasked on every later encoder forward. Use its additive
+    # eager mask: masked requests fall back to eager; dense requests may still
+    # elide the mask and use the native kernel.
+    ALL_MASK_ATTENTION_FUNCTIONS.register("radiance_vit_flash", eager_mask)
     try:
         G.ALL_ATTENTION_FUNCTIONS.register("radiance_vit_flash", radiance_vit_flash_attn)
     except Exception:
