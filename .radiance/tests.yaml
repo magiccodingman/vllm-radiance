@@ -324,7 +324,7 @@ tests:
   class: contract
   hardware: candidate-image
   areas: [upgrade, dflash, speculative]
-  command: python benchmarks/bin/check_draft_head_packing.py
+  command: python benchmarks/bin/check_draft_head_packing.py && python -m pytest --noconftest -q tests/test_draft_head_lazy_fallback.py tests/test_dflash_fused_kv_projection.py
   automatic: false
   ci: false
   description: Real Torch CPU INT2/INT4 packing against an independent reference, chunk boundaries, NaNs and cache reuse.
