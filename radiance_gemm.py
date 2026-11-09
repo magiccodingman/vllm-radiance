@@ -124,8 +124,12 @@ def config_for(n: int, k: int, m: int):
 
 def maybe_gemm(x: torch.Tensor, weight: torch.Tensor):
     """C = x @ weight^T for a measured skinny shape, or None to leave the caller's path alone."""
+    if (_GEMM is None or x.ndim < 1 or weight.ndim != 2
+            or x.dtype != torch.bfloat16 or weight.dtype != torch.bfloat16
+            or not x.is_cuda or not weight.is_cuda or x.device != weight.device):
+        return None
     k = int(weight.shape[1])
-    if x.shape[-1] != k:
+    if k == 0 or x.shape[-1] != k:
         return None
     n = int(weight.shape[0])
     m = x.numel() // k
@@ -140,6 +144,7 @@ def maybe_gemm(x: torch.Tensor, weight: torch.Tensor):
         sys.stderr.write("[radiance.gemm] claimed N=%d K=%d M=%d  WV=%d SK=%d MB=%d\n"
                          % (n, k, m, cfg[0], cfg[1], cfg[2]))
     c = torch.empty((m, n), device=x.device, dtype=torch.bfloat16)
-    _GEMM(x2.data_ptr(), weight.data_ptr(), c.data_ptr(), m, k, n, cfg[0], cfg[1], cfg[2],
-          torch.cuda.current_stream().cuda_stream)
+    with torch.cuda.device(x.device):
+        _GEMM(x2.data_ptr(), weight.data_ptr(), c.data_ptr(), m, k, n, cfg[0], cfg[1], cfg[2],
+              torch.cuda.current_stream(x.device).cuda_stream)
     return c.reshape(*x.shape[:-1], n)
