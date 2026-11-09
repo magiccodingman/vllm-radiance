@@ -33,7 +33,7 @@ validate_control_plane:
   interruptible: true
   before_script:
     - apt-get update && apt-get install -y --no-install-recommends git
-    - python -m pip install --no-cache-dir "PyYAML==6.0.3" "Jinja2==3.1.6" "jsonschema==4.26.0"
+    - python -m pip install --no-cache-dir "PyYAML==6.0.3" "Jinja2==3.1.6" "jsonschema==4.26.0" "numpy==2.5.3"
   script:
     - python tools/radiance.py test pr
 
