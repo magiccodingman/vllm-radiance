@@ -38,12 +38,14 @@ def main():
     try:
         for bits in (2, 4):
             ns.update(BITS=bits, _HEAD_CACHE={})
-            w = torch.randn((2051, 256), dtype=torch.bfloat16)
+            lanes = 8 // bits
+            width = lanes * ns["GROUP"]
+            w = torch.randn((2051, width), dtype=torch.bfloat16)
             w[0] = 0
             w[1024] = 1
             lp = SimpleNamespace()
             ns["_quantize_head_now"](lp, SimpleNamespace(weight=w))
-            grouped = w.float().reshape(2051, 2, 128)
+            grouped = w.float().reshape(2051, lanes, 128)
             lo, hi = grouped.amin(-1), grouped.amax(-1)
             levels = (1 << bits) - 1
             scale = ((hi - lo) / levels).clamp(min=1e-8)
@@ -51,8 +53,7 @@ def main():
             q = (grouped / scale[..., None] + zero[..., None]).round().clamp(0, levels)
             q = q.to(torch.uint8).reshape_as(w)
             # Independent lane assembly rather than the optimized slicing code.
-            lanes = 8 // bits
-            packed = torch.zeros((2051, 256 // lanes), dtype=torch.uint8)
+            packed = torch.zeros((2051, width // lanes), dtype=torch.uint8)
             for lane in range(lanes):
                 packed |= q[:, lane * packed.shape[1]:(lane + 1) * packed.shape[1]] << (lane * bits)
             bias = 4 if bits == 2 else 16
