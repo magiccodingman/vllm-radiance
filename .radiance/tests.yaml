@@ -98,7 +98,7 @@ tests:
   class: contract
   hardware: cpu
   areas: [parser, structured-output]
-  command: uv run --project benchmarks/conformance --locked --group dev --extra cpu-tests python -m unittest discover -s tests -p test_qwen_history_replay.py -v
+  command: python -m unittest discover -s tests -p test_qwen_history_replay.py -v
   automatic: true
   ci: true
   description: Real Jinja replay preserves literal reasoning delimiters, tool values and existing Qwen/Vision prompt controls.

@@ -97,6 +97,10 @@ def main() -> None:
         "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     failed: list[str] = []
+    if args.fail_below is not None:
+        for key in missing_candidate:
+            if baseline[key].get("workload") == "decode":
+                failed.append(f"missing baseline decode case: {key}")
     measured_decode_cases = 0
     for key in common:
         base = baseline[key]

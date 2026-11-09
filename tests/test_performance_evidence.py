@@ -50,6 +50,12 @@ class PerformanceEvidenceTests(unittest.TestCase):
         candidate = dict(self.row, concurrency=2)
         self.assertNotEqual(self.run_gate([self.row], [candidate]).returncode, 0)
 
+    def test_missing_decode_case_fails_even_with_a_matching_case(self):
+        missing = dict(self.row, concurrency=2)
+        result = self.run_gate([self.row, missing], [self.row])
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("missing baseline decode case", result.stderr)
+
     def test_prefill_only_cannot_pass_decode_gate(self):
         row = dict(self.row, workload="prefill")
         self.assertNotEqual(self.run_gate([row], [row]).returncode, 0)
