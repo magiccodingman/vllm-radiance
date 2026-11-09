@@ -102,12 +102,17 @@ def check_tests(repo: Path, tests_doc: dict[str, Any], errors: list[str]) -> set
     for test_id, item in by_id.items():
         if item.get("hardware") not in hardware:
             errors.append(f"test {test_id}: unknown hardware level {item.get('hardware')!r}")
+        for flag in ("automatic", "ci"):
+            if not isinstance(item.get(flag, False), bool):
+                errors.append(f"test {test_id}: {flag} must be a YAML boolean")
+        if item.get("automatic") is True and item.get("hardware") != "cpu":
+            errors.append(f"test {test_id}: automatic checks must require cpu hardware")
         if not isinstance(item.get("command"), str) or not item["command"].strip():
             errors.append(f"test {test_id}: command must be non-empty")
         areas = item.get("areas")
         if not isinstance(areas, list) or not areas:
             errors.append(f"test {test_id}: areas must be a non-empty list")
-        if item.get("ci") and not item.get("automatic"):
+        if item.get("ci") is True and item.get("automatic") is not True:
             errors.append(f"test {test_id}: CI tests must also be automatic")
 
     for profile, ids in (tests_doc.get("profiles") or {}).items():
