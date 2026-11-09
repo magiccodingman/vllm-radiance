@@ -64,13 +64,16 @@ def _cu_single(n: int, device) -> torch.Tensor:
 def _r4d_72(q, k, v, scale, cu=None, max_seqlen=None):
     """q, k, v: [T, heads, 72] contiguous bf16, one or more segments named by cu. Returns [T, heads, 72]."""
     T, H, _ = q.shape
-    o = torch.empty_like(q)
-    if cu is None:
-        cu = _cu_single(T, q.device)
-        max_seqlen = T
-    _R4D_ATTN(q.data_ptr(), k.data_ptr(), v.data_ptr(), o.data_ptr(), cu.data_ptr(),
-              int(cu.numel()) - 1, int(max_seqlen), int(H), _HEAD_DIM, float(scale),
-              torch.cuda.current_stream().cuda_stream)
+    # The raw-pointer binding cannot infer its device from a Tensor. Scope the
+    # launch and stream lookup to the operands, then restore the caller's device.
+    with torch.cuda.device(q.device):
+        o = torch.empty_like(q)
+        if cu is None:
+            cu = _cu_single(T, q.device)
+            max_seqlen = T
+        _R4D_ATTN(q.data_ptr(), k.data_ptr(), v.data_ptr(), o.data_ptr(), cu.data_ptr(),
+                  int(cu.numel()) - 1, int(max_seqlen), int(H), _HEAD_DIM, float(scale),
+                  torch.cuda.current_stream(q.device).cuda_stream)
     return o
 
 
