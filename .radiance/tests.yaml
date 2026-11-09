@@ -89,11 +89,21 @@ change_map:
   areas: [dflash, speculative]
 - pattern: '^radiance_draft_gpu\.py$'
   areas: [dflash, speculative]
+- pattern: '^tests/test_qwen_schema_literals\.py$'
+  areas: [parser, structured-output]
 profiles:
-  pr: [lfm3-backport-cpu, v033-upgrade-cpu, control-plane-validate, python-compile, kv-offload-registration-cpu, kv-offload-rank-sharded-cpu, kv-offload-restore-cpu, qwen-tool-grammar-cpu, client-tool-gate-cpu, maintenance-cli-cpu, python-source-checks-cpu, equivalence-evidence-cpu, automatic-cpu-boundary, tunableop-immutability-cpu, calibration-validation-cpu, qwen-history-replay-cpu, client-tool-values-cpu, conformance-tool-assembly-cpu, performance-evidence-cpu, dflash-w4-stream-cpu, skinny-gemm-contract-cpu, ngram-tail-width-cpu]
-  upgrade: [lfm3-backport-cpu, v033-upgrade-cpu, lfm3-image, lfm3-native, draft-head-packing-image, r4d-attention-native, gdn-extreme-decay-native, gdn-extreme-decay-h24-native, dflash-independent-noise-native, control-plane-validate, python-compile, kv-offload-registration-cpu, kv-offload-rank-sharded-cpu, kv-offload-restore-cpu, parser-shared-engine-image, xgrammar-spec-image, qwen-open-object-image, qwen-tool-grammar-image, client-tool-gate-cpu, client-tool-live, fp8-kv-calibration-image, tunableop-preflight-image, r9700-tp2-smoke, tool-schema-live, open-object-tool-live, betterbench-standard, correctness-equivalence, qwen-history-replay-cpu, client-tool-values-cpu, conformance-tool-assembly-cpu, dflash-w4-stream-cpu, skinny-gemm-contract-cpu, ngram-tail-width-cpu]
-  release: [lfm3-backport-cpu, v033-upgrade-cpu, lfm3-image, lfm3-native, draft-head-packing-image, r4d-attention-native, gdn-extreme-decay-native, gdn-extreme-decay-h24-native, dflash-independent-noise-native, control-plane-validate, python-compile, kv-offload-registration-cpu, kv-offload-rank-sharded-cpu, kv-offload-restore-cpu, parser-shared-engine-image, xgrammar-spec-image, qwen-open-object-image, qwen-tool-grammar-image, client-tool-gate-cpu, client-tool-live, fp8-kv-calibration-image, tunableop-preflight-image, r9700-tp2-smoke, tool-schema-live, open-object-tool-live, betterbench-standard, correctness-equivalence, capacity-qualification, qwen-history-replay-cpu, client-tool-values-cpu, conformance-tool-assembly-cpu, dflash-w4-stream-cpu, skinny-gemm-contract-cpu, ngram-tail-width-cpu]
+  pr: [lfm3-backport-cpu, v033-upgrade-cpu, control-plane-validate, python-compile, kv-offload-registration-cpu, kv-offload-rank-sharded-cpu, kv-offload-restore-cpu, qwen-tool-grammar-cpu, client-tool-gate-cpu, maintenance-cli-cpu, python-source-checks-cpu, equivalence-evidence-cpu, automatic-cpu-boundary, tunableop-immutability-cpu, calibration-validation-cpu, qwen-history-replay-cpu, client-tool-values-cpu, conformance-tool-assembly-cpu, performance-evidence-cpu, dflash-w4-stream-cpu, skinny-gemm-contract-cpu, ngram-tail-width-cpu, qwen-schema-literals-cpu]
+  upgrade: [lfm3-backport-cpu, v033-upgrade-cpu, lfm3-image, lfm3-native, draft-head-packing-image, r4d-attention-native, gdn-extreme-decay-native, gdn-extreme-decay-h24-native, dflash-independent-noise-native, control-plane-validate, python-compile, kv-offload-registration-cpu, kv-offload-rank-sharded-cpu, kv-offload-restore-cpu, parser-shared-engine-image, xgrammar-spec-image, qwen-open-object-image, qwen-tool-grammar-image, client-tool-gate-cpu, client-tool-live, fp8-kv-calibration-image, tunableop-preflight-image, r9700-tp2-smoke, tool-schema-live, open-object-tool-live, betterbench-standard, correctness-equivalence, qwen-history-replay-cpu, client-tool-values-cpu, conformance-tool-assembly-cpu, dflash-w4-stream-cpu, skinny-gemm-contract-cpu, ngram-tail-width-cpu, qwen-schema-literals-cpu]
+  release: [lfm3-backport-cpu, v033-upgrade-cpu, lfm3-image, lfm3-native, draft-head-packing-image, r4d-attention-native, gdn-extreme-decay-native, gdn-extreme-decay-h24-native, dflash-independent-noise-native, control-plane-validate, python-compile, kv-offload-registration-cpu, kv-offload-rank-sharded-cpu, kv-offload-restore-cpu, parser-shared-engine-image, xgrammar-spec-image, qwen-open-object-image, qwen-tool-grammar-image, client-tool-gate-cpu, client-tool-live, fp8-kv-calibration-image, tunableop-preflight-image, r9700-tp2-smoke, tool-schema-live, open-object-tool-live, betterbench-standard, correctness-equivalence, capacity-qualification, qwen-history-replay-cpu, client-tool-values-cpu, conformance-tool-assembly-cpu, dflash-w4-stream-cpu, skinny-gemm-contract-cpu, ngram-tail-width-cpu, qwen-schema-literals-cpu]
 tests:
+- id: qwen-schema-literals-cpu
+  class: contract
+  hardware: cpu
+  areas: [parser, structured-output]
+  command: python -m unittest discover -s tests -p test_qwen_schema_literals.py -v
+  automatic: true
+  ci: true
+  description: JSON Schema const/enum and annotation preservation, schema-only traversal, fresh and already-baked idempotence.
 - id: ngram-tail-width-cpu
   class: contract
   hardware: cpu
