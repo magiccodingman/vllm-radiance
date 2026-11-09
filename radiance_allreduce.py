@@ -57,24 +57,8 @@ class RadianceAllreduce:
         except Exception as e:
             _log(f"custom AR: no process group ({e!r})")
             return
-        try:
-            import r4d as ext
-        except Exception as e:
-            _log(f"custom AR disabled: r4d import failed ({e!r})")
+        if self.world_size != 2:
             return
-        self._ext = ext
-
-        # "exactly 2 ranks" is a property of the kernel, not of this file, so ask the library
-        # whether it has an all-reduce for this group instead of keeping a copy of the number.
-        # The dtype in the question is the production one; the kernel takes fp16 and fp32 through
-        # the same entry point, and should_custom_ar() is what gates a message's dtype per call.
-        name = ext.select("allreduce", world_size=self.world_size, exact=1, dtype="bf16")
-        if name is None:
-            _log(f"custom AR disabled: no exact all-reduce kernel for "
-                 f"world_size={self.world_size}")
-            return
-        self._ar_exact = getattr(ext, name)
-
         if isinstance(device, int):
             device = torch.device(f"cuda:{device}")
         self.device = device
@@ -85,28 +69,49 @@ class RadianceAllreduce:
         self.acq = 0          # no explicit acquire fence (uncached reads are already fresh)
         self.nt = 1024        # threads/block (tuned)
         self.min_nb = 4       # block count scales with message size, clamped to [min_nb, max_nb]
-        self.max_nb = min(24, int(ext.AR_MAX_BLOCKS))
         self.words_per_block = 1400   # 16B words/block target for the block-count heuristic
         fine = True           # fine-grained (uncached) IPC scratch: posts straight to the fabric
-        maxb = int(ext.AR_MAX_BLOCKS)
 
+
+        local_handles = None
         try:
+            import r4d as ext
+
+            self._ext = ext
+            name = ext.select("allreduce", world_size=self.world_size, exact=1, dtype="bf16")
+            if name is None:
+                raise RuntimeError("no exact all-reduce kernel for TP2")
+            self._ar_exact = getattr(ext, name)
+            maxb = int(ext.AR_MAX_BLOCKS)
+            self.max_nb = min(24, maxb)
             torch.cuda.set_device(self.device)
-            # double-buffered scratch (2 slots) + per-block flags, both IPC-shared
             self._scratch, sc_h, fine_used = self._alloc(2 * self.max_bytes, fine)
             self._flags, fl_h, _ = self._alloc(maxb * 4, fine)
-            sc_handles = [None] * self.world_size
-            fl_handles = [None] * self.world_size
-            dist.all_gather_object(sc_handles, sc_h, group=group)
-            dist.all_gather_object(fl_handles, fl_h, group=group)
-            peer = 1 - self.rank
-            self._peer_scratch = ext.ar_ipc_open(sc_handles[peer])
-            self._peer_flags = ext.ar_ipc_open(fl_handles[peer])
-            # per-BLOCK device-resident seq counters (kernel increments -> replay-safe;
-            # both ranks run identical graph sequences so seq_ctr[b] stays in lockstep)
             self._seq = torch.zeros(maxb, dtype=torch.int32, device=self.device)
-        except Exception as e:
-            _log(f"custom AR disabled: IPC setup failed ({e!r})")
+            local_handles = (self.max_bytes, maxb, sc_h, fl_h)
+        except Exception as exc:
+            _log(f"custom AR: local IPC preparation failed ({exc!r})")
+
+        handles = [None] * self.world_size
+        dist.all_gather_object(handles, local_handles, group=self.group)
+        if local_handles is None or any(
+            peer is None or peer[:2] != local_handles[:2] for peer in handles
+        ):
+            _log("custom AR disabled: peers could not agree on IPC preparation")
+            return
+
+        opened = False
+        try:
+            _, _, peer_scratch, peer_flags = handles[1 - self.rank]
+            self._peer_scratch = ext.ar_ipc_open(peer_scratch)
+            self._peer_flags = ext.ar_ipc_open(peer_flags)
+            opened = True
+        except Exception as exc:
+            _log(f"custom AR: opening peer IPC failed ({exc!r})")
+        ready = [False] * self.world_size
+        dist.all_gather_object(ready, opened, group=self.group)
+        if not all(ready):
+            _log("custom AR disabled: a peer could not open IPC")
             return
 
         self.disabled = False
@@ -153,8 +158,9 @@ class RadianceAllreduce:
         # allocation/kernel failure must not leave one running WHT6 while the
         # other runs exact. Negotiate once at startup on the existing CPU group.
         quant_ready = [False] * self.world_size
-        dist.all_gather_object(quant_ready, self.ar_quant, group=self.group)
-        if not all(quant_ready):
+        quant_protocol = (self.quant_min_bytes, self._qgroup, self.qnt, self.qmax_nb) if self.ar_quant else None
+        dist.all_gather_object(quant_ready, quant_protocol, group=self.group)
+        if quant_protocol is None or any(peer != quant_protocol for peer in quant_ready):
             if self.ar_quant:
                 _log("AR_QUANT disabled: a peer is not ready; using exact on the group")
             self.ar_quant = False
