@@ -4,6 +4,7 @@ import argparse
 import copy
 from datetime import datetime, timezone
 import json
+import math
 from pathlib import Path
 from urllib.request import Request, urlopen
 
@@ -68,6 +69,19 @@ def fixtures():
     return cases
 
 
+def same_json_value(actual, expected):
+    """Compare fixture values using JSON types, where booleans are not numbers."""
+    if isinstance(expected, dict):
+        return (isinstance(actual, dict) and actual.keys() == expected.keys()
+                and all(same_json_value(actual[key], value) for key, value in expected.items()))
+    if isinstance(expected, list):
+        return (isinstance(actual, list) and len(actual) == len(expected)
+                and all(same_json_value(a, e) for a, e in zip(actual, expected)))
+    if type(expected) in (int, float):
+        return type(actual) in (int, float) and actual == expected
+    return type(actual) is type(expected) and actual == expected
+
+
 def validate(case, calls, finish):
     issues = []
     if finish not in ('stop', 'tool_calls'):
@@ -85,13 +99,15 @@ def validate(case, calls, finish):
             if not isinstance(a, dict):
                 raise ValueError('arguments must be an object')
             if case.startswith('package'):
-                if f['name'] != 'package_probe' or a != PACKAGE:
+                if f['name'] != 'package_probe' or not same_json_value(a, PACKAGE):
                     raise ValueError('package values/typed nested objects changed')
             else:
                 if f['name'] != 'keypress':
                     raise ValueError('unexpected tool name')
                 if not isinstance(a.get('reasoning'), str) or type(a.get('confidence')) not in (int, float):
                     raise ValueError('invalid reasoning/confidence type')
+                if type(a['confidence']) is float and not math.isfinite(a['confidence']):
+                    raise ValueError('non-finite confidence')
                 if type(a.get('stepComplete')) is not bool:
                     raise ValueError('invalid stepComplete type')
                 if not isinstance(a.get('keys'), list) or not a['keys'] or not all(isinstance(k, str) for k in a['keys']):
