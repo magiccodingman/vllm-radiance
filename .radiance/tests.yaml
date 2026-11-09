@@ -71,11 +71,21 @@ change_map:
   areas: [allreduce, libr4d]
 - pattern: '^(radiance_topk\.py$|tests/test_topk_vocabulary\.py$)'
   areas: [sampling, topk]
+- pattern: '^(radiance_vit_attn\.py$|tests/test_vit_dispatch_guards\.py$)'
+  areas: [attention, vision, libr4d]
 profiles:
   pr: [lfm3-backport-cpu, v033-upgrade-cpu, control-plane-validate, python-compile, kv-offload-registration-cpu, kv-offload-rank-sharded-cpu, kv-offload-restore-cpu, qwen-tool-grammar-cpu, client-tool-gate-cpu, maintenance-cli-cpu, python-source-checks-cpu, equivalence-evidence-cpu, automatic-cpu-boundary, tunableop-immutability-cpu, calibration-validation-cpu, qwen-history-replay-cpu, client-tool-values-cpu, conformance-tool-assembly-cpu, performance-evidence-cpu]
   upgrade: [lfm3-backport-cpu, v033-upgrade-cpu, lfm3-image, lfm3-native, draft-head-packing-image, r4d-attention-native, gdn-extreme-decay-native, gdn-extreme-decay-h24-native, dflash-independent-noise-native, control-plane-validate, python-compile, kv-offload-registration-cpu, kv-offload-rank-sharded-cpu, kv-offload-restore-cpu, parser-shared-engine-image, xgrammar-spec-image, qwen-open-object-image, qwen-tool-grammar-image, client-tool-gate-cpu, client-tool-live, fp8-kv-calibration-image, tunableop-preflight-image, r9700-tp2-smoke, tool-schema-live, open-object-tool-live, betterbench-standard, correctness-equivalence, qwen-history-replay-cpu, client-tool-values-cpu, conformance-tool-assembly-cpu]
   release: [lfm3-backport-cpu, v033-upgrade-cpu, lfm3-image, lfm3-native, draft-head-packing-image, r4d-attention-native, gdn-extreme-decay-native, gdn-extreme-decay-h24-native, dflash-independent-noise-native, control-plane-validate, python-compile, kv-offload-registration-cpu, kv-offload-rank-sharded-cpu, kv-offload-restore-cpu, parser-shared-engine-image, xgrammar-spec-image, qwen-open-object-image, qwen-tool-grammar-image, client-tool-gate-cpu, client-tool-live, fp8-kv-calibration-image, tunableop-preflight-image, r9700-tp2-smoke, tool-schema-live, open-object-tool-live, betterbench-standard, correctness-equivalence, capacity-qualification, qwen-history-replay-cpu, client-tool-values-cpu, conformance-tool-assembly-cpu]
 tests:
+- id: vit-dispatch-cpu
+  class: contract
+  hardware: cpu
+  areas: [attention, vision, libr4d]
+  command: python -m unittest discover -s tests -p test_vit_dispatch_guards.py -v
+  automatic: true
+  ci: true
+  description: CPU metadata doubles check ViT raw-pointer dispatch and unchanged stock fallback forwarding; no kernel numerics.
 - id: topk-vocabulary-cpu
   class: contract
   hardware: cpu

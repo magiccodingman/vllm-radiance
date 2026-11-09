@@ -8,7 +8,7 @@ and non-causal, taking a whole batch of images in one varlen launch.
 It is installed as a drop-in for the ViT SDPA per-segment apply. The caller splits q/k/v by
 cu_seqlens and applies attention per segment, so per-image and windowed (block-diagonal) attention
 is preserved unchanged; only the per-segment dense attention is swapped. Only bf16 head_dim-72 MHA
-is handled. Anything else (GQA, other head sizes, fp16, batched >1) falls through to the original
+is handled. Anything else (GQA, other head sizes, fp16, mismatched operands) falls through to the original
 SDPA path, as does any build where the kernel library is absent or switched off.
 
 Active on gfx12x with RADIANCE_USE_R4D on.
@@ -78,16 +78,23 @@ def _r4d_72(q, k, v, scale, cu=None, max_seqlen=None):
 _orig_apply_sdpa = None
 
 
+def _supports_r4d(q, k, v):
+    """The raw-pointer kernel requires matching, nonempty bf16 self-attention operands."""
+    return (
+        q.dim() == k.dim() == v.dim() == 4
+        and q.shape == k.shape == v.shape
+        and q.shape[-1] == _HEAD_DIM
+        and all(size > 0 for size in q.shape)
+        and q.dtype is k.dtype is v.dtype is torch.bfloat16
+        and q.is_cuda and k.is_cuda and v.is_cuda
+        and q.device == k.device == v.device
+    )
+
+
 def apply_flash(q, k, v, scale=None, enable_gqa=False):
     """Drop-in for vit_attn_wrappers.apply_sdpa. q/k/v: [batch, seq, heads, head_dim].
     Takes the head_dim-72 MHA case; everything else falls back to SDPA."""
-    if (
-        not enable_gqa
-        and q.dim() == 4
-        and q.shape[-1] == _HEAD_DIM
-        and q.dtype is torch.bfloat16
-        and q.is_cuda
-    ):
+    if not enable_gqa and _supports_r4d(q, k, v):
         s = scale if scale is not None else _HEAD_DIM ** -0.5
         b = q.shape[0]
         if b == 1:
@@ -125,15 +132,14 @@ def radiance_vit_flash_attn(module, query, key, value, attention_mask,
                             dropout=0.0, scaling=None, softcap=None, **kwargs):
     """A transformers ALL_ATTENTION_FUNCTIONS entry. Handles the dense, non-causal, head_dim-72 MHA
     case with the flash kernel; everything else (a real attention_mask for packed/windowed images,
-    GQA, softcap, other head sizes/dtypes) falls back to the stock eager reference so behaviour is
+    GQA, softcap, dropout, other head sizes/dtypes) falls back to the stock eager reference so behaviour is
     unchanged there."""
     if (
-        query.shape[-1] == _HEAD_DIM
+        _supports_r4d(query, key, value)
         and attention_mask is None
         and softcap is None
+        and dropout == 0.0
         and getattr(module, "num_key_value_groups", 1) == 1
-        and query.dtype is torch.bfloat16
-        and query.is_cuda
     ):
         s = scaling if scaling is not None else _HEAD_DIM ** -0.5
         return _r4d_bhsd(query, key, value, s), None
