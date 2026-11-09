@@ -100,7 +100,7 @@ tests:
   class: contract
   hardware: cpu
   areas: [parser, structured-output]
-  command: uv run --project benchmarks/conformance --locked --group dev --extra cpu-tests python -m unittest discover -s tests -p test_qwen_schema_literals.py -v
+  command: python -m unittest discover -s tests -p test_qwen_schema_literals.py -v
   automatic: true
   ci: true
   description: JSON Schema const/enum and annotation preservation, schema-only traversal, fresh and already-baked idempotence.

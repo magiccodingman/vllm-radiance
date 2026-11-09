@@ -91,6 +91,15 @@ class QwenSchemaLiteralTests(unittest.TestCase):
         helpers()(schema, is_root=True)
         self.assertEqual(schema, before)
 
+    def test_referenced_schema_does_not_open_unevaluated_properties(self):
+        schema = {"type": "object", "$ref": "#/$defs/item",
+                  "$defs": {"item": {"type": "object"}},
+                  "unevaluatedProperties": False}
+        instance = {"unexpected": 123}
+        self.assertFalse(Draft202012Validator(schema).is_valid(instance))
+        helpers()(schema, is_root=True)
+        self.assertFalse(Draft202012Validator(schema).is_valid(instance))
+
     def test_unevaluated_property_constraints_are_not_opened(self):
         for constraint in (False, {"type": "integer"}):
             with self.subTest(constraint=constraint):

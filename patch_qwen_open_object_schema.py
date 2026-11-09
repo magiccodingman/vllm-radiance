@@ -109,6 +109,23 @@ NEW_NORMALIZER = '''def _normalize_qwen_open_nested_objects(
     if not isinstance(schema, dict):
         return
 
+    if is_root:
+        # A reference can evaluate properties at the caller, even if its target
+        # sits in a different branch. Preserve the whole schema when both
+        # references and evaluated-property constraints occur.
+        pending = [schema]
+        has_reference = has_closure = False
+        while pending:
+            value = pending.pop()
+            if isinstance(value, dict):
+                has_reference |= any(key in value for key in ("$ref", "$dynamicRef", "$recursiveRef"))
+                has_closure |= "unevaluatedProperties" in value
+                pending.extend(value.values())
+            elif isinstance(value, list):
+                pending.extend(value)
+            if has_reference and has_closure:
+                return
+
     # Adding explicit additionalProperties changes evaluated-property annotations.
     # Keep the original spelling when an enclosing same-instance schema relies on
     # unevaluatedProperties; schemas for child values start a new evaluation scope.
