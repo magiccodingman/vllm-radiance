@@ -130,7 +130,7 @@ tests:
   class: contract
   hardware: cpu
   areas: [attention, vision, libr4d]
-  command: uv run --project benchmarks/conformance --locked --group dev --extra cpu-tests --with transformers==5.15.0 python -m unittest discover -s tests -p 'test_vision_mask_*.py' -v
+  command: uv run --project benchmarks/conformance --locked --group dev --extra cpu-tests --with transformers==5.16.1 python -m unittest discover -s tests -p 'test_vision_mask_*.py' -v
   automatic: true
   ci: false
   description: CPU mask API and SDPA numerical controls preserve per-image padding across the Vision backend switch; no model or GPU.
