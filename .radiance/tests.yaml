@@ -47,11 +47,21 @@ change_map:
   areas: [dflash, speculative]
 - pattern: '^(radiance_r4d_attn|patch_r4d|patch_unified_attention_lds)'
   areas: [attention, libr4d]
+- pattern: '^(\.radiance/|tools/|tests/test_radiance_cli\.py$|AGENTS\.md$|CONTRIBUTING\.md$|docs/maintenance/)'
+  areas: [control-plane]
 profiles:
-  pr: [lfm3-backport-cpu, v033-upgrade-cpu, control-plane-validate, python-compile, kv-offload-registration-cpu, kv-offload-rank-sharded-cpu, kv-offload-restore-cpu, qwen-tool-grammar-cpu, client-tool-gate-cpu]
+  pr: [lfm3-backport-cpu, v033-upgrade-cpu, control-plane-validate, python-compile, kv-offload-registration-cpu, kv-offload-rank-sharded-cpu, kv-offload-restore-cpu, qwen-tool-grammar-cpu, client-tool-gate-cpu, maintenance-cli-cpu]
   upgrade: [lfm3-backport-cpu, v033-upgrade-cpu, lfm3-image, lfm3-native, draft-head-packing-image, r4d-attention-native, gdn-extreme-decay-native, gdn-extreme-decay-h24-native, dflash-independent-noise-native, control-plane-validate, python-compile, kv-offload-registration-cpu, kv-offload-rank-sharded-cpu, kv-offload-restore-cpu, parser-shared-engine-image, xgrammar-spec-image, qwen-open-object-image, qwen-tool-grammar-image, client-tool-gate-cpu, client-tool-live, fp8-kv-calibration-image, tunableop-preflight-image, r9700-tp2-smoke, tool-schema-live, open-object-tool-live, betterbench-standard, correctness-equivalence]
   release: [lfm3-backport-cpu, v033-upgrade-cpu, lfm3-image, lfm3-native, draft-head-packing-image, r4d-attention-native, gdn-extreme-decay-native, gdn-extreme-decay-h24-native, dflash-independent-noise-native, control-plane-validate, python-compile, kv-offload-registration-cpu, kv-offload-rank-sharded-cpu, kv-offload-restore-cpu, parser-shared-engine-image, xgrammar-spec-image, qwen-open-object-image, qwen-tool-grammar-image, client-tool-gate-cpu, client-tool-live, fp8-kv-calibration-image, tunableop-preflight-image, r9700-tp2-smoke, tool-schema-live, open-object-tool-live, betterbench-standard, correctness-equivalence, capacity-qualification]
 tests:
+- id: maintenance-cli-cpu
+  class: contract
+  hardware: cpu
+  areas: [control-plane]
+  command: python -m unittest discover -s tests -p test_radiance_cli.py -v
+  automatic: true
+  ci: true
+  description: Real Git histories protect committed, staged, unstaged and untracked changed-test selection.
 - id: gdn-extreme-decay-h24-native
   class: contract
   hardware: r9700

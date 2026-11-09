@@ -14,6 +14,13 @@ python tools/radiance.py test changed
 to run the automatically runnable checks selected for your changes. `python tools/radiance.py test <area> --dry-run`
 shows the broader area-specific plan.
 
+`test changed` includes committed changes and local staged, unstaged and new
+non-ignored files. When working from a fork, pass `--base upstream/main` after
+fetching upstream to compare with the original repository explicitly.
+
+For an interactive Codex workflow without an API key, see
+[Codex in VS Code and pull requests](docs/maintenance/CODEX_WORKFLOW.md).
+
 ## Qualification levels
 
 Radiance distinguishes evidence levels rather than pretending every contributor has identical hardware:
