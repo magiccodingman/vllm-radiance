@@ -55,11 +55,21 @@ change_map:
   areas: [tunableop, gemm]
 - pattern: '^(radiance_kv_calibration\.py$|tests/test_calibration_validation\.py$)'
   areas: [fp8-kv, attention]
+- pattern: '^(benchmarks/bin/run_kv_offload_restore_gate\.py$|tests/test_kv_gate_output\.py$)'
+  areas: [kv-offload]
 profiles:
   pr: [lfm3-backport-cpu, v033-upgrade-cpu, control-plane-validate, python-compile, kv-offload-registration-cpu, kv-offload-rank-sharded-cpu, kv-offload-restore-cpu, qwen-tool-grammar-cpu, client-tool-gate-cpu, maintenance-cli-cpu, python-source-checks-cpu, equivalence-evidence-cpu, automatic-cpu-boundary, tunableop-immutability-cpu, calibration-validation-cpu]
   upgrade: [lfm3-backport-cpu, v033-upgrade-cpu, lfm3-image, lfm3-native, draft-head-packing-image, r4d-attention-native, gdn-extreme-decay-native, gdn-extreme-decay-h24-native, dflash-independent-noise-native, control-plane-validate, python-compile, kv-offload-registration-cpu, kv-offload-rank-sharded-cpu, kv-offload-restore-cpu, parser-shared-engine-image, xgrammar-spec-image, qwen-open-object-image, qwen-tool-grammar-image, client-tool-gate-cpu, client-tool-live, fp8-kv-calibration-image, tunableop-preflight-image, r9700-tp2-smoke, tool-schema-live, open-object-tool-live, betterbench-standard, correctness-equivalence]
   release: [lfm3-backport-cpu, v033-upgrade-cpu, lfm3-image, lfm3-native, draft-head-packing-image, r4d-attention-native, gdn-extreme-decay-native, gdn-extreme-decay-h24-native, dflash-independent-noise-native, control-plane-validate, python-compile, kv-offload-registration-cpu, kv-offload-rank-sharded-cpu, kv-offload-restore-cpu, parser-shared-engine-image, xgrammar-spec-image, qwen-open-object-image, qwen-tool-grammar-image, client-tool-gate-cpu, client-tool-live, fp8-kv-calibration-image, tunableop-preflight-image, r9700-tp2-smoke, tool-schema-live, open-object-tool-live, betterbench-standard, correctness-equivalence, capacity-qualification]
 tests:
+- id: kv-restore-output-cpu
+  class: contract
+  hardware: cpu
+  areas: [kv-offload]
+  command: python -m unittest discover -s tests -p test_kv_gate_output.py -v
+  automatic: true
+  ci: true
+  description: Synthetic restore-gate CLI checks preserve results in shared directories and refuse overwrites.
 - id: calibration-validation-cpu
   class: contract
   hardware: cpu
