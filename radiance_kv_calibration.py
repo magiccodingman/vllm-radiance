@@ -20,6 +20,7 @@ import math
 import os
 import platform
 import re
+import struct
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -243,10 +244,16 @@ def aggregate_worker_stats(reports: list[dict[str, Any]]) -> dict[str, dict[str,
     merged: dict[str, dict[str, Any]] = {}
     for report in reports:
         for name, values in report["layers"].items():
+            calls = values["calls"]
+            if type(calls) is not int or calls < 1:
+                raise ValueError(f"attention layer was never observed on rank {report.get('rank')}: {name}")
             entry = merged.setdefault(name, {"q": 0.0, "k": 0.0, "v": 0.0, "calls": 0})
             for kind in ("q", "k", "v"):
-                entry[kind] = max(float(entry[kind]), float(values[kind]))
-            entry["calls"] += int(values["calls"])
+                value = float(values[kind])
+                if not math.isfinite(value) or value < 0.0:
+                    raise ValueError(f"invalid observed {kind} amax on rank {report.get('rank')} for {name}: {value}")
+                entry[kind] = max(float(entry[kind]), value)
+            entry["calls"] += calls
     for name, values in merged.items():
         for kind in ("q", "k", "v"):
             value = float(values[kind])
@@ -257,6 +264,23 @@ def aggregate_worker_stats(reports: list[dict[str, Any]]) -> dict[str, dict[str,
     return dict(sorted(merged.items()))
 
 
+def _checked_scale(name: str, value: float) -> float:
+    """The artifact stores FP32; validate that cast without importing Torch."""
+    try:
+        stored = struct.unpack("<f", struct.pack("<f", value))[0]
+    except OverflowError as error:
+        raise ValueError(f"FP8-KV scale {name} overflows FP32: {value}") from error
+    if not math.isfinite(stored) or stored <= 0.0:
+        raise ValueError(f"FP8-KV scale {name} must remain finite and positive in FP32: {value}")
+    return value
+
+
+def _validate_scale_parameters(fp8_max: float, margin: float) -> None:
+    if not math.isfinite(fp8_max) or fp8_max <= 0 or not math.isfinite(margin) or margin < 1.0:
+        raise ValueError("fp8_max must be finite and positive and margin must be finite and >= 1")
+    _checked_scale("prob_scale", margin / fp8_max)
+
+
 def make_scale_values(
     observations: dict[str, dict[str, Any]],
     *,
@@ -264,13 +288,16 @@ def make_scale_values(
     margin: float = 1.05,
 ) -> dict[str, float]:
     """Convert activation maxima to OCP-E4M3 checkpoint scale values."""
-    if fp8_max <= 0 or margin < 1.0:
-        raise ValueError("fp8_max must be positive and margin must be >= 1")
+    _validate_scale_parameters(fp8_max, margin)
     scales: dict[str, float] = {}
     for name, values in observations.items():
         for kind in ("q", "k", "v"):
-            scales[f"{name}.{kind}_scale"] = max(
-                float(values[kind]) * margin / fp8_max, 1.0e-12
+            value = float(values[kind])
+            if not math.isfinite(value) or value < 0.0:
+                raise ValueError(f"invalid observed {kind} amax for {name}: {value}")
+            key = f"{name}.{kind}_scale"
+            scales[key] = _checked_scale(
+                key, max(value * margin / fp8_max, 1.0e-12)
             )
         # Softmax probabilities are bounded by one. This scale leaves the
         # same explicit headroom as q/k/v without needing backend internals.
@@ -385,8 +412,6 @@ def _write_artifact(
 def calibrate(args: argparse.Namespace) -> None:
     # Import only after arguments/model identity are validated. This command is
     # intentionally GPU-consuming and should be run in a maintenance window.
-    from vllm import LLM, SamplingParams
-
     source_model = Path(args.model).resolve()
     corpus = Path(args.corpus).resolve()
     output = Path(args.output).resolve()
@@ -396,10 +421,11 @@ def calibrate(args: argparse.Namespace) -> None:
         raise ValueError("batch size and tensor parallel size must be positive")
     if args.max_model_len < 1 or args.max_num_batched_tokens < 1:
         raise ValueError("model/token limits must be positive")
-    if args.fp8_max <= 0 or args.margin < 1.0:
-        raise ValueError("fp8_max must be positive and margin must be >= 1")
+    _validate_scale_parameters(args.fp8_max, args.margin)
     model_identity(source_model)
     items, corpus_sha256 = _read_corpus(corpus)
+    from vllm import LLM, SamplingParams
+
     quantization = None if args.quantization == "auto" else args.quantization
     llm = LLM(
         model=str(source_model),
