@@ -149,6 +149,18 @@ class RadianceAllreduce:
                 _log(f"AR_QUANT disabled: {e!r}")
                 self.ar_quant = False
 
+        # Both peers share the wire format and sequence counters. A local
+        # allocation/kernel failure must not leave one running WHT6 while the
+        # other runs exact. Negotiate once at startup on the existing CPU group.
+        quant_ready = [False] * self.world_size
+        dist.all_gather_object(quant_ready, self.ar_quant, group=self.group)
+        if not all(quant_ready):
+            if self.ar_quant:
+                _log("AR_QUANT disabled: a peer is not ready; using exact on the group")
+            self.ar_quant = False
+            self._qext = None
+            self._locpk = None
+
     def _alloc(self, nbytes, fine):
         """Allocate a shared buffer, falling back fine->coarse if fine-grained IPC fails.
         Deterministic across ranks (same env/HW), so the fallback stays symmetric."""
