@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 from pathlib import Path
 
 
@@ -38,13 +39,18 @@ def load(
 
 def number(row: dict[str, object], key: str) -> float | None:
     value = row.get(key)
-    return float(value) if isinstance(value, (int, float)) else None
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        numeric = float(value)
+        return numeric if math.isfinite(numeric) else None
+    return None
 
 
 def delta(base: float | None, candidate: float | None, *, lower_is_better: bool) -> float | None:
     if base is None or candidate is None or base == 0:
         return None
     raw = (candidate / base - 1.0) * 100.0
+    if not math.isfinite(raw):
+        return None
     return -raw if lower_is_better else raw
 
 
@@ -70,6 +76,9 @@ def main() -> None:
     )
     args = parser.parse_args()
 
+    if args.fail_below is not None and not math.isfinite(args.fail_below):
+        parser.error("--fail-below must be finite")
+
     if bool(args.baseline_config) != bool(args.candidate_config):
         parser.error("--baseline-config and --candidate-config must be supplied together")
     cross_config = args.baseline_config is not None
@@ -88,6 +97,7 @@ def main() -> None:
         "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     failed: list[str] = []
+    measured_decode_cases = 0
     for key in common:
         base = baseline[key]
         cand = candidate[key]
@@ -95,9 +105,8 @@ def main() -> None:
         if base.get("config") != cand.get("config"):
             config_label = f"{base.get('config')} -> {cand.get('config')}"
         tps = number(cand, "median_output_throughput")
-        tps_delta = delta(
-            number(base, "median_output_throughput"), tps, lower_is_better=False
-        )
+        base_tps = number(base, "median_output_throughput")
+        tps_delta = delta(base_tps, tps, lower_is_better=False)
         ttft_delta = delta(
             number(base, "median_p50_ttft_ms"),
             number(cand, "median_p50_ttft_ms"),
@@ -124,15 +133,22 @@ def main() -> None:
             f"| {'' if accept_delta is None else f'{accept_delta:+.2f} pp'} "
             f"| {'' if accept_len is None else f'{accept_len:.2f}'} |"
         )
-        if (
-            args.fail_below is not None
-            and cand.get("workload") == "decode"
-            and tps_delta is not None
-            and tps_delta < args.fail_below
-        ):
-            failed.append(
-                f"{config_label} c={cand.get('concurrency')}: {tps_delta:+.2f}%"
-            )
+        if args.fail_below is not None and cand.get("workload") == "decode":
+            if (base_tps is None or base_tps <= 0 or tps is None or tps <= 0
+                    or tps_delta is None):
+                failed.append(
+                    f"{config_label} c={cand.get('concurrency')}: "
+                    "finite positive control/candidate throughput and a finite delta are required"
+                )
+            else:
+                measured_decode_cases += 1
+                if tps_delta < args.fail_below:
+                    failed.append(
+                        f"{config_label} c={cand.get('concurrency')}: {tps_delta:+.2f}%"
+                    )
+
+    if args.fail_below is not None and not measured_decode_cases:
+        failed.append("no measurable common decode cases")
 
     if missing_candidate:
         lines.extend(("", "## Missing from candidate", ""))

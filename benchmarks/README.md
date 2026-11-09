@@ -334,6 +334,12 @@ Pass `--fail-below -5` to make any common decode-throughput regression worse
 than 5% fail a milestone gate. Inspect the recorded CV before treating a small
 delta as meaningful.
 
+With `--fail-below`, at least one common decode case must have finite positive
+control and candidate throughput and a finite percentage delta. Every common
+decode case must be measurable; missing/invalid measurements cannot pass the
+gate. The threshold must be finite. Report-only comparisons can still describe
+an empty intersection without asserting a performance result.
+
 For a greedy speculative-decoding correctness gate, compare the matching
 configuration directories. The verifier requires identical seeds, input
 lengths, generated text, and output token lengths for every common raw case:
