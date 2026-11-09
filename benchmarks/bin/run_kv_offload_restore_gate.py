@@ -242,8 +242,11 @@ def main() -> None:
             "passed": all(checks.values()),
         }
     )
-    args.output.parent.mkdir(parents=True, exist_ok=False)
-    args.output.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    # The directory may be shared by a run's artifacts; only this result is
+    # immutable. Exclusive creation also closes the race after the preflight.
+    with args.output.open("x", encoding="utf-8") as output:
+        output.write(json.dumps(result, indent=2, sort_keys=True) + "\n")
 
     print(json.dumps({"passed": result["passed"], "checks": checks}, indent=2))
     if not result["passed"]:

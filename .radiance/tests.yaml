@@ -47,11 +47,117 @@ change_map:
   areas: [dflash, speculative]
 - pattern: '^(radiance_r4d_attn|patch_r4d|patch_unified_attention_lds)'
   areas: [attention, libr4d]
+- pattern: '^(\.radiance/|tools/|tests/test_radiance_cli\.py$|AGENTS\.md$|CONTRIBUTING\.md$|docs/maintenance/)'
+  areas: [control-plane]
+- pattern: '^(benchmarks/bin/verify_outputs\.py$|tests/test_equivalence_evidence\.py$)'
+  areas: [correctness-evidence]
+- pattern: '^(radiance_tunableop\.py$|tests/test_tunableop_immutability\.py$)'
+  areas: [tunableop, gemm]
+- pattern: '^(radiance_kv_calibration\.py$|tests/test_calibration_validation\.py$)'
+  areas: [fp8-kv, attention]
+- pattern: '^(benchmarks/bin/run_kv_offload_restore_gate\.py$|tests/test_kv_gate_output\.py$)'
+  areas: [kv-offload]
+- pattern: '^(qwen3\.(6|8)-enhanced\.jinja$|tests/test_qwen_history_replay\.py$)'
+  areas: [parser, structured-output]
+- pattern: '^tests/test_client_tool_values\.py$'
+  areas: [parser, structured-output]
+- pattern: '^tests/test_conformance_tool_assembly\.py$'
+  areas: [conformance]
+- pattern: '^(benchmarks/bin/compare\.py$|tests/test_performance_evidence\.py$)'
+  areas: [performance-evidence]
 profiles:
-  pr: [lfm3-backport-cpu, v033-upgrade-cpu, control-plane-validate, python-compile, kv-offload-registration-cpu, kv-offload-rank-sharded-cpu, kv-offload-restore-cpu, qwen-tool-grammar-cpu, client-tool-gate-cpu]
-  upgrade: [lfm3-backport-cpu, v033-upgrade-cpu, lfm3-image, lfm3-native, draft-head-packing-image, r4d-attention-native, gdn-extreme-decay-native, gdn-extreme-decay-h24-native, dflash-independent-noise-native, control-plane-validate, python-compile, kv-offload-registration-cpu, kv-offload-rank-sharded-cpu, kv-offload-restore-cpu, parser-shared-engine-image, xgrammar-spec-image, qwen-open-object-image, qwen-tool-grammar-image, client-tool-gate-cpu, client-tool-live, fp8-kv-calibration-image, tunableop-preflight-image, r9700-tp2-smoke, tool-schema-live, open-object-tool-live, betterbench-standard, correctness-equivalence]
-  release: [lfm3-backport-cpu, v033-upgrade-cpu, lfm3-image, lfm3-native, draft-head-packing-image, r4d-attention-native, gdn-extreme-decay-native, gdn-extreme-decay-h24-native, dflash-independent-noise-native, control-plane-validate, python-compile, kv-offload-registration-cpu, kv-offload-rank-sharded-cpu, kv-offload-restore-cpu, parser-shared-engine-image, xgrammar-spec-image, qwen-open-object-image, qwen-tool-grammar-image, client-tool-gate-cpu, client-tool-live, fp8-kv-calibration-image, tunableop-preflight-image, r9700-tp2-smoke, tool-schema-live, open-object-tool-live, betterbench-standard, correctness-equivalence, capacity-qualification]
+  pr: [lfm3-backport-cpu, v033-upgrade-cpu, control-plane-validate, python-compile, kv-offload-registration-cpu, kv-offload-rank-sharded-cpu, kv-offload-restore-cpu, qwen-tool-grammar-cpu, client-tool-gate-cpu, maintenance-cli-cpu, python-source-checks-cpu, equivalence-evidence-cpu, automatic-cpu-boundary, tunableop-immutability-cpu, calibration-validation-cpu, qwen-history-replay-cpu, client-tool-values-cpu, conformance-tool-assembly-cpu, performance-evidence-cpu]
+  upgrade: [lfm3-backport-cpu, v033-upgrade-cpu, lfm3-image, lfm3-native, draft-head-packing-image, r4d-attention-native, gdn-extreme-decay-native, gdn-extreme-decay-h24-native, dflash-independent-noise-native, control-plane-validate, python-compile, kv-offload-registration-cpu, kv-offload-rank-sharded-cpu, kv-offload-restore-cpu, parser-shared-engine-image, xgrammar-spec-image, qwen-open-object-image, qwen-tool-grammar-image, client-tool-gate-cpu, client-tool-live, fp8-kv-calibration-image, tunableop-preflight-image, r9700-tp2-smoke, tool-schema-live, open-object-tool-live, betterbench-standard, correctness-equivalence, qwen-history-replay-cpu, client-tool-values-cpu, conformance-tool-assembly-cpu]
+  release: [lfm3-backport-cpu, v033-upgrade-cpu, lfm3-image, lfm3-native, draft-head-packing-image, r4d-attention-native, gdn-extreme-decay-native, gdn-extreme-decay-h24-native, dflash-independent-noise-native, control-plane-validate, python-compile, kv-offload-registration-cpu, kv-offload-rank-sharded-cpu, kv-offload-restore-cpu, parser-shared-engine-image, xgrammar-spec-image, qwen-open-object-image, qwen-tool-grammar-image, client-tool-gate-cpu, client-tool-live, fp8-kv-calibration-image, tunableop-preflight-image, r9700-tp2-smoke, tool-schema-live, open-object-tool-live, betterbench-standard, correctness-equivalence, capacity-qualification, qwen-history-replay-cpu, client-tool-values-cpu, conformance-tool-assembly-cpu]
 tests:
+- id: performance-evidence-cpu
+  class: contract
+  hardware: cpu
+  areas: [performance-evidence]
+  command: python -m unittest discover -s tests -p test_performance_evidence.py -v
+  automatic: true
+  ci: true
+  description: CLI regression gating requires measurable common decode cases and finite positive throughput evidence.
+- id: conformance-tool-assembly-cpu
+  class: contract
+  hardware: cpu
+  areas: [conformance]
+  command: python -m unittest discover -s tests -p test_conformance_tool_assembly.py
+  automatic: true
+  ci: true
+  description: Execute conformance response assembly for indexed interleaving and rejection of non-finite tool JSON.
+- id: client-tool-values-cpu
+  class: contract
+  hardware: cpu
+  areas: [parser, structured-output]
+  command: python -m unittest discover -s tests -p test_client_tool_values.py -v
+  automatic: true
+  ci: true
+  description: Typed package comparisons reject boolean/integer aliasing and overflowing float confidence while retaining valid JSON numbers.
+- id: qwen-history-replay-cpu
+  class: contract
+  hardware: cpu
+  areas: [parser, structured-output]
+  command: python -m unittest discover -s tests -p test_qwen_history_replay.py -v
+  automatic: true
+  ci: true
+  description: Real Jinja replay preserves literal reasoning delimiters, tool values and existing Qwen/Vision prompt controls.
+- id: kv-restore-output-cpu
+  class: contract
+  hardware: cpu
+  areas: [kv-offload]
+  command: python -m unittest discover -s tests -p test_kv_gate_output.py -v
+  automatic: true
+  ci: true
+  description: Synthetic restore-gate CLI checks preserve results in shared directories and refuse overwrites.
+- id: calibration-validation-cpu
+  class: contract
+  hardware: cpu
+  areas: [fp8-kv, attention]
+  command: python -m unittest discover -s tests -p test_calibration_validation.py -v
+  automatic: true
+  ci: true
+  description: Validate per-rank observations, finite FP32 scales and CPU preflight before importing vLLM.
+- id: tunableop-immutability-cpu
+  class: contract
+  hardware: cpu
+  areas: [tunableop, gemm]
+  command: python -m unittest discover -s tests -p test_tunableop_immutability.py -v
+  automatic: true
+  ci: true
+  description: Preserve immutable tuning evidence, reject incomplete device outputs and invalid GPU counts without GPU calls.
+- id: automatic-cpu-boundary
+  class: contract
+  hardware: cpu
+  areas: [control-plane]
+  command: python -m unittest discover -s tests -p test_automatic_cpu_boundary.py -v
+  automatic: true
+  ci: true
+  description: Reject malformed eligibility flags and hardware-dependent automatic entries before executing any command.
+- id: equivalence-evidence-cpu
+  class: contract
+  hardware: cpu
+  areas: [correctness-evidence]
+  command: python -m unittest discover -s tests -p test_equivalence_evidence.py -v
+  automatic: true
+  ci: true
+  description: The actual equivalence CLI rejects missing lengths, empty runs and incomplete request evidence.
+- id: python-source-checks-cpu
+  class: contract
+  hardware: cpu
+  areas: [control-plane]
+  command: python -m unittest discover -s tests -p test_python_source_checks.py -v
+  automatic: true
+  ci: true
+  description: Syntax errors in every source group and missing inputs must fail on all host shells.
+- id: maintenance-cli-cpu
+  class: contract
+  hardware: cpu
+  areas: [control-plane]
+  command: python -m unittest discover -s tests -p test_radiance_cli.py -v
+  automatic: true
+  ci: true
+  description: Real Git histories protect committed, staged, unstaged and untracked changed-test selection.
 - id: gdn-extreme-decay-h24-native
   class: contract
   hardware: r9700
@@ -239,7 +345,7 @@ tests:
   class: static
   hardware: cpu
   areas: [control-plane, patches, runtime, build]
-  command: python -m compileall -q _patchlib.py install_radiance_hooks.py patch_*.py radiance_*.py benchmarks/bin tools
+  command: python tools/check_python_sources.py
   automatic: true
   ci: true
   description: Compile Python sources without importing GPU/runtime dependencies.
