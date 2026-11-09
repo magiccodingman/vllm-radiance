@@ -51,11 +51,21 @@ change_map:
   areas: [control-plane]
 - pattern: '^(benchmarks/bin/verify_outputs\.py$|tests/test_equivalence_evidence\.py$)'
   areas: [correctness-evidence]
+- pattern: '^(radiance_tunableop\.py$|tests/test_tunableop_immutability\.py$)'
+  areas: [tunableop, gemm]
 profiles:
-  pr: [lfm3-backport-cpu, v033-upgrade-cpu, control-plane-validate, python-compile, kv-offload-registration-cpu, kv-offload-rank-sharded-cpu, kv-offload-restore-cpu, qwen-tool-grammar-cpu, client-tool-gate-cpu, maintenance-cli-cpu, python-source-checks-cpu, equivalence-evidence-cpu, automatic-cpu-boundary]
+  pr: [lfm3-backport-cpu, v033-upgrade-cpu, control-plane-validate, python-compile, kv-offload-registration-cpu, kv-offload-rank-sharded-cpu, kv-offload-restore-cpu, qwen-tool-grammar-cpu, client-tool-gate-cpu, maintenance-cli-cpu, python-source-checks-cpu, equivalence-evidence-cpu, automatic-cpu-boundary, tunableop-immutability-cpu]
   upgrade: [lfm3-backport-cpu, v033-upgrade-cpu, lfm3-image, lfm3-native, draft-head-packing-image, r4d-attention-native, gdn-extreme-decay-native, gdn-extreme-decay-h24-native, dflash-independent-noise-native, control-plane-validate, python-compile, kv-offload-registration-cpu, kv-offload-rank-sharded-cpu, kv-offload-restore-cpu, parser-shared-engine-image, xgrammar-spec-image, qwen-open-object-image, qwen-tool-grammar-image, client-tool-gate-cpu, client-tool-live, fp8-kv-calibration-image, tunableop-preflight-image, r9700-tp2-smoke, tool-schema-live, open-object-tool-live, betterbench-standard, correctness-equivalence]
   release: [lfm3-backport-cpu, v033-upgrade-cpu, lfm3-image, lfm3-native, draft-head-packing-image, r4d-attention-native, gdn-extreme-decay-native, gdn-extreme-decay-h24-native, dflash-independent-noise-native, control-plane-validate, python-compile, kv-offload-registration-cpu, kv-offload-rank-sharded-cpu, kv-offload-restore-cpu, parser-shared-engine-image, xgrammar-spec-image, qwen-open-object-image, qwen-tool-grammar-image, client-tool-gate-cpu, client-tool-live, fp8-kv-calibration-image, tunableop-preflight-image, r9700-tp2-smoke, tool-schema-live, open-object-tool-live, betterbench-standard, correctness-equivalence, capacity-qualification]
 tests:
+- id: tunableop-immutability-cpu
+  class: contract
+  hardware: cpu
+  areas: [tunableop, gemm]
+  command: python -m unittest discover -s tests -p test_tunableop_immutability.py -v
+  automatic: true
+  ci: true
+  description: Preserve immutable tuning evidence, reject incomplete device outputs and invalid GPU counts without GPU calls.
 - id: automatic-cpu-boundary
   class: contract
   hardware: cpu
