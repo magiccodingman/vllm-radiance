@@ -1,0 +1,84 @@
+[
+  {
+    "id": "r4d-attention-native",
+    "command": "python benchmarks/bin/check_r4d_attention_native.py --out \"$RUN_ROOT/r4d-attention.json\"",
+    "hardware": "r9700",
+    "returncode": 0,
+    "seconds": 6.749,
+    "environment_overrides": {
+      "DEVICE": "0"
+    }
+  },
+  {
+    "id": "gdn-extreme-decay-native",
+    "command": "python benchmarks/bin/check_gdn_extreme_decay.py --output \"$RUN_ROOT/gdn-extreme-decay.json\"",
+    "hardware": "r9700",
+    "returncode": 0,
+    "seconds": 4.161,
+    "environment_overrides": {
+      "DEVICE": "0"
+    }
+  },
+  {
+    "id": "gdn-extreme-decay-h24-native",
+    "command": "python benchmarks/bin/check_gdn_extreme_decay.py --heads 24 --output \"$RUN_ROOT/gdn-extreme-decay-h24.json\"",
+    "hardware": "r9700",
+    "returncode": 0,
+    "seconds": 4.139,
+    "environment_overrides": {
+      "DEVICE": "0"
+    }
+  },
+  {
+    "id": "dflash-independent-noise-native",
+    "command": "python benchmarks/bin/check_dflash_sampling_rng.py --output \"$RUN_ROOT/dflash-noise.json\"",
+    "hardware": "r9700",
+    "returncode": 0,
+    "seconds": 34.42,
+    "environment_overrides": {
+      "DEVICE": "0"
+    }
+  },
+  {
+    "id": "nvfp4-native",
+    "command": "python benchmarks/bin/probe_nvfp4_native.py --device \"$DEVICE\" --out \"$RUN_ROOT/nvfp4\"",
+    "hardware": "r9700",
+    "returncode": 0,
+    "seconds": 19.722,
+    "environment_overrides": {
+      "DEVICE": "0",
+      "RADIANCE_MXFP4": "1",
+      "RADIANCE_MXFP4_W4A8": "1"
+    }
+  },
+  {
+    "id": "v030-upstream-native",
+    "command": "python benchmarks/bin/check_v030_upstream_native.py --device \"$DEVICE\" --out \"$RUN_ROOT/upstream.json\"",
+    "hardware": "r9700",
+    "returncode": 0,
+    "seconds": 22.169,
+    "environment_overrides": {
+      "DEVICE": "0"
+    }
+  },
+  {
+    "id": "verify-head-native",
+    "command": "RADIANCE_TEST_NATIVE=1 python -m pytest tests/test_verify_head_sampling_capacity.py tests/test_verify_head_global_topk.py -q",
+    "hardware": "r9700",
+    "returncode": 0,
+    "seconds": 9.243,
+    "environment_overrides": {
+      "DEVICE": "0"
+    }
+  },
+  {
+    "id": "lfm3-native",
+    "command": "python -m pytest --noconftest upstream/vllm-lfm3/test_causal_conv1d.py -q",
+    "hardware": "r9700",
+    "returncode": 0,
+    "seconds": 53.132,
+    "environment_overrides": {
+      "DEVICE": "0"
+    }
+  }
+]

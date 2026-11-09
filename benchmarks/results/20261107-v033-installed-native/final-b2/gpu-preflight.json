@@ -1,0 +1,9 @@
+{
+  "count": 1,
+  "name": "AMD Radeon AI PRO R9700",
+  "gcn_arch": "gfx1201",
+  "total_memory": 34208743424,
+  "hip": "7.15.26333",
+  "render_node": "/dev/dri/renderD128",
+  "host_pci": "0000:03:00.0"
+}

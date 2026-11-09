@@ -232,10 +232,10 @@ class R4DAttentionBackend(TritonAttentionBackend):
         return R4DAttentionMetadataBuilder
 
     @staticmethod
-    def get_supported_kernel_block_sizes() -> list[int]:
+    def get_supported_kernel_block_sizes(kv_cache_spec=None) -> list[int]:
         # Exactly 16, not a multiple of it. A larger framework block size is still fine: vLLM
         # splits it into 16-token kernel blocks, which is how this works alongside the 2240-token
-        # pages a GDN hybrid needs for --mamba-cache-mode=align.
+        # pages a GDN hybrid needs for native hybrid prefix caching.
         return [BLOCK_SIZE]
 
     @classmethod
@@ -298,6 +298,9 @@ class R4DAttentionBackend(TritonAttentionBackend):
 class R4DAttentionImpl(TritonAttentionImpl):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        # The raw-pointer R4D ABI takes BF16 queries, including with FP8 KV.
+        # vLLM 0.33 Triton enables quantized queries on gfx1201 by default.
+        self.supports_quant_query_input = False
         if r4d is None:
             raise RuntimeError(f"R4D kernels are not built into this image ({_IMPORT_ERROR})")
         if not USE_R4D:

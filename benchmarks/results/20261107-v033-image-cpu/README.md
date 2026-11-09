@@ -1,0 +1,43 @@
+# vLLM 0.33 candidate-image CPU evidence
+
+The first full image built from `2c8b2336f667fc577650ca73c08faafce78a0e08`
+passed its final native imports, component versions, dependency check and
+HIP/pybind11 compile-link-import gate. Its immutable image ID and installed
+versions are recorded in `manifest.json` and `versions.json`.
+
+The original CPU run passed **15 of 19** registered PR/candidate-image checks.
+Every original log, including the four failures, is retained under `initial/`.
+No GPU device was exposed. This does not establish native GPU or model behavior.
+
+The failures found:
+
+- KV restore's installed test still imported a retired annotation helper. Its
+  replacement now exercises actual global planning, spec role metadata and
+  native EAGLE/MTP versus DFlash/DSpark policy through the builder seam.
+- The optional Qwen grammar mode preserved function envelopes but lost the
+  omitted-strict parameter-schema default. The runtime correction restores
+  the legacy opt-in without overriding explicit `strict=false`.
+- Speculative grammar tests needed the new constraint-bounds and four-field
+  bitmask interfaces; termination/padding/rollback assertions remain.
+- XGrammar removed a private testing converter. The open-object check now uses
+  public compiler/matcher APIs and accepts nested JSON while rejecting nested
+  XML, wrong types and incomplete objects.
+
+`focused-repairs/` retains the successful grammar/termination and open-object
+reruns plus nine PR CPU checks. The grammar runtime correction was applied
+only inside a disposable test container. Final corrected-image CPU/native/model
+qualification remains pending. No production deployment or TP2/performance
+claim follows from this evidence.
+
+## First corrected image
+
+Image `47637f48` from `fc28058` passes **all19** registered CPU/image checks.
+Logs and results are retained under `fc28058-corrected/`. Native testing then
+found LFM importer/precision issues, documented in
+[installed native evidence](../20261107-v033-installed-native/README.md).
+The candidate containing those additional LFM repairs still needs its rebuilt
+image and real-model qualification.
+
+## Rebuilt final candidate
+
+`final-b2/` records revision451d1eb, imageb2c1f2fe: all19 image/CPU gates pass. Earlier failures above remain preserved. No TP2/live-model/performance inference follows from these gates.

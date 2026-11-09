@@ -1,0 +1,268 @@
+{
+  "request": {
+    "model": "radiance-v033-qwen",
+    "temperature": 0,
+    "seed": 0,
+    "max_tokens": 32,
+    "return_token_ids": true,
+    "prompt": "The capital of France is",
+    "stream": true,
+    "stream_options": {
+      "include_usage": true
+    }
+  },
+  "events": [
+    {
+      "id": "cmpl-a76d5290819cf6ef",
+      "object": "text_completion",
+      "created": 1794017388,
+      "model": "radiance-v033-qwen",
+      "choices": [
+        {
+          "index": 0,
+          "text": " Paris",
+          "logprobs": null,
+          "finish_reason": null,
+          "stop_reason": null,
+          "prompt_token_ids": [
+            760,
+            6511,
+            314,
+            9338,
+            369
+          ],
+          "token_ids": [
+            11751
+          ],
+          "weight_versions": null
+        }
+      ],
+      "kv_transfer_params": null
+    },
+    {
+      "id": "cmpl-a76d5290819cf6ef",
+      "object": "text_completion",
+      "created": 1794017388,
+      "model": "radiance-v033-qwen",
+      "choices": [
+        {
+          "index": 0,
+          "text": ".\n",
+          "logprobs": null,
+          "finish_reason": null,
+          "stop_reason": null,
+          "prompt_token_ids": null,
+          "token_ids": [
+            13,
+            198
+          ],
+          "weight_versions": null
+        }
+      ],
+      "kv_transfer_params": null
+    },
+    {
+      "id": "cmpl-a76d5290819cf6ef",
+      "object": "text_completion",
+      "created": 1794017388,
+      "model": "radiance-v033-qwen",
+      "choices": [
+        {
+          "index": 0,
+          "text": "The",
+          "logprobs": null,
+          "finish_reason": null,
+          "stop_reason": null,
+          "prompt_token_ids": null,
+          "token_ids": [
+            760
+          ],
+          "weight_versions": null
+        }
+      ],
+      "kv_transfer_params": null
+    },
+    {
+      "id": "cmpl-a76d5290819cf6ef",
+      "object": "text_completion",
+      "created": 1794017388,
+      "model": "radiance-v033-qwen",
+      "choices": [
+        {
+          "index": 0,
+          "text": " capital of Germany",
+          "logprobs": null,
+          "finish_reason": null,
+          "stop_reason": null,
+          "prompt_token_ids": null,
+          "token_ids": [
+            6511,
+            314,
+            9564
+          ],
+          "weight_versions": null
+        }
+      ],
+      "kv_transfer_params": null
+    },
+    {
+      "id": "cmpl-a76d5290819cf6ef",
+      "object": "text_completion",
+      "created": 1794017388,
+      "model": "radiance-v033-qwen",
+      "choices": [
+        {
+          "index": 0,
+          "text": " is Berlin",
+          "logprobs": null,
+          "finish_reason": null,
+          "stop_reason": null,
+          "prompt_token_ids": null,
+          "token_ids": [
+            369,
+            19241
+          ],
+          "weight_versions": null
+        }
+      ],
+      "kv_transfer_params": null
+    },
+    {
+      "id": "cmpl-a76d5290819cf6ef",
+      "object": "text_completion",
+      "created": 1794017388,
+      "model": "radiance-v033-qwen",
+      "choices": [
+        {
+          "index": 0,
+          "text": ".\nThe capital of Italy",
+          "logprobs": null,
+          "finish_reason": null,
+          "stop_reason": null,
+          "prompt_token_ids": null,
+          "token_ids": [
+            13,
+            198,
+            760,
+            6511,
+            314,
+            14898
+          ],
+          "weight_versions": null
+        }
+      ],
+      "kv_transfer_params": null
+    },
+    {
+      "id": "cmpl-a76d5290819cf6ef",
+      "object": "text_completion",
+      "created": 1794017388,
+      "model": "radiance-v033-qwen",
+      "choices": [
+        {
+          "index": 0,
+          "text": " is Rome",
+          "logprobs": null,
+          "finish_reason": null,
+          "stop_reason": null,
+          "prompt_token_ids": null,
+          "token_ids": [
+            369,
+            21047
+          ],
+          "weight_versions": null
+        }
+      ],
+      "kv_transfer_params": null
+    },
+    {
+      "id": "cmpl-a76d5290819cf6ef",
+      "object": "text_completion",
+      "created": 1794017388,
+      "model": "radiance-v033-qwen",
+      "choices": [
+        {
+          "index": 0,
+          "text": ".\nThe capital of Spain is Madrid",
+          "logprobs": null,
+          "finish_reason": null,
+          "stop_reason": null,
+          "prompt_token_ids": null,
+          "token_ids": [
+            13,
+            198,
+            760,
+            6511,
+            314,
+            17163,
+            369,
+            23327
+          ],
+          "weight_versions": null
+        }
+      ],
+      "kv_transfer_params": null
+    },
+    {
+      "id": "cmpl-a76d5290819cf6ef",
+      "object": "text_completion",
+      "created": 1794017388,
+      "model": "radiance-v033-qwen",
+      "choices": [
+        {
+          "index": 0,
+          "text": ".\nThe capital of Portugal",
+          "logprobs": null,
+          "finish_reason": null,
+          "stop_reason": null,
+          "prompt_token_ids": null,
+          "token_ids": [
+            13,
+            198,
+            760,
+            6511,
+            314,
+            32208
+          ],
+          "weight_versions": null
+        }
+      ],
+      "kv_transfer_params": null
+    },
+    {
+      "id": "cmpl-a76d5290819cf6ef",
+      "object": "text_completion",
+      "created": 1794017388,
+      "model": "radiance-v033-qwen",
+      "choices": [
+        {
+          "index": 0,
+          "text": " is",
+          "logprobs": null,
+          "finish_reason": "length",
+          "stop_reason": null,
+          "prompt_token_ids": null,
+          "token_ids": [
+            369
+          ],
+          "weight_versions": null
+        }
+      ],
+      "kv_transfer_params": null
+    },
+    {
+      "id": "cmpl-a76d5290819cf6ef",
+      "object": "text_completion",
+      "created": 1794017388,
+      "model": "radiance-v033-qwen",
+      "choices": [],
+      "usage": {
+        "prompt_tokens": 5,
+        "total_tokens": 37,
+        "completion_tokens": 32
+      },
+      "system_fingerprint": "vllm-0.33.0-78b41430"
+    }
+  ],
+  "done": true
+}

@@ -1,0 +1,298 @@
+{
+  "scope": "CPU-only independent FP64 recurrence, exact original extreme-decay cases, both head geometries",
+  "producer_torch": "2.12.0+rocm7.14",
+  "cases": [
+    {
+      "file": "h48-case0.npz",
+      "heads": 48,
+      "query_heads": 16,
+      "tokens": 65,
+      "decay": 0.02,
+      "amplitude": 1,
+      "lengths": [
+        65
+      ],
+      "mixed": false
+    },
+    {
+      "file": "h48-case1.npz",
+      "heads": 48,
+      "query_heads": 16,
+      "tokens": 128,
+      "decay": 1.0,
+      "amplitude": 1,
+      "lengths": [
+        128
+      ],
+      "mixed": false
+    },
+    {
+      "file": "h48-case2.npz",
+      "heads": 48,
+      "query_heads": 16,
+      "tokens": 128,
+      "decay": 2.5,
+      "amplitude": 1,
+      "lengths": [
+        128
+      ],
+      "mixed": false
+    },
+    {
+      "file": "h48-case3.npz",
+      "heads": 48,
+      "query_heads": 16,
+      "tokens": 128,
+      "decay": 3.2,
+      "amplitude": 1,
+      "lengths": [
+        128
+      ],
+      "mixed": false
+    },
+    {
+      "file": "h48-case4.npz",
+      "heads": 48,
+      "query_heads": 16,
+      "tokens": 128,
+      "decay": 8.0,
+      "amplitude": 1,
+      "lengths": [
+        128
+      ],
+      "mixed": false
+    },
+    {
+      "file": "h48-case5.npz",
+      "heads": 48,
+      "query_heads": 16,
+      "tokens": 257,
+      "decay": 0.02,
+      "amplitude": 1,
+      "lengths": [
+        257
+      ],
+      "mixed": false
+    },
+    {
+      "file": "h48-case6.npz",
+      "heads": 48,
+      "query_heads": 16,
+      "tokens": 257,
+      "decay": 3.2,
+      "amplitude": 1,
+      "lengths": [
+        257
+      ],
+      "mixed": false
+    },
+    {
+      "file": "h48-case7.npz",
+      "heads": 48,
+      "query_heads": 16,
+      "tokens": 1024,
+      "decay": 0.02,
+      "amplitude": 1,
+      "lengths": [
+        1024
+      ],
+      "mixed": false
+    },
+    {
+      "file": "h48-case8.npz",
+      "heads": 48,
+      "query_heads": 16,
+      "tokens": 128,
+      "decay": 32.0,
+      "amplitude": 1,
+      "lengths": [
+        128
+      ],
+      "mixed": false
+    },
+    {
+      "file": "h48-case9.npz",
+      "heads": 48,
+      "query_heads": 16,
+      "tokens": 128,
+      "decay": 2.5,
+      "amplitude": 10000,
+      "lengths": [
+        128
+      ],
+      "mixed": false
+    },
+    {
+      "file": "h48-case10.npz",
+      "heads": 48,
+      "query_heads": 16,
+      "tokens": 195,
+      "decay": 0.02,
+      "amplitude": 1,
+      "lengths": [
+        65,
+        130
+      ],
+      "mixed": false
+    },
+    {
+      "file": "h48-case11.npz",
+      "heads": 48,
+      "query_heads": 16,
+      "tokens": 195,
+      "decay": 3.2,
+      "amplitude": 1,
+      "lengths": [
+        65,
+        130
+      ],
+      "mixed": true
+    },
+    {
+      "file": "h24-case0.npz",
+      "heads": 24,
+      "query_heads": 8,
+      "tokens": 65,
+      "decay": 0.02,
+      "amplitude": 1,
+      "lengths": [
+        65
+      ],
+      "mixed": false
+    },
+    {
+      "file": "h24-case1.npz",
+      "heads": 24,
+      "query_heads": 8,
+      "tokens": 128,
+      "decay": 1.0,
+      "amplitude": 1,
+      "lengths": [
+        128
+      ],
+      "mixed": false
+    },
+    {
+      "file": "h24-case2.npz",
+      "heads": 24,
+      "query_heads": 8,
+      "tokens": 128,
+      "decay": 2.5,
+      "amplitude": 1,
+      "lengths": [
+        128
+      ],
+      "mixed": false
+    },
+    {
+      "file": "h24-case3.npz",
+      "heads": 24,
+      "query_heads": 8,
+      "tokens": 128,
+      "decay": 3.2,
+      "amplitude": 1,
+      "lengths": [
+        128
+      ],
+      "mixed": false
+    },
+    {
+      "file": "h24-case4.npz",
+      "heads": 24,
+      "query_heads": 8,
+      "tokens": 128,
+      "decay": 8.0,
+      "amplitude": 1,
+      "lengths": [
+        128
+      ],
+      "mixed": false
+    },
+    {
+      "file": "h24-case5.npz",
+      "heads": 24,
+      "query_heads": 8,
+      "tokens": 257,
+      "decay": 0.02,
+      "amplitude": 1,
+      "lengths": [
+        257
+      ],
+      "mixed": false
+    },
+    {
+      "file": "h24-case6.npz",
+      "heads": 24,
+      "query_heads": 8,
+      "tokens": 257,
+      "decay": 3.2,
+      "amplitude": 1,
+      "lengths": [
+        257
+      ],
+      "mixed": false
+    },
+    {
+      "file": "h24-case7.npz",
+      "heads": 24,
+      "query_heads": 8,
+      "tokens": 1024,
+      "decay": 0.02,
+      "amplitude": 1,
+      "lengths": [
+        1024
+      ],
+      "mixed": false
+    },
+    {
+      "file": "h24-case8.npz",
+      "heads": 24,
+      "query_heads": 8,
+      "tokens": 128,
+      "decay": 32.0,
+      "amplitude": 1,
+      "lengths": [
+        128
+      ],
+      "mixed": false
+    },
+    {
+      "file": "h24-case9.npz",
+      "heads": 24,
+      "query_heads": 8,
+      "tokens": 128,
+      "decay": 2.5,
+      "amplitude": 10000,
+      "lengths": [
+        128
+      ],
+      "mixed": false
+    },
+    {
+      "file": "h24-case10.npz",
+      "heads": 24,
+      "query_heads": 8,
+      "tokens": 195,
+      "decay": 0.02,
+      "amplitude": 1,
+      "lengths": [
+        65,
+        130
+      ],
+      "mixed": false
+    },
+    {
+      "file": "h24-case11.npz",
+      "heads": 24,
+      "query_heads": 8,
+      "tokens": 195,
+      "decay": 3.2,
+      "amplitude": 1,
+      "lengths": [
+        65,
+        130
+      ],
+      "mixed": true
+    }
+  ]
+}

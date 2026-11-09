@@ -3,29 +3,27 @@
 [![Docker Hub](https://img.shields.io/docker/v/magiccodingman/vllm-radiance?sort=semver&label=Docker%20Hub&logo=docker)](https://hub.docker.com/r/magiccodingman/vllm-radiance)
 [![Docker Pulls](https://img.shields.io/docker/pulls/magiccodingman/vllm-radiance?logo=docker)](https://hub.docker.com/r/magiccodingman/vllm-radiance)
 
-A vLLM inference-server image for the **AMD Radeon AI PRO R9700 (gfx1201 / RDNA4)**. It combines a pinned
-vLLM v0.30.0 ROCm stack with [libr4d](https://codeberg.org/StillDeadcode/libr4d)'s hand-written RDNA4
-attention, gated-delta-net, vision, all-reduce, MXFP4, and DFlash kernels while retaining Radiance's tuned
-FP8 GEMM and speculative-decoding paths.
+A vLLM inference-server image for the **AMD Radeon AI PRO R9700 (gfx1201 / RDNA4)**.
+This branch upgrades the source platform to **stable vLLM 0.33.0** and a pinned ROCm 10.0 /
+AMD Torch 2.13 / Triton 3.8 / AITER 0.1.26 stack. It retains Radiance's MXFP4 W4A8,
+GDN correction, FP8 GEMM, structured-output and opt-in speculative paths.
 
-> **Status: experimental.** The primary qualified environment is two R9700s (TP2), native FP8 or AMD
-> Quark MXFP4 target weights, and mandatory FP8 KV. Other models, quantization recipes, GPU counts, and
-> hardware may work but have not received the same qualification. Speculative modes remain opt-in because
-> their strict cross-mode output-equivalence gate has not passed.
+> **Upgrade candidate; not production-qualified.** CPU/image, native kernels and bounded
+> GPU0 Quark V1/V2 checks pass; see [V033_UPGRADE.md](docs/V033_UPGRADE.md).
+> TP2, full performance, capacity and release qualification are deferred.
+> Historical results below describe their original versions and do not qualify this stack.
 
-The source platform is **vLLM 0.30.0**. Source merges do not publish or deploy a
-replacement for production 1.0.16. Its native FP8 and Quark27B TP2/C1 resident evidence,
-actual Runner V2/kernel selection, ordinary vision and NVFP4 conversion limits
-are recorded in [V030_UPGRADE.md](docs/V030_UPGRADE.md). Fresh v0.30 publication
-measurements and their qualification limits are below. NVFP4→MXFP4 is default-off load-time
-requantization, not native NVFP4 execution or model-level quality qualification.
-Unqualified NVFP4A16 conversion is explicitly rejected; quantized-input NVFP4
-remains eligible for the opt-in W4A8 conversion.
+The primary qualified production topology remains two R9700s (TP2), native FP8 or AMD Quark
+MXFP4 weights, and FP8 KV. Source/MR updates do not publish or deploy an image. NVFP4→MXFP4
+remains default-off load-time requantization, with unqualified NVFP4A16 conversion rejected.
+Speculative modes remain opt-in; strict cross-mode output equivalence has not been established.
 
-This fork tracks and credits DeadCode's
-[vllm-radiance](https://codeberg.org/StillDeadcode/vllm-radiance) and libr4d work, with additional compiler
-pins, upstream v0.30 DFlash2 and structured-output ownership, native gfx1201 MXFP4/W4A8
-support, reproducible benchmarks, and deployment qualification. Published images are at
+This fork credits StillDeadcode's maintained [radiance](https://codeberg.org/StillDeadcode/radiance)
+kernels and its retired vLLM/libr4d lineage. The current attention and GDN scan families are
+adapted to our retained Python ABI; private extensions and collectives still use the legacy
+compatibility base. This is a selective kernel migration, not adoption of the standalone engine.
+[Upgrade provenance and compatibility boundaries](docs/V033_UPGRADE.md) also record selected
+GGZ14/amittell and vLLM follow-ups. Published images remain at
 [`magiccodingman/vllm-radiance`](https://hub.docker.com/r/magiccodingman/vllm-radiance).
 
 Two additional opt-in laboratories preserve the qualified default: immutable,
@@ -34,6 +32,9 @@ an offline collect → tune → verified-serve PyTorch TunableOp workflow for
 residual BLAS GEMMs. Neither is enabled until its exact model/profile passes
 the normal correctness and benchmark gates. See
 [FP8-KV calibration and persisted TunableOp](docs/FP8_KV_TUNABLEOP.md).
+
+Native LFM3 FP8 text is experimental: exact greedy batch parity fails. See
+[LFM3 source, configuration and qualification](docs/LFM3.md).
 
 ## Runtime defaults and optional research
 
@@ -191,7 +192,7 @@ merges GDN input projections, uses libr4d's fused speculative GDN update, increa
 full K7 target verification is wasteful. Every optimization is independently reversible through the
 controls documented in `benchmarks/README.md`.
 
-Prefix caching and `MAMBA_CACHE_MODE=align` remain the deployment defaults. Disable them only for a cold,
+Prefix caching remains enabled; v0.33 hybrid state caching follows APC. Disable it only for a cold,
 nonce-disjoint benchmark or a deliberate maximum-capacity experiment. Recreate the container after changing
 modes:
 
@@ -377,7 +378,7 @@ prefill, telemetry, confidence intervals, negative results, and immutable run ID
 - **Fast speculative drafting:** dynamic MTP depth, verbatim n-gram tails, INT2 exact-rerank heads, and W4
   DFlash draft linears.
 - **Hybrid-safe prefix caching:** automatic prefix caching with GDN convolution/recurrent-state restoration
-  through `--mamba-cache-mode=align`.
+  through native hybrid prefix caching (APC).
 - **Spec-safe structured output:** upstream XGrammar termination and reasoning-boundary fixes prevent
   speculative draft batches from overrunning or desynchronizing the tool-call grammar; Qwen structural-tag
   normalization also preserves open nested objects used by generic deferred-tool wrappers.
@@ -389,16 +390,18 @@ matched experiments.
 
 ## Build
 
-The published image is built entirely from pinned source commits:
+The candidate source build uses these pins. Published tags may refer to earlier versions;
+use explicit image digests and inspect the source/version labels.
 
 | Component | Version/pin |
 |---|---|
-| vLLM | 0.30.0, `ced6857afa0ea7b2e3f0846a62e1394e90f15607`; qualification status in `docs/V030_UPGRADE.md` |
-| AMD PyTorch | 2.12 branch, `6bbd26020da1c6dc198625dfcdd968b1e4e6b1c5` |
-| AMD Triton | 3.7.1, `f0b55c07da61c71775bef6d1a15ebf846430ac75` |
-| AITER | 0.1.20, `fc2e5d57fb5b8ad8e7e23f7103071dde798ea618` |
-| libr4d | 0.5.0, `e8de4bc1f3dbd608dcb8d3ffceb6b48acdf83bb7` |
-| ROCm userspace | 7.14 |
+| vLLM | 0.33.0, `4ba787ec9959e566d3b587a796dff07673324da5` |
+| AMD PyTorch | 2.13.0, `0e8e47fd5bb5cd734b6194b92e941075e932c925` |
+| AMD Triton | 3.8.0, `669b31acc1dd1b3fd93286afd5db67f65d9f7557` |
+| AITER | 0.1.26, `84077b3c0461dac1f0f3f8b9590a9282e2035a2f` |
+| libr4d attention/GDN scan | maintained `451b136874084650992668bed9e8662deb58de88`; Python ABI base `e8de4bc1f3dbd608dcb8d3ffceb6b48acdf83bb7` |
+| ROCm userspace | 10.0.0, digest pinned in Dockerfile |
+| Transformers / XGrammar / FlyDSL | 5.16.1 / 0.2.8 / 0.4.0 |
 
 ```bash
 docker build \
@@ -409,8 +412,8 @@ docker build \
 
 The multi-stage build compiles the stack for `gfx1201`, prunes unrelated ROCm device code, builds libr4d with
 the image's `hipcc`, and copies only the runtime into the release stage. A compiler and headers remain in the
-release image because AITER JIT-compiles kernels on first use. The pruned image measured 3.66 GiB compressed,
-down from 9.35 GiB before pruning. A full build takes hours; `Dockerfile.patch` provides a guarded overlay for
+release image because AITER JIT-compiles kernels on first use. An older pruned image measured 3.66 GiB compressed,
+down from 9.35 GiB before pruning; those sizes do not describe this candidate. A full build takes hours; `Dockerfile.patch` provides a guarded overlay for
 ordinary Radiance/libr4d iteration without rebuilding PyTorch and the compiler stack.
 
 Do not independently bump PyTorch, Triton, torchvision, or vLLM. The qualified versions are a compiler stack,

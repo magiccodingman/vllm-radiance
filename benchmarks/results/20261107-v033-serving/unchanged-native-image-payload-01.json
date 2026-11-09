@@ -1,0 +1,25 @@
+{
+  "checked_at": "2026-11-07T01:49:30.024987+00:00",
+  "identical": true,
+  "images": [
+    {
+      "image_id": "sha256:b2c1f2fe8e3f323e90b017890843ef614a6cfc5e50498a8eb6e242ea11e60f83",
+      "files": {
+        "/opt/vllm/lib/python3.12/site-packages/vllm/model_executor/models/lfm3.py": "3cc38d7eb2d992e1b49c73ee16e3a3fcd73148cb55f91624e4131087bf8038a9",
+        "/opt/vllm/lib/python3.12/site-packages/vllm/model_executor/layers/mamba/ops/causal_conv1d.py": "d59576e3c78306650f1867e7e40a7179687347ed97e6b818b9ed6c7c5c615f55",
+        "/opt/vllm/lib/python3.12/site-packages/r4d.so": "2042dd952238361a9d5f321a2e320204a07467f61f3aeda94cf04e1570e15bbf",
+        "/opt/vllm/lib/python3.12/site-packages/radiance_mxfp4_fp8.so": "bf32afab8c3a5f4cbd98bb1765234d8cd6be856c6fb16e6670fd00c1c3aae691"
+      }
+    },
+    {
+      "image_id": "sha256:0544917159f9d858ac74408ee3afa0a189104b4970b234f92e504495860034f4",
+      "files": {
+        "/opt/vllm/lib/python3.12/site-packages/vllm/model_executor/models/lfm3.py": "3cc38d7eb2d992e1b49c73ee16e3a3fcd73148cb55f91624e4131087bf8038a9",
+        "/opt/vllm/lib/python3.12/site-packages/vllm/model_executor/layers/mamba/ops/causal_conv1d.py": "d59576e3c78306650f1867e7e40a7179687347ed97e6b818b9ed6c7c5c615f55",
+        "/opt/vllm/lib/python3.12/site-packages/r4d.so": "2042dd952238361a9d5f321a2e320204a07467f61f3aeda94cf04e1570e15bbf",
+        "/opt/vllm/lib/python3.12/site-packages/radiance_mxfp4_fp8.so": "bf32afab8c3a5f4cbd98bb1765234d8cd6be856c6fb16e6670fd00c1c3aae691"
+      }
+    }
+  ],
+  "scope": "exact LFM model/convolution source and both native shared objects; not a claim that every Python integration module is unchanged"
+}

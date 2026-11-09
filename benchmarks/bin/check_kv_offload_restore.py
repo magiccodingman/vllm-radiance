@@ -58,9 +58,9 @@ def check_wiring() -> None:
     patch = (REPO / "patch_kv_offload_restore.py").read_text()
     ast.parse(patch)
     for sentinel in (
-        "def _dflash_draft_layer_names(",
-        "def _mtp_draft_layer_names(",
-        "draft_names.intersection(group.layer_names)",
+        "if spec.is_draft",
+        "if attn_module.is_draft_layer:",
+        "group.is_eagle_group = not draft_layer_names.isdisjoint(group.layer_names)",
         "spec_config.use_eagle_block_drop()",
         "Skipping CPU hit for request %s since some of its",
     ):
@@ -91,29 +91,57 @@ def check_installed_annotation() -> None:
     import importlib.util
     if importlib.util.find_spec("vllm") is None:
         return  # Pure source CI; candidate-image qualification calls this too.
+    from dataclasses import replace
     from types import SimpleNamespace as NS
-    from vllm.v1.core.kv_cache_utils import _annotate_eagle_groups
-    from vllm.v1.kv_cache_interface import FullAttentionSpec
+    from unittest.mock import patch
+    from vllm.config.speculative import SpeculativeConfig
+    from vllm.v1.core.kv_cache_config_builder import KVCacheConfigBuilder
+    from vllm.v1.core.kv_cache_planning import get_global_kv_cache_groups
+    from vllm.v1.kv_cache_interface import FullAttentionSpec, KVCacheGroupSpec
     spec = FullAttentionSpec(block_size=16, num_kv_heads=1, head_size=64,
                              dtype=__import__("torch").float16)
-    names = ["model.layers.0.attn", "model.layers.64.attn", "model.layers.65.attn"]
-    config = NS(parallel_config=None, model_config=NS(get_num_layers=lambda _: 64),
-                speculative_config=NS(use_eagle_block_drop=lambda: True,
-                    use_eagle=lambda: True, use_dflash=lambda: True,
-                    draft_model_config=NS(get_num_layers=lambda _: 2)))
-    groups = [NS(layer_names=[n], kv_cache_spec=spec, is_eagle_group=False) for n in names]
-    _annotate_eagle_groups(config, dict.fromkeys(names, spec), groups)
-    assert [g.is_eagle_group for g in groups] == [False, True, True]
-    config.speculative_config.use_eagle_block_drop = lambda: False
-    for g in groups:
-        g.is_eagle_group = False
-    _annotate_eagle_groups(config, dict.fromkeys(names, spec), groups)
-    assert not any(g.is_eagle_group for g in groups)
-    config.speculative_config.use_eagle_block_drop = lambda: True
-    config.speculative_config.use_dflash = lambda: False
-    _annotate_eagle_groups(config, dict.fromkeys(names, spec), groups,
-                           use_deepseek_v4_fallback=True)
-    assert [g.is_eagle_group for g in groups] == [False, False, True]
+    # v0.33 marks layer roles at registration and annotates groups during global
+    # planning. Names/positions (including MTP's local index) are not identities.
+    names = ["model.layers.0.attn", "model.layers.64.attn",
+             "draft.layers.1.attn", "mtp.layers.0.attn", "model.layers.999.attn"]
+    specs = {name: replace(spec, is_draft=index in (2, 3))
+             for index, name in enumerate(names)}
+
+    class FixtureBuilder(KVCacheConfigBuilder):
+        def get_kv_cache_groups(self, config, layer_specs):
+            return [KVCacheGroupSpec([name], value)
+                    for name, value in layer_specs.items()]
+
+        def get_kv_cache_config_from_groups(self, *args, **kwargs):
+            raise AssertionError("annotation must not allocate cache tensors")
+
+    def flags(method, *, disabled=False, layer_specs=specs):
+        # Exercise the real installed speculative policy without constructing a
+        # model/device config. These policy methods read only these two fields.
+        speculative = None
+        if method is not None:
+            speculative = object.__new__(SpeculativeConfig)
+            speculative.method = method
+            speculative.disable_eagle_block_drop = disabled
+        config = NS(num_prefill_lookahead_tokens=0,
+                    speculative_config=speculative)
+        with patch("vllm.v1.core.kv_cache_config_builder.get_kv_cache_config_builder",
+                   return_value=FixtureBuilder()):
+            # Real merge, registry, partition and annotation code; only the
+            # allocation-independent grouping fixture is supplied by the seam.
+            groups = get_global_kv_cache_groups(config, [layer_specs, layer_specs])
+        assert [g.layer_names for g in groups] == [[n] for n in names]
+        return [g.is_eagle_group for g in groups]
+
+    for method in ("eagle", "eagle3", "mtp"):
+        assert flags(method) == [False, False, True, True, False]
+        assert not any(flags(method, disabled=True))
+        # The retired positional fallback must not mark an arbitrary last layer.
+        assert not any(flags(method, layer_specs=dict.fromkeys(names, spec)))
+    # DFlash/DSpark KV does not depend on the following token. Upstream owns
+    # their no-trailing-block-drop policy, even for correctly marked drafts.
+    for method in (None, "dflash", "dspark", "draft_model"):
+        assert not any(flags(method))
 
 
 def main() -> None:

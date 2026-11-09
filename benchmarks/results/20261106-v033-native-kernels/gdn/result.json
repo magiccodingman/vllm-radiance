@@ -1,0 +1,447 @@
+{
+  "status": "ROCM10_NATIVE_GDN_PASS_NOT_FRAMEWORK_QUALIFICATION",
+  "complete": true,
+  "scope": "Direct HIP/pybind calls on one visible authorized GPU, both 48/16 and 24/8 geometries. Exact original extreme-decay fixture cases and one-percent numerical gates; no PyTorch loaded in GPU process. Not distributed TP2 qualification.",
+  "visible_count": 1,
+  "r4d_version": "0.5.0+rdna4.451b136",
+  "maintained_commit": "451b136874084650992668bed9e8662deb58de88",
+  "extension_sha256": "9741015832bddf7d8b8d182e7a97fadef67bd42d39e3b4131f190da5722b492f",
+  "cases": [
+    {
+      "file": "h48-case0.npz",
+      "heads": 48,
+      "query_heads": 16,
+      "tokens": 65,
+      "decay": 0.02,
+      "amplitude": 1,
+      "lengths": [
+        65
+      ],
+      "mixed": false,
+      "output_relative_error": 0.0034203696153963024,
+      "state_relative_error": 0.0029277610240870705,
+      "changed_query_graph_output_error": 0.0034203695281902835,
+      "changed_query_graph_state_error": 0.0029277610240870705,
+      "guards_intact": true,
+      "finite": true
+    },
+    {
+      "file": "h48-case1.npz",
+      "heads": 48,
+      "query_heads": 16,
+      "tokens": 128,
+      "decay": 1.0,
+      "amplitude": 1,
+      "lengths": [
+        128
+      ],
+      "mixed": false,
+      "output_relative_error": 0.0028837011390192915,
+      "state_relative_error": 0.00172636213869956,
+      "changed_query_graph_output_error": 0.002883707935158746,
+      "changed_query_graph_state_error": 0.00172636213869956,
+      "guards_intact": true,
+      "finite": true
+    },
+    {
+      "file": "h48-case2.npz",
+      "heads": 48,
+      "query_heads": 16,
+      "tokens": 128,
+      "decay": 2.5,
+      "amplitude": 1,
+      "lengths": [
+        128
+      ],
+      "mixed": false,
+      "output_relative_error": 0.0026805913706875635,
+      "state_relative_error": 0.001221129034190561,
+      "changed_query_graph_output_error": 0.002680596576261909,
+      "changed_query_graph_state_error": 0.001221129034190561,
+      "guards_intact": true,
+      "finite": true
+    },
+    {
+      "file": "h48-case3.npz",
+      "heads": 48,
+      "query_heads": 16,
+      "tokens": 128,
+      "decay": 3.2,
+      "amplitude": 1,
+      "lengths": [
+        128
+      ],
+      "mixed": false,
+      "output_relative_error": 0.0025255089341493053,
+      "state_relative_error": 0.0011451880278580166,
+      "changed_query_graph_output_error": 0.0025255126636944862,
+      "changed_query_graph_state_error": 0.0011451880278580166,
+      "guards_intact": true,
+      "finite": true
+    },
+    {
+      "file": "h48-case4.npz",
+      "heads": 48,
+      "query_heads": 16,
+      "tokens": 128,
+      "decay": 8.0,
+      "amplitude": 1,
+      "lengths": [
+        128
+      ],
+      "mixed": false,
+      "output_relative_error": 0.0023488664845502565,
+      "state_relative_error": 1.612467168279397e-05,
+      "changed_query_graph_output_error": 0.002348855892292689,
+      "changed_query_graph_state_error": 1.612467168279397e-05,
+      "guards_intact": true,
+      "finite": true
+    },
+    {
+      "file": "h48-case5.npz",
+      "heads": 48,
+      "query_heads": 16,
+      "tokens": 257,
+      "decay": 0.02,
+      "amplitude": 1,
+      "lengths": [
+        257
+      ],
+      "mixed": false,
+      "output_relative_error": 0.00353889148186379,
+      "state_relative_error": 0.003001372554108966,
+      "changed_query_graph_output_error": 0.0035388990756430407,
+      "changed_query_graph_state_error": 0.003001372554108966,
+      "guards_intact": true,
+      "finite": true
+    },
+    {
+      "file": "h48-case6.npz",
+      "heads": 48,
+      "query_heads": 16,
+      "tokens": 257,
+      "decay": 3.2,
+      "amplitude": 1,
+      "lengths": [
+        257
+      ],
+      "mixed": false,
+      "output_relative_error": 0.0025408152700983834,
+      "state_relative_error": 0.0009884467940403216,
+      "changed_query_graph_output_error": 0.002540814744847942,
+      "changed_query_graph_state_error": 0.0009884467940403216,
+      "guards_intact": true,
+      "finite": true
+    },
+    {
+      "file": "h48-case7.npz",
+      "heads": 48,
+      "query_heads": 16,
+      "tokens": 1024,
+      "decay": 0.02,
+      "amplitude": 1,
+      "lengths": [
+        1024
+      ],
+      "mixed": false,
+      "output_relative_error": 0.0035712577716618763,
+      "state_relative_error": 0.003048539985572802,
+      "changed_query_graph_output_error": 0.0035712601236722544,
+      "changed_query_graph_state_error": 0.003048539985572802,
+      "guards_intact": true,
+      "finite": true
+    },
+    {
+      "file": "h48-case8.npz",
+      "heads": 48,
+      "query_heads": 16,
+      "tokens": 128,
+      "decay": 32.0,
+      "amplitude": 1,
+      "lengths": [
+        128
+      ],
+      "mixed": false,
+      "output_relative_error": 0.0023513067234151907,
+      "state_relative_error": 2.6577933287773525e-08,
+      "changed_query_graph_output_error": 0.0023520521126365866,
+      "changed_query_graph_state_error": 2.6577933287773525e-08,
+      "guards_intact": true,
+      "finite": true
+    },
+    {
+      "file": "h48-case9.npz",
+      "heads": 48,
+      "query_heads": 16,
+      "tokens": 128,
+      "decay": 2.5,
+      "amplitude": 10000,
+      "lengths": [
+        128
+      ],
+      "mixed": false,
+      "output_relative_error": 0.0026558242443219596,
+      "state_relative_error": 0.0012884276933120252,
+      "changed_query_graph_output_error": 0.0026558449064316395,
+      "changed_query_graph_state_error": 0.0012884276933120252,
+      "guards_intact": true,
+      "finite": true
+    },
+    {
+      "file": "h48-case10.npz",
+      "heads": 48,
+      "query_heads": 16,
+      "tokens": 195,
+      "decay": 0.02,
+      "amplitude": 1,
+      "lengths": [
+        65,
+        130
+      ],
+      "mixed": false,
+      "output_relative_error": 0.003479473700207229,
+      "state_relative_error": 0.002963209132754648,
+      "changed_query_graph_output_error": 0.0034794673885014593,
+      "changed_query_graph_state_error": 0.002963209132754648,
+      "guards_intact": true,
+      "finite": true
+    },
+    {
+      "file": "h48-case11.npz",
+      "heads": 48,
+      "query_heads": 16,
+      "tokens": 195,
+      "decay": 3.2,
+      "amplitude": 1,
+      "lengths": [
+        65,
+        130
+      ],
+      "mixed": true,
+      "output_relative_error": 0.003464214249278785,
+      "state_relative_error": 0.002964860688545113,
+      "changed_query_graph_output_error": 0.0034642167897522306,
+      "changed_query_graph_state_error": 0.002964860688545113,
+      "guards_intact": true,
+      "finite": true
+    },
+    {
+      "file": "h24-case0.npz",
+      "heads": 24,
+      "query_heads": 8,
+      "tokens": 65,
+      "decay": 0.02,
+      "amplitude": 1,
+      "lengths": [
+        65
+      ],
+      "mixed": false,
+      "output_relative_error": 0.0034266072374407037,
+      "state_relative_error": 0.002942509823598032,
+      "changed_query_graph_output_error": 0.0034266119574670184,
+      "changed_query_graph_state_error": 0.002942509823598032,
+      "guards_intact": true,
+      "finite": true
+    },
+    {
+      "file": "h24-case1.npz",
+      "heads": 24,
+      "query_heads": 8,
+      "tokens": 128,
+      "decay": 1.0,
+      "amplitude": 1,
+      "lengths": [
+        128
+      ],
+      "mixed": false,
+      "output_relative_error": 0.002890745564428919,
+      "state_relative_error": 0.0017799559246208065,
+      "changed_query_graph_output_error": 0.00289074521281758,
+      "changed_query_graph_state_error": 0.0017799559246208065,
+      "guards_intact": true,
+      "finite": true
+    },
+    {
+      "file": "h24-case2.npz",
+      "heads": 24,
+      "query_heads": 8,
+      "tokens": 128,
+      "decay": 2.5,
+      "amplitude": 1,
+      "lengths": [
+        128
+      ],
+      "mixed": false,
+      "output_relative_error": 0.002680731221550232,
+      "state_relative_error": 0.0012776905063561414,
+      "changed_query_graph_output_error": 0.0026807359550716035,
+      "changed_query_graph_state_error": 0.0012776905063561414,
+      "guards_intact": true,
+      "finite": true
+    },
+    {
+      "file": "h24-case3.npz",
+      "heads": 24,
+      "query_heads": 8,
+      "tokens": 128,
+      "decay": 3.2,
+      "amplitude": 1,
+      "lengths": [
+        128
+      ],
+      "mixed": false,
+      "output_relative_error": 0.002558032910763182,
+      "state_relative_error": 0.0010462957647370912,
+      "changed_query_graph_output_error": 0.002558005976458518,
+      "changed_query_graph_state_error": 0.0010462957647370912,
+      "guards_intact": true,
+      "finite": true
+    },
+    {
+      "file": "h24-case4.npz",
+      "heads": 24,
+      "query_heads": 8,
+      "tokens": 128,
+      "decay": 8.0,
+      "amplitude": 1,
+      "lengths": [
+        128
+      ],
+      "mixed": false,
+      "output_relative_error": 0.002360557260779795,
+      "state_relative_error": 1.8807445722133645e-05,
+      "changed_query_graph_output_error": 0.002360570849407937,
+      "changed_query_graph_state_error": 1.8807445722133645e-05,
+      "guards_intact": true,
+      "finite": true
+    },
+    {
+      "file": "h24-case5.npz",
+      "heads": 24,
+      "query_heads": 8,
+      "tokens": 257,
+      "decay": 0.02,
+      "amplitude": 1,
+      "lengths": [
+        257
+      ],
+      "mixed": false,
+      "output_relative_error": 0.0035456897950744306,
+      "state_relative_error": 0.0029896427470766816,
+      "changed_query_graph_output_error": 0.003545684199398431,
+      "changed_query_graph_state_error": 0.0029896427470766816,
+      "guards_intact": true,
+      "finite": true
+    },
+    {
+      "file": "h24-case6.npz",
+      "heads": 24,
+      "query_heads": 8,
+      "tokens": 257,
+      "decay": 3.2,
+      "amplitude": 1,
+      "lengths": [
+        257
+      ],
+      "mixed": false,
+      "output_relative_error": 0.002536138441108018,
+      "state_relative_error": 0.0011174871513762192,
+      "changed_query_graph_output_error": 0.0025361158596594866,
+      "changed_query_graph_state_error": 0.0011174871513762192,
+      "guards_intact": true,
+      "finite": true
+    },
+    {
+      "file": "h24-case7.npz",
+      "heads": 24,
+      "query_heads": 8,
+      "tokens": 1024,
+      "decay": 0.02,
+      "amplitude": 1,
+      "lengths": [
+        1024
+      ],
+      "mixed": false,
+      "output_relative_error": 0.0035711195158943543,
+      "state_relative_error": 0.003052120489388244,
+      "changed_query_graph_output_error": 0.0035711211222404877,
+      "changed_query_graph_state_error": 0.003052120489388244,
+      "guards_intact": true,
+      "finite": true
+    },
+    {
+      "file": "h24-case8.npz",
+      "heads": 24,
+      "query_heads": 8,
+      "tokens": 128,
+      "decay": 32.0,
+      "amplitude": 1,
+      "lengths": [
+        128
+      ],
+      "mixed": false,
+      "output_relative_error": 0.0023801110386397306,
+      "state_relative_error": 2.7940245583437557e-08,
+      "changed_query_graph_output_error": 0.002379407113249935,
+      "changed_query_graph_state_error": 2.7940245583437557e-08,
+      "guards_intact": true,
+      "finite": true
+    },
+    {
+      "file": "h24-case9.npz",
+      "heads": 24,
+      "query_heads": 8,
+      "tokens": 128,
+      "decay": 2.5,
+      "amplitude": 10000,
+      "lengths": [
+        128
+      ],
+      "mixed": false,
+      "output_relative_error": 0.0026750192922402275,
+      "state_relative_error": 0.0014250794782461333,
+      "changed_query_graph_output_error": 0.0026750513241703554,
+      "changed_query_graph_state_error": 0.0014250794782461333,
+      "guards_intact": true,
+      "finite": true
+    },
+    {
+      "file": "h24-case10.npz",
+      "heads": 24,
+      "query_heads": 8,
+      "tokens": 195,
+      "decay": 0.02,
+      "amplitude": 1,
+      "lengths": [
+        65,
+        130
+      ],
+      "mixed": false,
+      "output_relative_error": 0.0034831190588465112,
+      "state_relative_error": 0.0029670560807007686,
+      "changed_query_graph_output_error": 0.0034831167935560235,
+      "changed_query_graph_state_error": 0.0029670560807007686,
+      "guards_intact": true,
+      "finite": true
+    },
+    {
+      "file": "h24-case11.npz",
+      "heads": 24,
+      "query_heads": 8,
+      "tokens": 195,
+      "decay": 3.2,
+      "amplitude": 1,
+      "lengths": [
+        65,
+        130
+      ],
+      "mixed": true,
+      "output_relative_error": 0.003467052700725025,
+      "state_relative_error": 0.0029599181089351675,
+      "changed_query_graph_output_error": 0.003467054427958577,
+      "changed_query_graph_state_error": 0.0029599181089351675,
+      "guards_intact": true,
+      "finite": true
+    }
+  ]
+}

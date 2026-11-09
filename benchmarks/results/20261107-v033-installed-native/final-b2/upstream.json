@@ -1,0 +1,11 @@
+{
+  "device": 0,
+  "status": "PASS",
+  "gumbel_stride_and_guard": true,
+  "topk_rows": [
+    1,
+    2,
+    8
+  ],
+  "changed_input_graph": true
+}

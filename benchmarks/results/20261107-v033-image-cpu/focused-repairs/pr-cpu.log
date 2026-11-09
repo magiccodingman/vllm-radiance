@@ -1,0 +1,61 @@
+LFM3 upstream hashes and fail-closed installation: PASS (CPU only)
+OK Radiance native vLLM general-plugin entry point
+OK Radiance native vLLM general-plugin entry point
+v0.33 draft exclusion, LDS and native plugin CPU regressions: PASS
+Radiance control-plane validation: PASS (48 overlays, 40 tests, 8 tracked upstreams)
+KV offload host-registration regression checks: PASS
+KV offload rank-sharded CPU layout checks: PASS
+KV offload restore regression checks: PASS
+  OK    qwen-grammar-helpers
+  OK    qwen-tool-schema-copy
+  OK    qwen-auto-grammar-opt-in
+  OK    qwen-integer-bounds
+  NOOP  qwen-grammar-helpers already applied
+  NOOP  qwen-tool-schema-copy already applied
+  NOOP  qwen-auto-grammar-opt-in already applied
+  NOOP  qwen-integer-bounds already applied
+  OK    modern-structural-tag-fallback
+  NOOP  modern-structural-tag-fallback already applied
+Qwen tool grammar CPU contracts: PASS
+.......
+----------------------------------------------------------------------
+Ran 7 tests in 0.002s
+
+OK
+Radiance test plan:
+- lfm3-backport-cpu [contract / cpu / auto]
+    python benchmarks/bin/check_lfm3_backport_cpu.py
+- v033-upgrade-cpu [contract / cpu / auto]
+    python benchmarks/bin/check_v033_upgrade_cpu.py
+- control-plane-validate [static / cpu / auto]
+    python tools/validate_control_plane.py
+- python-compile [static / cpu / auto]
+    python -m compileall -q _patchlib.py install_radiance_hooks.py patch_*.py radiance_*.py benchmarks/bin tools
+- kv-offload-registration-cpu [contract / cpu / auto]
+    python benchmarks/bin/check_kv_offload_registration.py
+- kv-offload-rank-sharded-cpu [contract / cpu / auto]
+    python benchmarks/bin/check_kv_offload_rank_sharded.py
+- kv-offload-restore-cpu [contract / cpu / auto]
+    python benchmarks/bin/check_kv_offload_restore.py
+- qwen-tool-grammar-cpu [contract / cpu / auto]
+    python benchmarks/bin/check_qwen_tool_grammar_cpu.py
+- client-tool-gate-cpu [contract / cpu / auto]
+    python benchmarks/bin/check_client_tool_gate.py
+RUN  lfm3-backport-cpu: python benchmarks/bin/check_lfm3_backport_cpu.py
+PASS lfm3-backport-cpu
+RUN  v033-upgrade-cpu: python benchmarks/bin/check_v033_upgrade_cpu.py
+PASS v033-upgrade-cpu
+RUN  control-plane-validate: python tools/validate_control_plane.py
+PASS control-plane-validate
+RUN  python-compile: python -m compileall -q _patchlib.py install_radiance_hooks.py patch_*.py radiance_*.py benchmarks/bin tools
+PASS python-compile
+RUN  kv-offload-registration-cpu: python benchmarks/bin/check_kv_offload_registration.py
+PASS kv-offload-registration-cpu
+RUN  kv-offload-rank-sharded-cpu: python benchmarks/bin/check_kv_offload_rank_sharded.py
+PASS kv-offload-rank-sharded-cpu
+RUN  kv-offload-restore-cpu: python benchmarks/bin/check_kv_offload_restore.py
+PASS kv-offload-restore-cpu
+RUN  qwen-tool-grammar-cpu: python benchmarks/bin/check_qwen_tool_grammar_cpu.py
+PASS qwen-tool-grammar-cpu
+RUN  client-tool-gate-cpu: python benchmarks/bin/check_client_tool_gate.py
+PASS client-tool-gate-cpu

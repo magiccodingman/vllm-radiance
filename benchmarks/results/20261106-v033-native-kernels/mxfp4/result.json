@@ -1,0 +1,185 @@
+{
+  "status": "ROCM10_NATIVE_MXFP4_PASS_NOT_FRAMEWORK_QUALIFICATION",
+  "complete": true,
+  "visible_count": 1,
+  "scope": "Direct HIP on GPU0, exact FP8 activation/E2M1 weight/E8M0-scale operands versus independent FP64 dots. Folded and per-block kernels, decode/prefill/TN4, K64-only width, partial N, TP1-wide N34816, guards/counters/changed-input graphs. No PyTorch loaded in GPU process.",
+  "extension_sha256": "c8a5dc6157c56c0f26402ead0225a4443e99ee662503db85a1c1688a2ac3f8af",
+  "cases": [
+    {
+      "file": "case0-m1-n128-k256.npz",
+      "m": 1,
+      "n": 128,
+      "k": 256,
+      "folded": true,
+      "relative_error": 0.0012564455649390763,
+      "changed_input_graph_error": 0.0012564455649390763,
+      "guards_intact": true,
+      "decode_counters_reset": true
+    },
+    {
+      "file": "case0-m1-n128-k256.npz",
+      "m": 1,
+      "n": 128,
+      "k": 256,
+      "folded": false,
+      "relative_error": 0.0012564455649390763,
+      "changed_input_graph_error": 0.0012564455649390763,
+      "guards_intact": true,
+      "decode_counters_reset": true
+    },
+    {
+      "file": "case1-m2-n144-k192.npz",
+      "m": 2,
+      "n": 144,
+      "k": 192,
+      "folded": true,
+      "relative_error": 0.001631352602201778,
+      "changed_input_graph_error": 0.001631352602201778,
+      "guards_intact": true,
+      "decode_counters_reset": true
+    },
+    {
+      "file": "case1-m2-n144-k192.npz",
+      "m": 2,
+      "n": 144,
+      "k": 192,
+      "folded": false,
+      "relative_error": 0.001631352602201778,
+      "changed_input_graph_error": 0.001631352602201778,
+      "guards_intact": true,
+      "decode_counters_reset": true
+    },
+    {
+      "file": "case2-m17-n48-k256.npz",
+      "m": 17,
+      "n": 48,
+      "k": 256,
+      "folded": true,
+      "relative_error": 0.0016704016033323964,
+      "changed_input_graph_error": 0.0016704016033323964,
+      "guards_intact": true,
+      "decode_counters_reset": true
+    },
+    {
+      "file": "case2-m17-n48-k256.npz",
+      "m": 17,
+      "n": 48,
+      "k": 256,
+      "folded": false,
+      "relative_error": 0.0016704016033323964,
+      "changed_input_graph_error": 0.0016704016033323964,
+      "guards_intact": true,
+      "decode_counters_reset": true
+    },
+    {
+      "file": "case3-m64-n128-k256.npz",
+      "m": 64,
+      "n": 128,
+      "k": 256,
+      "folded": true,
+      "relative_error": 0.0016283161890646137,
+      "changed_input_graph_error": 0.0016283161890646137,
+      "guards_intact": true,
+      "decode_counters_reset": true
+    },
+    {
+      "file": "case3-m64-n128-k256.npz",
+      "m": 64,
+      "n": 128,
+      "k": 256,
+      "folded": false,
+      "relative_error": 0.0016283161890646137,
+      "changed_input_graph_error": 0.0016283161890646137,
+      "guards_intact": true,
+      "decode_counters_reset": true
+    },
+    {
+      "file": "case4-m65-n128-k256.npz",
+      "m": 65,
+      "n": 128,
+      "k": 256,
+      "folded": true,
+      "relative_error": 0.0016676822707977891,
+      "changed_input_graph_error": 0.0016676822707977891,
+      "guards_intact": true,
+      "decode_counters_reset": true
+    },
+    {
+      "file": "case4-m65-n128-k256.npz",
+      "m": 65,
+      "n": 128,
+      "k": 256,
+      "folded": false,
+      "relative_error": 0.0016676822707977891,
+      "changed_input_graph_error": 0.0016676822707977891,
+      "guards_intact": true,
+      "decode_counters_reset": true
+    },
+    {
+      "file": "case5-m129-n144-k192.npz",
+      "m": 129,
+      "n": 144,
+      "k": 192,
+      "folded": true,
+      "relative_error": 0.0016666567615012426,
+      "changed_input_graph_error": 0.0016666567615012426,
+      "guards_intact": true,
+      "decode_counters_reset": true
+    },
+    {
+      "file": "case5-m129-n144-k192.npz",
+      "m": 129,
+      "n": 144,
+      "k": 192,
+      "folded": false,
+      "relative_error": 0.0016666567615012426,
+      "changed_input_graph_error": 0.0016666567615012426,
+      "guards_intact": true,
+      "decode_counters_reset": true
+    },
+    {
+      "file": "case6-m2048-n128-k256.npz",
+      "m": 2048,
+      "n": 128,
+      "k": 256,
+      "folded": true,
+      "relative_error": 0.0016625182917351412,
+      "changed_input_graph_error": 0.0016625182917351412,
+      "guards_intact": true,
+      "decode_counters_reset": true
+    },
+    {
+      "file": "case6-m2048-n128-k256.npz",
+      "m": 2048,
+      "n": 128,
+      "k": 256,
+      "folded": false,
+      "relative_error": 0.0016625182917351412,
+      "changed_input_graph_error": 0.0016625182917351412,
+      "guards_intact": true,
+      "decode_counters_reset": true
+    },
+    {
+      "file": "case7-m1-n34816-k256.npz",
+      "m": 1,
+      "n": 34816,
+      "k": 256,
+      "folded": true,
+      "relative_error": 0.0016821554649541748,
+      "changed_input_graph_error": 0.0016821554649541748,
+      "guards_intact": true,
+      "decode_counters_reset": true
+    },
+    {
+      "file": "case7-m1-n34816-k256.npz",
+      "m": 1,
+      "n": 34816,
+      "k": 256,
+      "folded": false,
+      "relative_error": 0.0016821554649541748,
+      "changed_input_graph_error": 0.0016821554649541748,
+      "guards_intact": true,
+      "decode_counters_reset": true
+    }
+  ]
+}

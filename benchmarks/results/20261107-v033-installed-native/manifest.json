@@ -1,0 +1,36 @@
+{
+  "base_image_id": "sha256:47637f48f843a8fe2e6c6200cc906a7d037213caa56d015b556358e0c5f65ea4",
+  "base_revision": "fc28058d20b51ee2cc3569176a9d46059b40a25f",
+  "hardware": "one physical R9700, GPU0 PCI0000:03:00.0/renderD128",
+  "scope": "Synthetic native fixtures; later LFM repairs applied only in disposable containers; not final rebuilt-image or real-model qualification",
+  "repair_source_sha256": {
+    "patch_lfm3_backport.py": "21e931f3063dc01121628403efa8dcd6e4e44e60a314f5d0158adb40bcc62c30",
+    "benchmarks/bin/check_lfm3_backport_cpu.py": "e8c1fdbdf73b98c7ced6cbe1f027909124937bf88df2b261bae50b751a4ad9db",
+    "upstream/vllm-lfm3/SOURCE_PROVENANCE.json": "2c2257fc9b17eda05e28ffc07dedf6b63ebc24c13297641cb6e454d3eb21f38d"
+  },
+  "artifacts": {
+    ".gitattributes": "d8128cdd66c22ff1275c8febbabd1d5012fc419e2e7fad13ce3959ee59d2c5f0",
+    "lfm3-native-repair-02/lfm3-native.log": "494708251a19cfc1525d5b598955589d33f57358fa8132338b4e7d837841cdaf",
+    "lfm3-native-repair-01/lfm3-native.log": "b1e76013eb83c3610b6861535d7cb025df5ab0d2a9e9bc3aa40fc465d8e49634",
+    "lfm3-native-repair-01/pr-cpu.log": "5c0b6c991be6b134f7900c8f5e4fa9603454ce2bb7ea230d7c0d02e0d35a28cc",
+    "lfm3-stock-prefill-control-01/result.log": "78ae482f10db030d84a8e6545aa34204f4f3c295b038d5af8a1d07021c6123ea",
+    "lfm3-stock-prefill-control-01/run.py": "34dfed01306ea3797957fb69394cccbb97a4b02654b1c0e07ddcdf07fd96301b",
+    "lfm3-prefill-fp64-oracle-01/run.py": "205c67ade341e8ed965cf1552a3aca2f185eac27181f91f47e85a3d3f211606e",
+    "lfm3-prefill-fp64-oracle-01/run.log": "65d815762ba5a25234df11b17ff3130149065cbe8ce3e5cd5136bf05826d3824",
+    "lfm3-prefill-fp64-oracle-01/result.json": "908aceabc6c66a5eda5554bd996a3a2a0d2b578059510584d5ce1ef75fe4abbd",
+    "initial/gdn-extreme-decay-h24-native.log": "38c6181c2ddfb529285f6ddf7e58c14285380c0a741dab5ff668f7ac55617c00",
+    "initial/v030-upstream-native.log": "2bccda8f7ef20dcc4ae5deac4590f44f0b8f4702f51e3dbb8f2d6806920aed16",
+    "initial/dflash-independent-noise-native.log": "bb798ef83986b56d859880e2f8f1cac4821c5553b7c7f2ae4d5c8073ecfaec9d",
+    "initial/results.json": "0641e914950f24ded3ad01bded692dc7d2dfde052e2aaf5b13db148d8daa7fb3",
+    "initial/gdn-extreme-decay-native.log": "863b4b230de3b00589e0c17156d13fddd37a6bdefa5ddbbafa39798baa345137",
+    "initial/versions-before.json": "55864a732107251d47c1b9f19ed7800810ac39d705a136abeab02335bb92c4c4",
+    "initial/lfm3-native.log": "9c1c80f10bbbd9008a5bf6b151c1fa5c436d09d889b60bddb9d3947c64822622",
+    "initial/r4d-attention-native.log": "0046c0e476d3fa207b35c868bc67b633859169251413d8f411bfd0f137c94230",
+    "initial/verify-head-native.log": "af32bbed855470c385d8c376d65627cc81bc7c89a2f9b34c12d7a02e1dc048f0",
+    "initial/nvfp4-native.log": "5adf0004854805ba6bc033eaa26829c7a182cc064197a3dd3dd4f0e1e163b315",
+    "initial/gpu-preflight.json": "b58702c4b894672e08723e5e6efbaf199e5524f28e72e5d558a9827e77ce1eb9",
+    "lfm3-prefill-fp32-control-01/run.py": "b03ea1f13677eeaffd5d1d01311220f5624baca5f68bda642fa121a3508dea02",
+    "lfm3-prefill-fp32-control-01/run.log": "896039467fddbabd211ae83b21d3352b29dc1944614e67fc5c16b99182a580b5",
+    "lfm3-prefill-fp32-control-01/result.json": "6355940d6934926f5e3d386f0e75d08cfae51e7c93ea4fc29dc71092b5b0fe9a"
+  }
+}

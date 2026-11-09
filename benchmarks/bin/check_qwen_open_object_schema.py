@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import xgrammar as xgr
 
 from vllm.entrypoints.openai.chat_completion.protocol import (
     ChatCompletionNamedToolChoiceParam,
@@ -13,7 +14,6 @@ from vllm.tool_parsers.structural_tag_registry import (
     _normalize_qwen_tool_schemas,
     get_model_structural_tag,
 )
-from xgrammar.testing import _qwen_xml_tool_calling_to_ebnf
 
 
 def bridge_tool(arguments_schema: dict[str, object]) -> dict[str, object]:
@@ -67,28 +67,50 @@ def main() -> None:
         declared["function"]["parameters"]["properties"]["arguments"]  # type: ignore[index]
     )
 
-    # XGrammar 0.2.3 must now select a JSON-braced nested object rather than
-    # recursively nested Qwen <parameter> tags that the flat parser corrupts.
-    ebnf = _qwen_xml_tool_calling_to_ebnf(json.dumps(parameters), False)
-    arguments_rule = next(
-        line for line in ebnf.splitlines() if line.startswith("root_part_0 ::=")
-    )
-    assert "root_prop_" in arguments_rule, arguments_rule
-    assert "xml_object" not in arguments_rule, arguments_rule
-
     # Exercise the public structural-tag builder as vLLM does for named calls.
-    tool = ChatCompletionToolsParam.model_validate(bridge_tool({"type": "object"}))
+    supplied = bridge_tool({"type": "object"})
+    supplied["function"]["strict"] = True
+    tool = ChatCompletionToolsParam.model_validate(supplied)
+    choice = ChatCompletionNamedToolChoiceParam.model_validate(
+        {"type": "function", "function": {"name": "tool_call"}}
+    )
     tag = get_model_structural_tag(
         model="qwen_3_coder",
         tools=[tool],
-        tool_choice=ChatCompletionNamedToolChoiceParam.model_validate(
-            {"type": "function", "function": {"name": "tool_call"}}
-        ),
+        tool_choice=choice,
         reasoning=True,
     )
     assert tag is not None
     serialized = tag.model_dump_json()
     assert '"additionalProperties":true' in serialized, serialized
+    xgr.Grammar.from_structural_tag(serialized)
+
+    # Use the supported compiler/matcher API rather than a removed testing-only
+    # EBNF converter. Check the actual wire representation, independent of rule
+    # names: nested objects stay JSON-braced; nested XML and wrong types reject.
+    plain_tag = get_model_structural_tag("qwen_3_coder", [tool], choice, False)
+    assert plain_tag is not None
+    tokenizer = xgr.TokenizerInfo(
+        [bytes([index]) for index in range(256)] + [b"<eos>"], stop_token_ids=[256]
+    )
+    compiled = xgr.GrammarCompiler(tokenizer, max_threads=2).compile_grammar(
+        xgr.Grammar.from_structural_tag(plain_tag.model_dump_json())
+    )
+    for content, expected in (
+        ("{}", True),
+        (json.dumps({"ref": "e12", "nested": {"count": 1}, "items": [{"id": 3}]}), True),
+        ("<parameter=ref>e12</parameter>", False),
+        ("[]", False),
+        ('{"ref":', False),
+    ):
+        wire = ("<tool_call>\n<function=tool_call>\n"
+                "<parameter=name>package_probe</parameter>\n"
+                f"<parameter=arguments>{content}</parameter>\n"
+                "</function>\n</tool_call>")
+        matcher = xgr.GrammarMatcher(compiled)
+        complete = (matcher.accept_string(wire) and matcher.accept_token(256)
+                    and matcher.is_terminated())
+        assert complete is expected, (content, complete)
 
     print("qwen open nested-object structural-tag regression check: PASS")
 

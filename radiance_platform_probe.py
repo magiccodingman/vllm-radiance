@@ -17,11 +17,15 @@ def identity(value):
 
 
 class PlatformProbe:
-    def platform_snapshot(self):
+    def platform_snapshot(self, expected_runner="v2"):
         import torch
         runner = self.model_runner
-        if type(runner).__module__ != "vllm.v1.worker.gpu.model_runner":
-            raise RuntimeError(f"Expected Runner V2, got {type(runner)}")
+        modules = {"v1": "vllm.v1.worker.gpu_model_runner",
+                   "v2": "vllm.v1.worker.gpu.model_runner"}
+        if expected_runner not in modules:
+            raise ValueError("expected_runner must be v1 or v2")
+        if type(runner).__module__ != modules[expected_runner]:
+            raise RuntimeError(f"Expected Runner {expected_runner}, got {type(runner)}")
         model = runner.get_model()
         speculator = getattr(runner, "speculator", None)
         spec_config = self.vllm_config.speculative_config
@@ -51,11 +55,11 @@ class PlatformProbe:
                 row["radiance_w4a8_ok"] = module.radiance_w4a8_ok
                 if not module.radiance_w4a8_ok:
                     raise RuntimeError(f"Required resident W4A8 fell back: {name}")
-            for attr in ("quant_method", "kernel", "attn_backend", "impl"):
+            for attr in ("quant_method", "kernel", "scheme", "fp8_linear", "attn_backend", "impl"):
                 value = getattr(module, attr, None)
                 if value is not None:
                     row[attr] = identity(value)
-                    for nested in ("kernel", "scheme", "quant_method"):
+                    for nested in ("kernel", "scheme", "quant_method", "fp8_linear"):
                         obj = getattr(value, nested, None)
                         if obj is not None:
                             row[attr][nested] = identity(obj)

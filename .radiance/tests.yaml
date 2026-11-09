@@ -13,6 +13,8 @@ qualification_levels:
 - performance-qualified
 - release-qualified
 change_map:
+- pattern: '^(patch_lfm3_|upstream/vllm-lfm3/|benchmarks/bin/check_lfm3_|docker-compose\.lfm3)'
+  areas: [lfm3, upgrade, attention]
 - pattern: '^benchmarks/bin/(run_client_tool_gate|check_client_tool_gate|run_tool_schema_gate)'
   areas: [parser, structured-output]
 - pattern: '^(\.radiance/|tools/|AGENTS\.md$|CONTRIBUTING\.md$|docs/maintenance/)'
@@ -46,10 +48,66 @@ change_map:
 - pattern: '^(radiance_r4d_attn|patch_r4d|patch_unified_attention_lds)'
   areas: [attention, libr4d]
 profiles:
-  pr: [control-plane-validate, python-compile, kv-offload-registration-cpu, kv-offload-rank-sharded-cpu, kv-offload-restore-cpu, qwen-tool-grammar-cpu, client-tool-gate-cpu]
-  upgrade: [control-plane-validate, python-compile, kv-offload-registration-cpu, kv-offload-rank-sharded-cpu, kv-offload-restore-cpu, parser-shared-engine-image, xgrammar-spec-image, qwen-open-object-image, qwen-tool-grammar-image, client-tool-gate-cpu, client-tool-live, fp8-kv-calibration-image, tunableop-preflight-image, r9700-tp2-smoke, tool-schema-live, open-object-tool-live, betterbench-standard, correctness-equivalence]
-  release: [control-plane-validate, python-compile, kv-offload-registration-cpu, kv-offload-rank-sharded-cpu, kv-offload-restore-cpu, parser-shared-engine-image, xgrammar-spec-image, qwen-open-object-image, qwen-tool-grammar-image, client-tool-gate-cpu, client-tool-live, fp8-kv-calibration-image, tunableop-preflight-image, r9700-tp2-smoke, tool-schema-live, open-object-tool-live, betterbench-standard, correctness-equivalence, capacity-qualification]
+  pr: [lfm3-backport-cpu, v033-upgrade-cpu, control-plane-validate, python-compile, kv-offload-registration-cpu, kv-offload-rank-sharded-cpu, kv-offload-restore-cpu, qwen-tool-grammar-cpu, client-tool-gate-cpu]
+  upgrade: [lfm3-backport-cpu, v033-upgrade-cpu, lfm3-image, lfm3-native, draft-head-packing-image, r4d-attention-native, gdn-extreme-decay-native, gdn-extreme-decay-h24-native, dflash-independent-noise-native, control-plane-validate, python-compile, kv-offload-registration-cpu, kv-offload-rank-sharded-cpu, kv-offload-restore-cpu, parser-shared-engine-image, xgrammar-spec-image, qwen-open-object-image, qwen-tool-grammar-image, client-tool-gate-cpu, client-tool-live, fp8-kv-calibration-image, tunableop-preflight-image, r9700-tp2-smoke, tool-schema-live, open-object-tool-live, betterbench-standard, correctness-equivalence]
+  release: [lfm3-backport-cpu, v033-upgrade-cpu, lfm3-image, lfm3-native, draft-head-packing-image, r4d-attention-native, gdn-extreme-decay-native, gdn-extreme-decay-h24-native, dflash-independent-noise-native, control-plane-validate, python-compile, kv-offload-registration-cpu, kv-offload-rank-sharded-cpu, kv-offload-restore-cpu, parser-shared-engine-image, xgrammar-spec-image, qwen-open-object-image, qwen-tool-grammar-image, client-tool-gate-cpu, client-tool-live, fp8-kv-calibration-image, tunableop-preflight-image, r9700-tp2-smoke, tool-schema-live, open-object-tool-live, betterbench-standard, correctness-equivalence, capacity-qualification]
 tests:
+- id: gdn-extreme-decay-h24-native
+  class: contract
+  hardware: r9700
+  areas: [gdn, libr4d, upgrade]
+  command: 'python benchmarks/bin/check_gdn_extreme_decay.py --heads 24 --output "$RUN_ROOT/gdn-extreme-decay-h24.json"'
+  automatic: false
+  ci: false
+  description: FP64 GDN recurrence and graph checks for the 24/8 head geometry on one GPU; this is not distributed TP2 qualification.
+- id: r4d-attention-native
+  class: contract
+  hardware: r9700
+  areas: [attention, libr4d, upgrade]
+  command: 'python benchmarks/bin/check_r4d_attention_native.py --out "$RUN_ROOT/r4d-attention.json"'
+  automatic: false
+  ci: false
+  description: Installed BF16-query/BF16-or-FP8-KV paged prefill/decode against FP64 causal attention, shuffled/partial pages, guards and changed-input graphs on one visible GPU.
+- id: lfm3-backport-cpu
+  class: contract
+  hardware: cpu
+  areas: [lfm3, upgrade]
+  command: python benchmarks/bin/check_lfm3_backport_cpu.py
+  automatic: true
+  ci: true
+  description: Immutable official LFM3 payload hashes and fail-closed installation before source mutation.
+- id: lfm3-image
+  class: contract
+  hardware: candidate-image
+  areas: [lfm3, upgrade, attention]
+  command: 'python benchmarks/bin/check_lfm3_image.py --model "$MODEL_PATH" && python -m pytest --noconftest upstream/vllm-lfm3/test_lfm3.py -q'
+  automatic: false
+  ci: false
+  description: Native registry/config, checkpoint compressed-tensors settings and upstream CPU proportional-RoPE reference.
+- id: lfm3-native
+  class: contract
+  hardware: r9700
+  areas: [lfm3, attention, upgrade]
+  command: python -m pytest --noconftest upstream/vllm-lfm3/test_causal_conv1d.py -q
+  automatic: false
+  ci: false
+  description: Unchanged upstream causal-convolution suite including widths 3-7, initial state, padded/gathered sequences and width rejection; requires one visible GPU.
+- id: v033-upgrade-cpu
+  class: contract
+  hardware: cpu
+  areas: [upgrade, attention, dflash, runtime]
+  command: python benchmarks/bin/check_v033_upgrade_cpu.py
+  automatic: true
+  ci: true
+  description: FP8 draft exclusion negative controls, RDNA4 LDS bounds and native plugin metadata discovery.
+- id: draft-head-packing-image
+  class: contract
+  hardware: candidate-image
+  areas: [upgrade, dflash, speculative]
+  command: python benchmarks/bin/check_draft_head_packing.py
+  automatic: false
+  ci: false
+  description: Real Torch CPU INT2/INT4 packing against an independent reference, chunk boundaries, NaNs and cache reuse.
 - id: client-tool-gate-cpu
   class: contract
   hardware: cpu

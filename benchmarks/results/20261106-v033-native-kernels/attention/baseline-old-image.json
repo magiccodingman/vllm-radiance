@@ -1,0 +1,153 @@
+{
+  "status": "NATIVE_ATTENTION_PASS_NOT_PERFORMANCE",
+  "r4d_version": "0.5.0",
+  "maintained_commit": null,
+  "extension_sha256": "867448c87fc09a08626783b90787bdfe40b144c321d4aad7520768a953d2aef3",
+  "device": "AMD Radeon AI PRO R9700",
+  "cases": [
+    {
+      "kv_dtype": "bf16",
+      "q_len": 1,
+      "contexts": [
+        17,
+        33
+      ],
+      "kernel": "attn_decode_h256_gqa6_bf16kv",
+      "relative_error": 0.0017092344919158071,
+      "maximum_absolute_error": 0.002359134341387459,
+      "changed_input_graph_relative_error": 0.0017477326340071993
+    },
+    {
+      "kv_dtype": "bf16",
+      "q_len": 7,
+      "contexts": [
+        65,
+        129
+      ],
+      "kernel": "attn_decode_h256_gqa6_bf16kv",
+      "relative_error": 0.0017299531688467426,
+      "maximum_absolute_error": 0.0011144561721348478,
+      "changed_input_graph_relative_error": 0.0017513430821393939
+    },
+    {
+      "kv_dtype": "bf16",
+      "q_len": 10,
+      "contexts": [
+        1025,
+        769
+      ],
+      "kernel": "attn_decode_h256_gqa6_bf16kv",
+      "relative_error": 0.0017407125229304762,
+      "maximum_absolute_error": 0.00027712469696546116,
+      "changed_input_graph_relative_error": 0.001765509476505907
+    },
+    {
+      "kv_dtype": "bf16",
+      "q_len": 17,
+      "contexts": [
+        129,
+        193
+      ],
+      "kernel": "attn_prefill_h256_gqa6_bf16kv",
+      "relative_error": 0.0016860916276497792,
+      "maximum_absolute_error": 0.000521452856835497,
+      "changed_input_graph_relative_error": 0.0016926060216434133
+    },
+    {
+      "kv_dtype": "bf16",
+      "q_len": 65,
+      "contexts": [
+        257,
+        193
+      ],
+      "kernel": "attn_prefill_h256_gqa6_bf16kv",
+      "relative_error": 0.0016750939173009972,
+      "maximum_absolute_error": 0.0009879765781459215,
+      "changed_input_graph_relative_error": 0.0016884393283810501
+    },
+    {
+      "kv_dtype": "bf16",
+      "q_len": 129,
+      "contexts": [
+        513,
+        385
+      ],
+      "kernel": "attn_prefill_h256_gqa6_bf16kv",
+      "relative_error": 0.0016832491481250458,
+      "maximum_absolute_error": 0.0005087807893259244,
+      "changed_input_graph_relative_error": 0.0016929372124927682
+    },
+    {
+      "kv_dtype": "fp8",
+      "q_len": 1,
+      "contexts": [
+        17,
+        33
+      ],
+      "kernel": "attn_decode_h256_gqa6_fp8kv",
+      "relative_error": 0.0017475350615572612,
+      "maximum_absolute_error": 0.0016368810531799394,
+      "changed_input_graph_relative_error": 0.001728818857778705
+    },
+    {
+      "kv_dtype": "fp8",
+      "q_len": 7,
+      "contexts": [
+        65,
+        129
+      ],
+      "kernel": "attn_decode_h256_gqa6_fp8kv",
+      "relative_error": 0.0017214410110407035,
+      "maximum_absolute_error": 0.0010962957219688985,
+      "changed_input_graph_relative_error": 0.0017419879164952282
+    },
+    {
+      "kv_dtype": "fp8",
+      "q_len": 10,
+      "contexts": [
+        1025,
+        769
+      ],
+      "kernel": "attn_decode_h256_gqa6_fp8kv",
+      "relative_error": 0.0017377451391001298,
+      "maximum_absolute_error": 0.00029161567744392936,
+      "changed_input_graph_relative_error": 0.0017618155422570816
+    },
+    {
+      "kv_dtype": "fp8",
+      "q_len": 17,
+      "contexts": [
+        129,
+        193
+      ],
+      "kernel": "attn_prefill_h256_gqa6_fp8kv",
+      "relative_error": 0.001685723902414878,
+      "maximum_absolute_error": 0.0005285048321373165,
+      "changed_input_graph_relative_error": 0.001698209588144993
+    },
+    {
+      "kv_dtype": "fp8",
+      "q_len": 65,
+      "contexts": [
+        257,
+        193
+      ],
+      "kernel": "attn_prefill_h256_gqa6_fp8kv",
+      "relative_error": 0.0016785676136155203,
+      "maximum_absolute_error": 0.0005345113463821605,
+      "changed_input_graph_relative_error": 0.0016925233075521522
+    },
+    {
+      "kv_dtype": "fp8",
+      "q_len": 129,
+      "contexts": [
+        513,
+        385
+      ],
+      "kernel": "attn_prefill_h256_gqa6_fp8kv",
+      "relative_error": 0.0016834987415071875,
+      "maximum_absolute_error": 0.0005022368212700135,
+      "changed_input_graph_relative_error": 0.0016933914877774144
+    }
+  ]
+}

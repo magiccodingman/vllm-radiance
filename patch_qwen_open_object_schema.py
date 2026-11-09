@@ -26,11 +26,13 @@ LIB = Path(sysconfig.get_paths()["purelib"])
 F = LIB / "vllm/tool_parsers/structural_tag_registry.py"
 
 HELPER_ANCHOR = '''_VLLM_STRUCTURAL_TAG_REGISTRY: dict[str, StructuralTagBuilder] = {}
+_BUILTIN_TOOL_STRUCTURAL_TAG_MODELS: set[str] = set()
 
 
 '''
 
 HELPER_NEW = '''_VLLM_STRUCTURAL_TAG_REGISTRY: dict[str, StructuralTagBuilder] = {}
+_BUILTIN_TOOL_STRUCTURAL_TAG_MODELS: set[str] = set()
 
 
 _QWEN_XML_STRUCTURAL_TAG_MODELS = frozenset(

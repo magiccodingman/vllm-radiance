@@ -1,0 +1,35 @@
+data: {"id":"cmpl-9cb66181343a03f7","object":"text_completion","created":1794014140,"model":"radiance-v033-lfm3","choices":[{"index":0,"text":" Paris","logprobs":null,"finish_reason":null,"stop_reason":null,"prompt_token_ids":[597,5205,302,3980,355],"token_ids":[4741],"weight_versions":null}],"kv_transfer_params":null}
+
+data: {"id":"cmpl-9cb66181343a03f7","object":"text_completion","created":1794014140,"model":"radiance-v033-lfm3","choices":[{"index":0,"text":".\n\n","logprobs":null,"finish_reason":null,"stop_reason":null,"prompt_token_ids":null,"token_ids":[63908],"weight_versions":null}],"kv_transfer_params":null}
+
+data: {"id":"cmpl-9cb66181343a03f7","object":"text_completion","created":1794014140,"model":"radiance-v033-lfm3","choices":[{"index":0,"text":"The","logprobs":null,"finish_reason":null,"stop_reason":null,"prompt_token_ids":null,"token_ids":[597],"weight_versions":null}],"kv_transfer_params":null}
+
+data: {"id":"cmpl-9cb66181343a03f7","object":"text_completion","created":1794014140,"model":"radiance-v033-lfm3","choices":[{"index":0,"text":" capital","logprobs":null,"finish_reason":null,"stop_reason":null,"prompt_token_ids":null,"token_ids":[5205],"weight_versions":null}],"kv_transfer_params":null}
+
+data: {"id":"cmpl-9cb66181343a03f7","object":"text_completion","created":1794014140,"model":"radiance-v033-lfm3","choices":[{"index":0,"text":" of","logprobs":null,"finish_reason":null,"stop_reason":null,"prompt_token_ids":null,"token_ids":[302],"weight_versions":null}],"kv_transfer_params":null}
+
+data: {"id":"cmpl-9cb66181343a03f7","object":"text_completion","created":1794014140,"model":"radiance-v033-lfm3","choices":[{"index":0,"text":" Japan","logprobs":null,"finish_reason":null,"stop_reason":null,"prompt_token_ids":null,"token_ids":[3888],"weight_versions":null}],"kv_transfer_params":null}
+
+data: {"id":"cmpl-9cb66181343a03f7","object":"text_completion","created":1794014140,"model":"radiance-v033-lfm3","choices":[{"index":0,"text":" is","logprobs":null,"finish_reason":null,"stop_reason":null,"prompt_token_ids":null,"token_ids":[355],"weight_versions":null}],"kv_transfer_params":null}
+
+data: {"id":"cmpl-9cb66181343a03f7","object":"text_completion","created":1794014140,"model":"radiance-v033-lfm3","choices":[{"index":0,"text":" Tokyo","logprobs":null,"finish_reason":null,"stop_reason":null,"prompt_token_ids":null,"token_ids":[18943],"weight_versions":null}],"kv_transfer_params":null}
+
+data: {"id":"cmpl-9cb66181343a03f7","object":"text_completion","created":1794014140,"model":"radiance-v033-lfm3","choices":[{"index":0,"text":".\n\n","logprobs":null,"finish_reason":null,"stop_reason":null,"prompt_token_ids":null,"token_ids":[63908],"weight_versions":null}],"kv_transfer_params":null}
+
+data: {"id":"cmpl-9cb66181343a03f7","object":"text_completion","created":1794014140,"model":"radiance-v033-lfm3","choices":[{"index":0,"text":"The","logprobs":null,"finish_reason":null,"stop_reason":null,"prompt_token_ids":null,"token_ids":[597],"weight_versions":null}],"kv_transfer_params":null}
+
+data: {"id":"cmpl-9cb66181343a03f7","object":"text_completion","created":1794014140,"model":"radiance-v033-lfm3","choices":[{"index":0,"text":" capital","logprobs":null,"finish_reason":null,"stop_reason":null,"prompt_token_ids":null,"token_ids":[5205],"weight_versions":null}],"kv_transfer_params":null}
+
+data: {"id":"cmpl-9cb66181343a03f7","object":"text_completion","created":1794014140,"model":"radiance-v033-lfm3","choices":[{"index":0,"text":" of","logprobs":null,"finish_reason":null,"stop_reason":null,"prompt_token_ids":null,"token_ids":[302],"weight_versions":null}],"kv_transfer_params":null}
+
+data: {"id":"cmpl-9cb66181343a03f7","object":"text_completion","created":1794014140,"model":"radiance-v033-lfm3","choices":[{"index":0,"text":" Australia","logprobs":null,"finish_reason":null,"stop_reason":null,"prompt_token_ids":null,"token_ids":[5881],"weight_versions":null}],"kv_transfer_params":null}
+
+data: {"id":"cmpl-9cb66181343a03f7","object":"text_completion","created":1794014140,"model":"radiance-v033-lfm3","choices":[{"index":0,"text":" is","logprobs":null,"finish_reason":null,"stop_reason":null,"prompt_token_ids":null,"token_ids":[355],"weight_versions":null}],"kv_transfer_params":null}
+
+data: {"id":"cmpl-9cb66181343a03f7","object":"text_completion","created":1794014140,"model":"radiance-v033-lfm3","choices":[{"index":0,"text":" Can","logprobs":null,"finish_reason":null,"stop_reason":null,"prompt_token_ids":null,"token_ids":[2076],"weight_versions":null}],"kv_transfer_params":null}
+
+data: {"id":"cmpl-9cb66181343a03f7","object":"text_completion","created":1794014140,"model":"radiance-v033-lfm3","choices":[{"index":0,"text":"berra","logprobs":null,"finish_reason":"length","stop_reason":null,"prompt_token_ids":null,"token_ids":[59405],"weight_versions":null}],"kv_transfer_params":null}
+
+data: {"id":"cmpl-9cb66181343a03f7","object":"text_completion","created":1794014140,"model":"radiance-v033-lfm3","choices":[],"usage":{"prompt_tokens":5,"total_tokens":21,"completion_tokens":16},"system_fingerprint":"vllm-0.33.0-aad2c3fd"}
+
+data: [DONE]

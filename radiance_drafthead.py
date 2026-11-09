@@ -240,13 +240,25 @@ def _apply_head_int2(self, lm_head, hidden_states, embedding_bias):
     return y.reshape(*hidden_states.shape[:-1], -1)
 
 
+def _head_is_empty(rows):
+    """Bound the zero-check temporary; preserve signed zero and NaN semantics.
+
+    Adapted from amittell's GGZ14 Codeberg PR #60, commit 2ec647c12b.
+    This path accepts floating-point heads only, as checked by its caller.
+    """
+    for start in range(0, rows.shape[0], 8192):
+        if bool((rows.data[start:start + 8192] != 0).any()):
+            return False
+    return True
+
+
 def _apply_head_lazy(self, lm_head, hidden_states, embedding_bias):
     """First real call quantises, then hands over to the quantised path for good.
 
     Needed because the weight a drafter scores against may not exist yet when load_weights
     returns; here it is the argument, so it is guaranteed populated.
     """
-    if float(lm_head.weight.data.abs().max()) == 0.0:
+    if _head_is_empty(lm_head.weight):
         # Still empty on a real call: something is wrong, but a coarse head would be silently
         # catastrophic, so fall back to the stock GEMM rather than guess.
         return type(self)._apply_head(self, lm_head, hidden_states, embedding_bias)
@@ -278,7 +290,7 @@ def _quantize_draft_head(mtp, lp_attr="logits_processor"):
     # Quantising that yields an all-zero head, and the failure is silent and total: the serve comes
     # up, text stays coherent because the TARGET is fine, and only acceptance collapses to ~1.0 --
     # which reads as a plausible accuracy verdict on the quantisation. Defer instead.
-    if float(w.data.abs().max()) == 0.0:
+    if _head_is_empty(w):
         lp._apply_head = types.MethodType(_apply_head_lazy, lp)
         return "lm_head empty at load_weights (shared in later); quantising on first use"
     return _quantize_head_now(lp, lm_head)
@@ -314,10 +326,13 @@ def _quantize_head_now(lp, lm_head):
     # the VRAM the KV cache could have used.
     per_byte = 8 // BITS
     lv = (1 << BITS) - 1
+    # Release loader temporaries before packing pins their allocator segments.
+    if not torch.cuda.is_current_stream_capturing():
+        torch.cuda.empty_cache()
     packed = torch.empty(n, k // per_byte, dtype=torch.uint8, device=w.device)
     scale = torch.empty(n, k // GROUP, dtype=torch.bfloat16, device=w.device)
     zs = torch.empty(n, k // GROUP, dtype=torch.bfloat16, device=w.device)
-    CH = 8192
+    CH = 1024
     for i in range(0, n, CH):
         j = min(i + CH, n)
         wg = w.data[i:j].float().reshape(j - i, k // GROUP, GROUP)

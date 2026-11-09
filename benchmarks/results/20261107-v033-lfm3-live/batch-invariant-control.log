@@ -1,0 +1,281 @@
+[38;5;39;1m[0m
+[38;5;39;1m██████╗  █████╗ ██████╗ ██╗ █████╗ ███╗   ██╗ ██████╗███████╗[0m
+[38;5;39;1m██╔══██╗██╔══██╗██╔══██╗██║██╔══██╗████╗  ██║██╔════╝██╔════╝[0m
+[38;5;39;1m██████╔╝███████║██║  ██║██║███████║██╔██╗ ██║██║     █████╗[0m
+[38;5;39;1m██╔══██╗██╔══██║██║  ██║██║██╔══██║██║╚██╗██║██║     ██╔══╝[0m
+[38;5;39;1m██║  ██║██║  ██║██████╔╝██║██║  ██║██║ ╚████║╚██████╗███████╗[0m
+[38;5;39;1m╚═╝  ╚═╝╚═╝  ╚═╝╚═════╝ ╚═╝╚═╝  ╚═╝╚═╝  ╚═══╝ ╚═════╝╚══════╝[0m
+[2m  vLLM inference server · AMD Radeon AI PRO R9700 · gfx1201 / RDNA4[0m
+[2m  radiance [0m[38;5;39mv1.2.0-rc1.vllm0.33.0[0m
+
+[38;5;39;1m───[ GPUs ]──────────────────────────────────────────────────────[0m
+  detected : [32;1m1[0m GPU(s)[2m  (HIP_VISIBLE_DEVICES=0)[0m
+  [0] AMD Radeon AI PRO R9700    gfx1201    31.9 GiB   [32;1m✓ gfx1201[0m
+  arch check : [32;1mPASS[0m [2m(1/1 gfx1201)[0m
+
+[38;5;39;1m───[ RADIANCE optimizations ]────────────────────────────────────[0m
+  [2mfeature toggles (set to 0 to disable):[0m
+    [32;1mON [0m RADIANCE_USE_R4D           [2mhand-written gfx1201 kernels: attention, gated delta net, vision, all-reduce, DFlash GEMMs[0m
+    [32;1mON [0m RADIANCE_USE_R4D_GDN       [2mR4D gated-delta-net prefill and speculative-decode path[0m
+    [32;1mON [0m RADIANCE_USE_R4D_AR        [2mP2P one-shot all-reduce for TP=2, byte-identical to RCCL[0m
+    [32;1mON [0m RADIANCE_USE_R4D_AR_QUANT  [2mcompressed all-reduce payload for large messages: rotated 6-bit (on; not RCCL-identical)[0m
+    [32;1mON [0m RADIANCE_SKINNY_GEMM       [2mmeasured BF16 skinny GEMMs; use 'all' only as an explicit experiment[0m
+    [32;1mON [0m RADIANCE_GDN_META          [2mbyte-identical low-overhead GDN metadata construction[0m
+    [32;1mON [0m RADIANCE_GDN_SHARED_BUILD  [2mshare speculative GDN metadata work across equivalent KV groups[0m
+    [32;1mON [0m RADIANCE_TOPK_TRITON_MIN_ROWS [2mTriton top-k/top-p threshold on gfx1201[0m
+    [32;1mON [0m RADIANCE_TOPK_COMPOSITE    [2mmulti-block small-k sampling mask (KCAP-controlled)[0m
+    [33;1mOFF[0m RADIANCE_MXFP4             [2mnative gfx1201 Quark/OCP MXFP4 routing (opt-in)[0m
+    [33;1mOFF[0m RADIANCE_MXFP4_W4A8        [2mpacked MXFP4 weights x dynamic FP8 activations via RDNA4 WMMA[0m
+    [33;1mOFF[0m RADIANCE_MXFP4_WPERM       [2mfragment-order MXFP4 weights for the decode path[0m
+    [33;1mOFF[0m RADIANCE_MXFP4_DECODE_NT   [2mnontemporal decode weight loads (requires WPERM)[0m
+    [33;1mOFF[0m RADIANCE_MXFP4_A_TILED_MIN_M [2mfragment-tiled activation prefill threshold (requires FP8 stream)[0m
+    [33;1mOFF[0m RADIANCE_GDN_NORM_QUANT    [2mfused GDN norm, gate, and per-token FP8 quantization[0m
+    [33;1mOFF[0m RADIANCE_NORMQUANT_FUSION  [2mRX4 traced activation-quant profile (MXFP4 W4A8 only)[0m
+    [33;1mOFF[0m RADIANCE_FP8_STREAM        [2mRX4 TP2 AR + residual + RMSNorm + FP8 stream fusion[0m
+    [33;1mOFF[0m RADIANCE_QUARK_BF16_MTP    [2mload a verified BF16 MTP submodule outside the global Quark recipe[0m
+    [32;1mON [0m RADIANCE_PRESHUFFLE        [2mpreshuffled AITER FP8 blockscale GEMM[0m
+    [32;1mON [0m RADIANCE_FUSE_RMS_QUANT    [2mfold group-FP8 quant into the RMSNorm epilogue[0m
+    [32;1mON [0m RADIANCE_DYNAMIC_DRAFT     [2mper-request MTP draft-depth controller (needs speculative mtp)[0m
+    [33;1mOFF[0m RADIANCE_FAST_DRAFT        [2mINT2 exact-rerank head plus DFlash runtime W4 drafter (opt-in)[0m
+
+  [2mdynamic drafting (RADIANCE_DYNAMIC_DRAFT):[0m
+        [2mper-slot confidence gate: draft while cum. confidence >= TAU, take a free-win[0m
+        [2mn-gram, else verify; batch schedule caps serial MTP forwards at concurrency.[0m
+        [2m·[0m RADIANCE_DRAFT_SCHEDULE = [38;5;39m1:8,2:7,4:6,8:5,16:4[0m  [2mbatch-size MTP-forward ceiling (bs:max_depth, carry-forward)[0m
+        [2m·[0m RADIANCE_DRAFT_TAU = [38;5;39m0.28[0m  [2mconfidence-product stop threshold[0m
+
+  [2mRX4 sampling / DFlash controls:[0m
+        [2m·[0m RADIANCE_TOPK_COMPOSITE_KCAP = [38;5;39m64[0m  [2mlargest top-k routed to the composite sampler[0m
+        [2m·[0m RADIANCE_DFLASH_SELECTOR_TOPK = [38;5;39mcheckpoint[0m  [2m0/unset preserves the checkpoint selector width[0m
+
+  [2mNUMA binding (RADIANCE_NUMA_BIND / --numa-bind):[0m
+        [2moff (set =auto or pass --numa-bind to pin to the GPU-local node)[0m
+
+  [2mstartup:[0m
+        [2m·[0m RADIANCE_RUN_BWTEST = [38;5;39m0[0m  [2mGPU topology + bandwidth sweep at startup (on; backgrounded, ~1 s; set 0 to skip)[0m
+        [2m·[0m RADIANCE_BANNER_PLAIN = [38;5;39m0[0m  [2mdisable ANSI color (also NO_COLOR)[0m
+
+  [2mcalibration / persisted tuning (opt-in):[0m
+        [2m·[0m FP8-KV scales = [2mcheckpoint/default[0m
+        [2m·[0m TunableOp = [2moff[0m
+
+  [2mbaked-in (always on; correctness + GEMM path):[0m
+    [32;1m•[0m block-FP8 GEMM dispatcher; preshuffle / AITER split-K / generic + tuned fp8-configs
+    [32;1m•[0m tuned fused-MoE Triton configs for fine-grained MoE (Qwen3.6-35B-A3B E=256,N=256; ~-12% TTFT prefill)
+    [32;1m•[0m bf16 / auto KV cache attention fit + tune (fits the RDNA4 64 KiB LDS at head_size 256)
+    [32;1m•[0m amdsmi gfx1201 GPU enumeration fix (device_count / platform detect)
+    [32;1m•[0m upstream-native RDNA4 AITER routing (Triton paths only; CDNA CK/MFMA/ASM stay gated)
+    [32;1m•[0m upstream-native RDNA4 sampler routing (no legacy broad AITER gate)
+    [32;1m•[0m MTP drafter unpad fix (enables disable_padded_drafter_batch single-stream path)
+    [32;1m•[0m tool-parser streaming vs non-streaming consistency (vLLM #47137)
+    [32;1m•[0m from_json Jinja filter for tool-calling chat templates
+
+  [2mAITER routing (VLLM_ROCM_USE_AITER*):[0m
+    [32;1mAITER=1[0m  [32;1mAITER_UATTN=1[0m  [2mAITER_MHA=0[0m  [2mAITER_MLA=0[0m  [2mAITER_MOE=0[0m  [2mAITER_LINEAR=0[0m  [2mAITER_RMSNORM=0[0m  [2mAITER_FP8BMM=0[0m
+
+[38;5;39;1m───[ component versions ]────────────────────────────────────────[0m
+    radiance      [38;5;39m1.2.0-rc1.vllm0.33.0[0m
+    vllm          [38;5;39m0.33.0[0m
+    torch         [38;5;39m2.13.0+rocm10.0[0m
+    torchvision   [38;5;39m0.28.0+8fb8771[0m
+    triton        [38;5;39m3.8.0[0m
+    aiter         [38;5;39m0.1.26[0m
+    transformers  [38;5;39m5.16.1[0m
+    amdsmi        [38;5;39m27.0.0+6b0e43f3[0m
+    hip           [38;5;39m7.15.26333[0m
+    rocm          [38;5;39m10.0.0[0m
+    python        [38;5;39m3.12.3[0m
+[38;5;39;1m──────────────────────────────────────────────────────────────[0m
+
+[aiter] import [module_aiter_core] under /cache/aiter/module_aiter_core.so
+[radiance] preshuffle weight-shuffle-at-load hook installed
+[radiance] AITER shared config-reader tune installed (v0.33)
+[radiance] fast-reduce hook armed (RADIANCE_USE_R4D_AR=1, all_reduce wrap)
+[radiance.draft] RADIANCE_DYNAMIC_DRAFT=ON  controller=policy  tau=0.28  schedule=1:8,2:7,4:6,8:5,16:4  (GPU-resident capture + n-gram matcher; per-slot confidence gate short-circuits the forward loop)
+[radiance.vit] head_dim-72 attention installed
+[radiance.vit] Gemma4 vision attention installed (head_dim 72)
+(APIServer pid=1) INFO 11-07 01:16:48 [startup.py:38] 
+(APIServer pid=1) INFO 11-07 01:16:48 [startup.py:38]        █     █     █▄   ▄█
+(APIServer pid=1) INFO 11-07 01:16:48 [startup.py:38]  ▄▄ ▄█ █     █     █ ▀▄▀ █  version 0.33.0
+(APIServer pid=1) INFO 11-07 01:16:48 [startup.py:38]   █▄█▀ █     █     █     █  model   /models/lfm3
+(APIServer pid=1) INFO 11-07 01:16:48 [startup.py:38]    ▀▀  ▀▀▀▀▀ ▀▀▀▀▀ ▀     ▀
+(APIServer pid=1) INFO 11-07 01:16:48 [startup.py:38] 
+(APIServer pid=1) INFO 11-07 01:16:48 [startup.py:96] non-default args: {'model_tag': '/models/lfm3', 'enable_auto_tool_choice': True, 'tool_call_parser': 'qwen3_coder', 'host': '0.0.0.0', 'model': '/models/lfm3', 'dtype': 'bfloat16', 'max_model_len': 4096, 'served_model_name': ['radiance-v033-lfm3'], 'attention_backend': 'TRITON_ATTN', 'reasoning_parser': 'qwen3', 'worker_extension_cls': 'radiance_platform_probe.PlatformProbe', 'gpu_memory_utilization': 0.2, 'enable_prefix_caching': False, 'mamba_cache_mode': 'none', 'max_num_batched_tokens': 1024, 'max_num_seqs': 2}
+[transformers] Unrecognized keys in `rope_parameters` for 'rope_type'='default': {'sliding_attention', 'full_attention'}
+[transformers] Unrecognized keys in `rope_parameters` for 'rope_type'='default': {'sliding_attention', 'full_attention'}
+(APIServer pid=1) INFO 11-07 01:16:48 [model.py:744] Resolved architecture: Lfm3ForCausalLM
+(APIServer pid=1) INFO 11-07 01:16:48 [model.py:2170] Using max model len 4096
+(APIServer pid=1) WARNING 11-07 01:16:49 [arg_utils.py:2305] --mamba-cache-mode is deprecated and will be removed in v0.33.0. It has no effect: Mamba prefix caching follows --enable-prefix-caching.
+(APIServer pid=1) INFO 11-07 01:16:49 [scheduler.py:310] Chunked prefill is enabled with max_num_batched_tokens=1024.
+(APIServer pid=1) INFO 11-07 01:16:49 [kernel.py:480] Final IR op priority after setting platform defaults: IrOpPriorityConfig(rms_norm=['native'], fused_add_rms_norm=['native'], gelu_and_mul_sparse=['native'])
+[transformers] Unrecognized keys in `rope_parameters` for 'rope_type'='default': {'sliding_attention', 'full_attention'}
+[transformers] Unrecognized keys in `rope_parameters` for 'rope_type'='default': {'sliding_attention', 'full_attention'}
+(APIServer pid=1) INFO 11-07 01:16:50 [compilation.py:317] Enabled custom fusions: norm_quant, act_quant
+[aiter] import [module_aiter_core] under /cache/aiter/module_aiter_core.so
+[radiance] preshuffle weight-shuffle-at-load hook installed
+[radiance] AITER shared config-reader tune installed (v0.33)
+[radiance] fast-reduce hook armed (RADIANCE_USE_R4D_AR=1, all_reduce wrap)
+[radiance.draft] RADIANCE_DYNAMIC_DRAFT=ON  controller=policy  tau=0.28  schedule=1:8,2:7,4:6,8:5,16:4  (GPU-resident capture + n-gram matcher; per-slot confidence gate short-circuits the forward loop)
+[radiance.vit] head_dim-72 attention installed
+[radiance.vit] Gemma4 vision attention installed (head_dim 72)
+(EngineCore pid=297) INFO 11-07 01:17:08 [core.py:139] Initializing a V1 LLM engine (v0.33.0) with config: model='/models/lfm3', speculative_config=None, tokenizer='/models/lfm3', skip_tokenizer_init=False, tokenizer_mode=auto, revision=None, tokenizer_revision=None, trust_remote_code=False, dtype=torch.bfloat16, max_seq_len=4096, download_dir=None, load_format=auto, tensor_parallel_size=1, pipeline_parallel_size=1, data_parallel_size=1, decode_context_parallel_size=1, dcp_comm_backend=ag_rs, disable_custom_all_reduce=True, quantization=compressed-tensors, quantization_config=None, enforce_eager=False, aux_output_config=AuxOutputConfig(enable_return_routed_experts=False, max_bytes=None), kv_cache_dtype=auto, device_config=cuda, structured_outputs_config=StructuredOutputsConfig(backend='auto', disable_any_whitespace=False, disable_additional_properties=False, reasoning_parser='qwen3', reasoning_parser_plugin='', enable_in_reasoning=False), observability_config=ObservabilityConfig(show_hidden_metrics_for_version=None, otlp_traces_endpoint=None, collect_detailed_traces=None, per_request_spec_decode_metrics='none', kv_cache_metrics=False, kv_cache_metrics_sample=0.01, custom_histogram_buckets=None, cudagraph_metrics=False, enable_layerwise_nvtx_tracing=False, enable_mfu_metrics=False, enable_mm_processor_stats=False, enable_logging_iteration_details=False, jit_monitor_mode='warn', jit_monitor_verbose=False), seed=0, served_model_name=radiance-v033-lfm3, enable_prefix_caching=False, enable_chunked_prefill=True, pooler_config=None, compilation_config={'mode': <CompilationMode.VLLM_COMPILE: 3>, 'debug_dump_path': None, 'cache_dir': '', 'compile_cache_save_format': 'binary', 'backend': 'inductor', 'custom_ops': ['+quant_fp8', '+rms_norm', '+sparse_attn_indexer', 'none', '+quant_fp8'], 'ir_enable_torch_wrap': True, 'splitting_ops': ['vllm::unified_attention_with_output', 'vllm::unified_mla_attention_with_output', 'vllm::mamba_mixer2', 'vllm::mamba_mixer', 'vllm::short_conv', 'vllm::qwen4_exp_ple_short_conv', 'vllm::qwen4_exp_qsa_with_output', 'vllm::qwen4_exp_qsa_prepare_with_output', 'vllm::linear_attention', 'vllm::qwen_gdn_attention_core', 'vllm::qwen_gdn_attention_core_fused_norm_packed', 'vllm::gdn_attention_core_xpu', 'vllm::olmo_hybrid_gdn_full_forward', 'vllm::sparse_attn_indexer', 'vllm::rocm_aiter_sparse_attn_indexer', 'vllm::deepseek_v4_attention', 'vllm::hpc_rope_norm_forward', 'vllm::unified_kv_cache_update', 'vllm::unified_mla_kv_cache_update'], 'compile_mm_encoder': False, 'cudagraph_mm_encoder': False, 'encoder_cudagraph_token_budgets': [], 'encoder_cudagraph_max_vision_items_per_batch': 0, 'encoder_cudagraph_max_frames_per_batch': None, 'cudagraph_decoder_replay': True, 'decoder_replay_cudagraph_capture_sizes': [], 'decoder_replay_trim_threshold': 768, 'compile_sizes': [], 'compile_ranges_endpoints': [1024], 'inductor_compile_config': {'enable_auto_functionalized_v2': False, 'combo_kernels': True, 'benchmark_combo_kernel': True}, 'inductor_passes': {}, 'cudagraph_mode': <CUDAGraphMode.FULL_AND_PIECEWISE: (2, 1)>, 'cudagraph_num_of_warmups': 1, 'cudagraph_capture_sizes': [1, 2, 4], 'cudagraph_copy_inputs': False, 'cudagraph_specialize_lora': True, 'use_inductor_graph_partition': False, 'pass_config': {'fuse_norm_quant': True, 'fuse_act_quant': True, 'fuse_attn_quant': False, 'fuse_allreduce_rms': False, 'enable_qk_norm_rope_fusion': False, 'fuse_rope_kvcache_cat_mla': False, 'fuse_act_padding': False, 'fuse_qk_norm_rope_kvcache': False}, 'max_cudagraph_capture_size': 4, 'dynamic_shapes_config': {'type': <DynamicShapesType.BACKED: 'backed'>, 'evaluate_guards': False, 'assume_32_bit_indexing': False}, 'local_cache_dir': None, 'fast_moe_cold_start': False, 'static_all_moe_layers': []}, kernel_config=KernelConfig(ir_op_priority=IrOpPriorityConfig(rms_norm=['native'], fused_add_rms_norm=['native'], gelu_and_mul_sparse=['native']), enable_flashinfer_autotune=True, enable_rocm_segmented_attn_autotune=False, enable_cutedsl_warmup=True, enable_jit_warmup=True, monokernel=False, moe_backend='auto', sparse_indexer_topk_backend='auto', linear_backend='auto', linear_backend_per_quant=None)
+(EngineCore pid=297) INFO 11-07 01:17:08 [worker_base.py:331] Injected <class 'radiance_platform_probe.PlatformProbe'> into <class 'vllm.v1.worker.gpu_worker.Worker'> for extended collective_rpc calls ['_platform_inventory', 'platform_profile_start', 'platform_profile_stop', 'platform_snapshot']
+(EngineCore pid=297) INFO 11-07 01:17:08 [parallel_state.py:1929] world_size=1 rank=0 local_rank=0 distributed_init_method=file:///tmp/vllm_dist_ff473e315a8144eb9bc149c9840d14e9 backend=nccl
+(EngineCore pid=297) INFO 11-07 01:17:08 [parallel_state.py:2385] rank 0 in world size 1 is assigned as DP rank 0, PP rank 0, PCP rank 0, TP rank 0, ETP rank 0, EP rank N/A, EPLB rank N/A
+(EngineCore pid=297) INFO 11-07 01:17:08 [gpu_worker.py:513] Using V2 Model Runner
+(EngineCore pid=297) INFO 11-07 01:17:10 [model_runner.py:399] Loading model from scratch...
+(EngineCore pid=297) INFO 11-07 01:17:10 [__init__.py:778] Selected TritonFp8BlockScaledMMKernel for CompressedTensorsW8A8Fp8
+(EngineCore pid=297) INFO 11-07 01:17:10 [rocm.py:807] Using TRITON_ATTN backend (selected via --attention-backend).
+(EngineCore pid=297) WARNING 11-07 01:17:10 [compilation.py:1355] Op 'sparse_attn_indexer' not present in model, enabling with '+sparse_attn_indexer' has no effect
+(EngineCore pid=297) INFO 11-07 01:17:10 [base_loader.py:82] Initializing model took 0.362600 seconds
+(EngineCore pid=297) INFO 11-07 01:17:10 [weight_utils.py:1144] Filesystem type for checkpoints: EXT4. Checkpoint size: 2.06 GiB. Available RAM: 53.97 GiB.
+(EngineCore pid=297) INFO 11-07 01:17:10 [weight_utils.py:1167] Auto-prefetch is disabled because the filesystem (EXT4) is not a recognized network FS (NFS/Lustre). If you want to force prefetching, start vLLM with --safetensors-load-strategy=prefetch.
+Loading safetensors checkpoint shards:   0% Completed | 0/1 [00:00<?, ?it/s]
+Loading safetensors checkpoint shards: 100% Completed | 1/1 [00:05<00:00,  5.59s/it]
+Loading safetensors checkpoint shards: 100% Completed | 1/1 [00:05<00:00,  5.59s/it]
+
+(EngineCore pid=297) INFO 11-07 01:17:16 [default_loader.py:525] Loading weights took 5.65 seconds
+[radiance.gdn] gdn_chunk_scan ENABLED (head_k 128, head_v 128, chunk 64; replaces wy + delta_h + chunk_o)
+[radiance.gdnmerge] merged 0 GDN layers (0 launches/forward removed), 0 left unmerged
+(EngineCore pid=297) INFO 11-07 01:17:18 [model_runner.py:431] Model loading took 2.32 GiB memory and 8.067296 seconds
+(EngineCore pid=297) INFO 11-07 01:17:18 [torch_utils.py:281] Reducing Torch threads from 16 to 1 for serving. Set OMP_NUM_THREADS in the external environment to override.
+(EngineCore pid=297) ERROR 11-07 01:17:18 [core.py:1584] EngineCore failed to start.
+(EngineCore pid=297) ERROR 11-07 01:17:18 [core.py:1584] Traceback (most recent call last):
+(EngineCore pid=297) ERROR 11-07 01:17:18 [core.py:1584]   File "/opt/vllm/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 1555, in run_engine_core
+(EngineCore pid=297) ERROR 11-07 01:17:18 [core.py:1584]     engine_core = EngineCoreProc(*args, engine_index=dp_rank, **kwargs)
+(EngineCore pid=297) ERROR 11-07 01:17:18 [core.py:1584]                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=297) ERROR 11-07 01:17:18 [core.py:1584]   File "/opt/vllm/lib/python3.12/site-packages/vllm/tracing/otel.py", line 175, in sync_wrapper
+(EngineCore pid=297) ERROR 11-07 01:17:18 [core.py:1584]     return func(*args, **kwargs)
+(EngineCore pid=297) ERROR 11-07 01:17:18 [core.py:1584]            ^^^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=297) ERROR 11-07 01:17:18 [core.py:1584]   File "/opt/vllm/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 1232, in __init__
+(EngineCore pid=297) ERROR 11-07 01:17:18 [core.py:1584]     super().__init__(
+(EngineCore pid=297) ERROR 11-07 01:17:18 [core.py:1584]   File "/opt/vllm/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 150, in __init__
+(EngineCore pid=297) ERROR 11-07 01:17:18 [core.py:1584]     self.model_executor = executor_class(vllm_config)
+(EngineCore pid=297) ERROR 11-07 01:17:18 [core.py:1584]                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=297) ERROR 11-07 01:17:18 [core.py:1584]   File "/opt/vllm/lib/python3.12/site-packages/vllm/tracing/otel.py", line 175, in sync_wrapper
+(EngineCore pid=297) ERROR 11-07 01:17:18 [core.py:1584]     return func(*args, **kwargs)
+(EngineCore pid=297) ERROR 11-07 01:17:18 [core.py:1584]            ^^^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=297) ERROR 11-07 01:17:18 [core.py:1584]   File "/opt/vllm/lib/python3.12/site-packages/vllm/v1/executor/abstract.py", line 120, in __init__
+(EngineCore pid=297) ERROR 11-07 01:17:18 [core.py:1584]     self._init_executor()
+(EngineCore pid=297) ERROR 11-07 01:17:18 [core.py:1584]   File "/opt/vllm/lib/python3.12/site-packages/vllm/v1/executor/uniproc_executor.py", line 75, in _init_executor
+(EngineCore pid=297) ERROR 11-07 01:17:18 [core.py:1584]     current_platform.update_block_size_for_backend(self.vllm_config)
+(EngineCore pid=297) ERROR 11-07 01:17:18 [core.py:1584]   File "/opt/vllm/lib/python3.12/site-packages/vllm/platforms/interface.py", line 763, in update_block_size_for_backend
+(EngineCore pid=297) ERROR 11-07 01:17:18 [core.py:1584]     backend_classes = cls._find_non_ssm_backends(vllm_config)
+(EngineCore pid=297) ERROR 11-07 01:17:18 [core.py:1584]                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=297) ERROR 11-07 01:17:18 [core.py:1584]   File "/opt/vllm/lib/python3.12/site-packages/vllm/platforms/interface.py", line 694, in _find_non_ssm_backends
+(EngineCore pid=297) ERROR 11-07 01:17:18 [core.py:1584]     b = layer.get_attn_backend()
+(EngineCore pid=297) ERROR 11-07 01:17:18 [core.py:1584]         ^^^^^^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=297) ERROR 11-07 01:17:18 [core.py:1584]   File "/opt/vllm/lib/python3.12/site-packages/vllm/model_executor/layers/mamba/abstract.py", line 95, in get_attn_backend
+(EngineCore pid=297) ERROR 11-07 01:17:18 [core.py:1584]     return get_mamba_attn_backend(self.mamba_type)
+(EngineCore pid=297) ERROR 11-07 01:17:18 [core.py:1584]            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=297) ERROR 11-07 01:17:18 [core.py:1584]   File "/opt/vllm/lib/python3.12/site-packages/vllm/v1/attention/selector.py", line 235, in get_mamba_attn_backend
+(EngineCore pid=297) ERROR 11-07 01:17:18 [core.py:1584]     return _cached_get_mamba_attn_backend(mamba_type)
+(EngineCore pid=297) ERROR 11-07 01:17:18 [core.py:1584]            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=297) ERROR 11-07 01:17:18 [core.py:1584]   File "/opt/vllm/lib/python3.12/site-packages/vllm/v1/attention/selector.py", line 246, in _cached_get_mamba_attn_backend
+(EngineCore pid=297) ERROR 11-07 01:17:18 [core.py:1584]     raise RuntimeError(
+(EngineCore pid=297) ERROR 11-07 01:17:18 [core.py:1584] RuntimeError: VLLM batch_invariant mode is not supported for SHORT_CONV_ATTN.
+Process EngineCore:
+Traceback (most recent call last):
+  File "/usr/lib/python3.12/multiprocessing/process.py", line 314, in _bootstrap
+    self.run()
+  File "/usr/lib/python3.12/multiprocessing/process.py", line 108, in run
+    self._target(*self._args, **self._kwargs)
+  File "/opt/vllm/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 1588, in run_engine_core
+    raise e
+  File "/opt/vllm/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 1555, in run_engine_core
+    engine_core = EngineCoreProc(*args, engine_index=dp_rank, **kwargs)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/vllm/lib/python3.12/site-packages/vllm/tracing/otel.py", line 175, in sync_wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/vllm/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 1232, in __init__
+    super().__init__(
+  File "/opt/vllm/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 150, in __init__
+    self.model_executor = executor_class(vllm_config)
+                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/vllm/lib/python3.12/site-packages/vllm/tracing/otel.py", line 175, in sync_wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/vllm/lib/python3.12/site-packages/vllm/v1/executor/abstract.py", line 120, in __init__
+    self._init_executor()
+  File "/opt/vllm/lib/python3.12/site-packages/vllm/v1/executor/uniproc_executor.py", line 75, in _init_executor
+    current_platform.update_block_size_for_backend(self.vllm_config)
+  File "/opt/vllm/lib/python3.12/site-packages/vllm/platforms/interface.py", line 763, in update_block_size_for_backend
+    backend_classes = cls._find_non_ssm_backends(vllm_config)
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/vllm/lib/python3.12/site-packages/vllm/platforms/interface.py", line 694, in _find_non_ssm_backends
+    b = layer.get_attn_backend()
+        ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/vllm/lib/python3.12/site-packages/vllm/model_executor/layers/mamba/abstract.py", line 95, in get_attn_backend
+    return get_mamba_attn_backend(self.mamba_type)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/vllm/lib/python3.12/site-packages/vllm/v1/attention/selector.py", line 235, in get_mamba_attn_backend
+    return _cached_get_mamba_attn_backend(mamba_type)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/vllm/lib/python3.12/site-packages/vllm/v1/attention/selector.py", line 246, in _cached_get_mamba_attn_backend
+    raise RuntimeError(
+RuntimeError: VLLM batch_invariant mode is not supported for SHORT_CONV_ATTN.
+[rank0]:[W1107 01:17:19.426212019 ProcessGroupNCCL.cpp:1634] Warning: WARNING: destroy_process_group() was not called before program exit, which can leak resources. For more info, please see https://pytorch.org/docs/stable/distributed.html#shutdown (function operator())
+(APIServer pid=1) INFO 11-07 01:17:20 [utils.py:628] [shutdown] Process manager: send sigterm to process EngineCore
+Traceback (most recent call last):
+  File "/opt/vllm/bin/vllm", line 6, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "/opt/vllm/lib/python3.12/site-packages/vllm/entrypoints/cli/main.py", line 117, in main
+    args.dispatch_function(args)
+  File "/opt/vllm/lib/python3.12/site-packages/vllm/entrypoints/cli/serve.py", line 156, in cmd
+    uvloop.run(run_server(args))
+  File "/opt/vllm/lib/python3.12/site-packages/uvloop/__init__.py", line 96, in run
+    return __asyncio.run(
+           ^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/asyncio/runners.py", line 194, in run
+    return runner.run(main)
+           ^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/asyncio/runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "uvloop/loop.pyx", line 1515, in uvloop.loop.Loop.run_until_complete
+  File "/opt/vllm/lib/python3.12/site-packages/uvloop/__init__.py", line 48, in wrapper
+    return await main
+           ^^^^^^^^^^
+  File "/opt/vllm/lib/python3.12/site-packages/vllm/entrypoints/launchers/api_server/entry.py", line 176, in run_server
+    await run_server_worker(listen_address, sock, args, **uvicorn_kwargs)
+  File "/opt/vllm/lib/python3.12/site-packages/vllm/entrypoints/launchers/api_server/entry.py", line 190, in run_server_worker
+    async with build_async_engine_client(
+  File "/usr/lib/python3.12/contextlib.py", line 210, in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/vllm/lib/python3.12/site-packages/vllm/entrypoints/launchers/api_server/entry.py", line 60, in build_async_engine_client
+    async with build_async_engine_client_from_engine_args(
+  File "/usr/lib/python3.12/contextlib.py", line 210, in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/vllm/lib/python3.12/site-packages/vllm/entrypoints/launchers/api_server/entry.py", line 94, in build_async_engine_client_from_engine_args
+    async_llm = AsyncLLM.from_vllm_config(
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/vllm/lib/python3.12/site-packages/vllm/v1/engine/async_llm.py", line 264, in from_vllm_config
+    return cls(
+           ^^^^
+  File "/opt/vllm/lib/python3.12/site-packages/vllm/v1/engine/async_llm.py", line 193, in __init__
+    self.engine_core = EngineCoreClient.make_async_mp_client(
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/vllm/lib/python3.12/site-packages/vllm/tracing/otel.py", line 175, in sync_wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/vllm/lib/python3.12/site-packages/vllm/v1/engine/core_client.py", line 170, in make_async_mp_client
+    return AsyncMPClient(
+           ^^^^^^^^^^^^^^
+  File "/opt/vllm/lib/python3.12/site-packages/vllm/tracing/otel.py", line 175, in sync_wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/vllm/lib/python3.12/site-packages/vllm/v1/engine/core_client.py", line 1163, in __init__
+    super().__init__(
+  File "/opt/vllm/lib/python3.12/site-packages/vllm/v1/engine/core_client.py", line 699, in __init__
+    with launch_core_engines(
+  File "/usr/lib/python3.12/contextlib.py", line 144, in __exit__
+    next(self.gen)
+  File "/opt/vllm/lib/python3.12/site-packages/vllm/v1/engine/utils.py", line 1393, in launch_core_engines
+    wait_for_engine_startup(
+  File "/opt/vllm/lib/python3.12/site-packages/vllm/v1/engine/utils.py", line 1473, in wait_for_engine_startup
+    raise RuntimeError(
+RuntimeError: Engine core initialization failed. See root cause above. Failed core proc(s): {}

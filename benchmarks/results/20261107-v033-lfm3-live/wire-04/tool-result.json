@@ -1,0 +1,117 @@
+{
+  "request": {
+    "model": "radiance-v033-lfm3",
+    "temperature": 0,
+    "seed": 0,
+    "max_tokens": 128,
+    "chat_template_kwargs": {
+      "enable_thinking": false
+    },
+    "messages": [
+      {
+        "role": "system",
+        "content": "Use add to calculate 2+3. After receiving its result, answer with the result."
+      },
+      {
+        "role": "user",
+        "content": "Calculate 2 + 3 using add."
+      },
+      {
+        "role": "assistant",
+        "content": "",
+        "tool_calls": [
+          {
+            "id": "chatcmpl-tool-9c97ca98ad831836",
+            "type": "function",
+            "function": {
+              "name": "add",
+              "arguments": "{\"a\": 2, \"b\": 3}"
+            }
+          }
+        ]
+      },
+      {
+        "role": "tool",
+        "tool_call_id": "chatcmpl-tool-9c97ca98ad831836",
+        "content": "5"
+      }
+    ],
+    "tools": [
+      {
+        "type": "function",
+        "function": {
+          "name": "add",
+          "description": "Add two integers. Synthetic test only.",
+          "strict": true,
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "a": {
+                "type": "integer",
+                "enum": [
+                  2
+                ]
+              },
+              "b": {
+                "type": "integer",
+                "enum": [
+                  3
+                ]
+              }
+            },
+            "required": [
+              "a",
+              "b"
+            ],
+            "additionalProperties": false
+          }
+        }
+      }
+    ],
+    "tool_choice": "none"
+  },
+  "response": {
+    "id": "chatcmpl-ba7d4f8bd46445fa",
+    "object": "chat.completion",
+    "created": 1794014142,
+    "model": "radiance-v033-lfm3",
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": "5",
+          "refusal": null,
+          "annotations": null,
+          "audio": null,
+          "function_call": null,
+          "reasoning": null
+        },
+        "logprobs": null,
+        "finish_reason": "stop",
+        "stop_reason": null,
+        "token_ids": null,
+        "routed_experts": null,
+        "weight_versions": null
+      }
+    ],
+    "service_tier": null,
+    "system_fingerprint": "vllm-0.33.0-aad2c3fd",
+    "usage": {
+      "prompt_tokens": 168,
+      "total_tokens": 170,
+      "completion_tokens": 2,
+      "prompt_tokens_details": null,
+      "completion_tokens_details": {
+        "reasoning_tokens": 0
+      }
+    },
+    "prompt_logprobs": null,
+    "prompt_token_ids": null,
+    "prompt_text": null,
+    "kv_transfer_params": null,
+    "ec_transfer_params": null,
+    "metrics": null
+  },
+  "seconds": 0.055593331111595035
+}

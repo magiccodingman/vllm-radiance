@@ -1,0 +1,1610 @@
+{
+  "request": {
+    "method": "platform_snapshot"
+  },
+  "response": {
+    "results": [
+      {
+        "runner": {
+          "class": "GPUModelRunner",
+          "module": "vllm.v1.worker.gpu.model_runner",
+          "source_sha256": "bc952e2975d1598c4c2689cfe17529b572a08ee0ad0ef4aaead9cad256e19363"
+        },
+        "model": {
+          "class": "Lfm3ForCausalLM",
+          "module": "vllm.model_executor.models.lfm3",
+          "source_sha256": "3cc38d7eb2d992e1b49c73ee16e3a3fcd73148cb55f91624e4131087bf8038a9"
+        },
+        "speculator": null,
+        "draft_model": null,
+        "draft_owners": [],
+        "speculative_method": null,
+        "num_speculative_steps": 0,
+        "rank": 0,
+        "owners": [
+          {
+            "name": "model.embed_tokens",
+            "class": "VocabParallelEmbedding",
+            "module": "vllm.model_executor.layers.vocab_parallel_embedding",
+            "source_sha256": "0a25685b16b295d0c9f7127ae48fc7cc86d2a961e4e7e7bd8879354540225f44",
+            "quant_method": {
+              "class": "UnquantizedEmbeddingMethod",
+              "module": "vllm.model_executor.layers.vocab_parallel_embedding",
+              "source_sha256": "0a25685b16b295d0c9f7127ae48fc7cc86d2a961e4e7e7bd8879354540225f44"
+            }
+          },
+          {
+            "name": "model.layers.0.short_conv.conv",
+            "class": "ColumnParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "UnquantizedLinearMethod",
+              "module": "vllm.model_executor.layers.linear",
+              "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4"
+            }
+          },
+          {
+            "name": "model.layers.0.short_conv.in_proj",
+            "class": "MergedColumnParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "UnquantizedLinearMethod",
+              "module": "vllm.model_executor.layers.linear",
+              "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4"
+            }
+          },
+          {
+            "name": "model.layers.0.short_conv.out_proj",
+            "class": "RowParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "UnquantizedLinearMethod",
+              "module": "vllm.model_executor.layers.linear",
+              "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4"
+            }
+          },
+          {
+            "name": "model.layers.0.feed_forward.w13",
+            "class": "MergedColumnParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "CompressedTensorsLinearMethod",
+              "module": "vllm.model_executor.layers.quantization.compressed_tensors.compressed_tensors",
+              "source_sha256": "e6a92e7c2979463e74b96268de8754160021faae35ee0ca676a6b7df40e7d738"
+            }
+          },
+          {
+            "name": "model.layers.0.feed_forward.w2",
+            "class": "RowParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "CompressedTensorsLinearMethod",
+              "module": "vllm.model_executor.layers.quantization.compressed_tensors.compressed_tensors",
+              "source_sha256": "e6a92e7c2979463e74b96268de8754160021faae35ee0ca676a6b7df40e7d738"
+            }
+          },
+          {
+            "name": "model.layers.1.short_conv.conv",
+            "class": "ColumnParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "UnquantizedLinearMethod",
+              "module": "vllm.model_executor.layers.linear",
+              "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4"
+            }
+          },
+          {
+            "name": "model.layers.1.short_conv.in_proj",
+            "class": "MergedColumnParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "UnquantizedLinearMethod",
+              "module": "vllm.model_executor.layers.linear",
+              "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4"
+            }
+          },
+          {
+            "name": "model.layers.1.short_conv.out_proj",
+            "class": "RowParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "UnquantizedLinearMethod",
+              "module": "vllm.model_executor.layers.linear",
+              "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4"
+            }
+          },
+          {
+            "name": "model.layers.1.feed_forward.w13",
+            "class": "MergedColumnParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "CompressedTensorsLinearMethod",
+              "module": "vllm.model_executor.layers.quantization.compressed_tensors.compressed_tensors",
+              "source_sha256": "e6a92e7c2979463e74b96268de8754160021faae35ee0ca676a6b7df40e7d738"
+            }
+          },
+          {
+            "name": "model.layers.1.feed_forward.w2",
+            "class": "RowParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "CompressedTensorsLinearMethod",
+              "module": "vllm.model_executor.layers.quantization.compressed_tensors.compressed_tensors",
+              "source_sha256": "e6a92e7c2979463e74b96268de8754160021faae35ee0ca676a6b7df40e7d738"
+            }
+          },
+          {
+            "name": "model.layers.2.self_attn.qkv_proj",
+            "class": "QKVParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "CompressedTensorsLinearMethod",
+              "module": "vllm.model_executor.layers.quantization.compressed_tensors.compressed_tensors",
+              "source_sha256": "e6a92e7c2979463e74b96268de8754160021faae35ee0ca676a6b7df40e7d738"
+            }
+          },
+          {
+            "name": "model.layers.2.self_attn.o_proj",
+            "class": "RowParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "CompressedTensorsLinearMethod",
+              "module": "vllm.model_executor.layers.quantization.compressed_tensors.compressed_tensors",
+              "source_sha256": "e6a92e7c2979463e74b96268de8754160021faae35ee0ca676a6b7df40e7d738"
+            }
+          },
+          {
+            "name": "model.layers.2.self_attn.gate_proj",
+            "class": "ColumnParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "UnquantizedLinearMethod",
+              "module": "vllm.model_executor.layers.linear",
+              "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4"
+            }
+          },
+          {
+            "name": "model.layers.2.self_attn.attn",
+            "class": "Attention",
+            "module": "vllm.model_executor.layers.attention.attention",
+            "source_sha256": "3914b60f5407d193cfd1cbe75c6689a6da71f89e37d177a04bb0d95b3244ea44",
+            "quant_method": {
+              "class": "CompressedTensorsKVCacheMethod",
+              "module": "vllm.model_executor.layers.quantization.compressed_tensors.compressed_tensors",
+              "source_sha256": "e6a92e7c2979463e74b96268de8754160021faae35ee0ca676a6b7df40e7d738"
+            },
+            "attn_backend": {
+              "class": "TritonAttentionBackend",
+              "module": "vllm.v1.attention.backends.triton_attn",
+              "source_sha256": "53b221f99c54b6bc21580d7e3e96a12c5eb1de7397bb4bfafb9d0cb6129cb223"
+            },
+            "impl": {
+              "class": "TritonAttentionImpl",
+              "module": "vllm.v1.attention.backends.triton_attn",
+              "source_sha256": "53b221f99c54b6bc21580d7e3e96a12c5eb1de7397bb4bfafb9d0cb6129cb223"
+            }
+          },
+          {
+            "name": "model.layers.2.feed_forward.w13",
+            "class": "MergedColumnParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "CompressedTensorsLinearMethod",
+              "module": "vllm.model_executor.layers.quantization.compressed_tensors.compressed_tensors",
+              "source_sha256": "e6a92e7c2979463e74b96268de8754160021faae35ee0ca676a6b7df40e7d738"
+            }
+          },
+          {
+            "name": "model.layers.2.feed_forward.w2",
+            "class": "RowParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "CompressedTensorsLinearMethod",
+              "module": "vllm.model_executor.layers.quantization.compressed_tensors.compressed_tensors",
+              "source_sha256": "e6a92e7c2979463e74b96268de8754160021faae35ee0ca676a6b7df40e7d738"
+            }
+          },
+          {
+            "name": "model.layers.3.short_conv.conv",
+            "class": "ColumnParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "UnquantizedLinearMethod",
+              "module": "vllm.model_executor.layers.linear",
+              "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4"
+            }
+          },
+          {
+            "name": "model.layers.3.short_conv.in_proj",
+            "class": "MergedColumnParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "UnquantizedLinearMethod",
+              "module": "vllm.model_executor.layers.linear",
+              "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4"
+            }
+          },
+          {
+            "name": "model.layers.3.short_conv.out_proj",
+            "class": "RowParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "UnquantizedLinearMethod",
+              "module": "vllm.model_executor.layers.linear",
+              "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4"
+            }
+          },
+          {
+            "name": "model.layers.3.feed_forward.w13",
+            "class": "MergedColumnParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "CompressedTensorsLinearMethod",
+              "module": "vllm.model_executor.layers.quantization.compressed_tensors.compressed_tensors",
+              "source_sha256": "e6a92e7c2979463e74b96268de8754160021faae35ee0ca676a6b7df40e7d738"
+            }
+          },
+          {
+            "name": "model.layers.3.feed_forward.w2",
+            "class": "RowParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "CompressedTensorsLinearMethod",
+              "module": "vllm.model_executor.layers.quantization.compressed_tensors.compressed_tensors",
+              "source_sha256": "e6a92e7c2979463e74b96268de8754160021faae35ee0ca676a6b7df40e7d738"
+            }
+          },
+          {
+            "name": "model.layers.4.self_attn.qkv_proj",
+            "class": "QKVParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "CompressedTensorsLinearMethod",
+              "module": "vllm.model_executor.layers.quantization.compressed_tensors.compressed_tensors",
+              "source_sha256": "e6a92e7c2979463e74b96268de8754160021faae35ee0ca676a6b7df40e7d738"
+            }
+          },
+          {
+            "name": "model.layers.4.self_attn.o_proj",
+            "class": "RowParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "CompressedTensorsLinearMethod",
+              "module": "vllm.model_executor.layers.quantization.compressed_tensors.compressed_tensors",
+              "source_sha256": "e6a92e7c2979463e74b96268de8754160021faae35ee0ca676a6b7df40e7d738"
+            }
+          },
+          {
+            "name": "model.layers.4.self_attn.gate_proj",
+            "class": "ColumnParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "UnquantizedLinearMethod",
+              "module": "vllm.model_executor.layers.linear",
+              "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4"
+            }
+          },
+          {
+            "name": "model.layers.4.self_attn.attn",
+            "class": "Attention",
+            "module": "vllm.model_executor.layers.attention.attention",
+            "source_sha256": "3914b60f5407d193cfd1cbe75c6689a6da71f89e37d177a04bb0d95b3244ea44",
+            "quant_method": {
+              "class": "CompressedTensorsKVCacheMethod",
+              "module": "vllm.model_executor.layers.quantization.compressed_tensors.compressed_tensors",
+              "source_sha256": "e6a92e7c2979463e74b96268de8754160021faae35ee0ca676a6b7df40e7d738"
+            },
+            "attn_backend": {
+              "class": "TritonAttentionBackend",
+              "module": "vllm.v1.attention.backends.triton_attn",
+              "source_sha256": "53b221f99c54b6bc21580d7e3e96a12c5eb1de7397bb4bfafb9d0cb6129cb223"
+            },
+            "impl": {
+              "class": "TritonAttentionImpl",
+              "module": "vllm.v1.attention.backends.triton_attn",
+              "source_sha256": "53b221f99c54b6bc21580d7e3e96a12c5eb1de7397bb4bfafb9d0cb6129cb223"
+            }
+          },
+          {
+            "name": "model.layers.4.feed_forward.w13",
+            "class": "MergedColumnParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "CompressedTensorsLinearMethod",
+              "module": "vllm.model_executor.layers.quantization.compressed_tensors.compressed_tensors",
+              "source_sha256": "e6a92e7c2979463e74b96268de8754160021faae35ee0ca676a6b7df40e7d738"
+            }
+          },
+          {
+            "name": "model.layers.4.feed_forward.w2",
+            "class": "RowParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "CompressedTensorsLinearMethod",
+              "module": "vllm.model_executor.layers.quantization.compressed_tensors.compressed_tensors",
+              "source_sha256": "e6a92e7c2979463e74b96268de8754160021faae35ee0ca676a6b7df40e7d738"
+            }
+          },
+          {
+            "name": "model.layers.5.short_conv.conv",
+            "class": "ColumnParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "UnquantizedLinearMethod",
+              "module": "vllm.model_executor.layers.linear",
+              "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4"
+            }
+          },
+          {
+            "name": "model.layers.5.short_conv.in_proj",
+            "class": "MergedColumnParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "UnquantizedLinearMethod",
+              "module": "vllm.model_executor.layers.linear",
+              "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4"
+            }
+          },
+          {
+            "name": "model.layers.5.short_conv.out_proj",
+            "class": "RowParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "UnquantizedLinearMethod",
+              "module": "vllm.model_executor.layers.linear",
+              "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4"
+            }
+          },
+          {
+            "name": "model.layers.5.feed_forward.w13",
+            "class": "MergedColumnParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "CompressedTensorsLinearMethod",
+              "module": "vllm.model_executor.layers.quantization.compressed_tensors.compressed_tensors",
+              "source_sha256": "e6a92e7c2979463e74b96268de8754160021faae35ee0ca676a6b7df40e7d738"
+            }
+          },
+          {
+            "name": "model.layers.5.feed_forward.w2",
+            "class": "RowParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "CompressedTensorsLinearMethod",
+              "module": "vllm.model_executor.layers.quantization.compressed_tensors.compressed_tensors",
+              "source_sha256": "e6a92e7c2979463e74b96268de8754160021faae35ee0ca676a6b7df40e7d738"
+            }
+          },
+          {
+            "name": "model.layers.6.self_attn.qkv_proj",
+            "class": "QKVParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "CompressedTensorsLinearMethod",
+              "module": "vllm.model_executor.layers.quantization.compressed_tensors.compressed_tensors",
+              "source_sha256": "e6a92e7c2979463e74b96268de8754160021faae35ee0ca676a6b7df40e7d738"
+            }
+          },
+          {
+            "name": "model.layers.6.self_attn.o_proj",
+            "class": "RowParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "CompressedTensorsLinearMethod",
+              "module": "vllm.model_executor.layers.quantization.compressed_tensors.compressed_tensors",
+              "source_sha256": "e6a92e7c2979463e74b96268de8754160021faae35ee0ca676a6b7df40e7d738"
+            }
+          },
+          {
+            "name": "model.layers.6.self_attn.gate_proj",
+            "class": "ColumnParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "UnquantizedLinearMethod",
+              "module": "vllm.model_executor.layers.linear",
+              "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4"
+            }
+          },
+          {
+            "name": "model.layers.6.self_attn.attn",
+            "class": "Attention",
+            "module": "vllm.model_executor.layers.attention.attention",
+            "source_sha256": "3914b60f5407d193cfd1cbe75c6689a6da71f89e37d177a04bb0d95b3244ea44",
+            "quant_method": {
+              "class": "CompressedTensorsKVCacheMethod",
+              "module": "vllm.model_executor.layers.quantization.compressed_tensors.compressed_tensors",
+              "source_sha256": "e6a92e7c2979463e74b96268de8754160021faae35ee0ca676a6b7df40e7d738"
+            },
+            "attn_backend": {
+              "class": "TritonAttentionBackend",
+              "module": "vllm.v1.attention.backends.triton_attn",
+              "source_sha256": "53b221f99c54b6bc21580d7e3e96a12c5eb1de7397bb4bfafb9d0cb6129cb223"
+            },
+            "impl": {
+              "class": "TritonAttentionImpl",
+              "module": "vllm.v1.attention.backends.triton_attn",
+              "source_sha256": "53b221f99c54b6bc21580d7e3e96a12c5eb1de7397bb4bfafb9d0cb6129cb223"
+            }
+          },
+          {
+            "name": "model.layers.6.feed_forward.w13",
+            "class": "MergedColumnParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "CompressedTensorsLinearMethod",
+              "module": "vllm.model_executor.layers.quantization.compressed_tensors.compressed_tensors",
+              "source_sha256": "e6a92e7c2979463e74b96268de8754160021faae35ee0ca676a6b7df40e7d738"
+            }
+          },
+          {
+            "name": "model.layers.6.feed_forward.w2",
+            "class": "RowParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "CompressedTensorsLinearMethod",
+              "module": "vllm.model_executor.layers.quantization.compressed_tensors.compressed_tensors",
+              "source_sha256": "e6a92e7c2979463e74b96268de8754160021faae35ee0ca676a6b7df40e7d738"
+            }
+          },
+          {
+            "name": "model.layers.7.short_conv.conv",
+            "class": "ColumnParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "UnquantizedLinearMethod",
+              "module": "vllm.model_executor.layers.linear",
+              "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4"
+            }
+          },
+          {
+            "name": "model.layers.7.short_conv.in_proj",
+            "class": "MergedColumnParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "UnquantizedLinearMethod",
+              "module": "vllm.model_executor.layers.linear",
+              "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4"
+            }
+          },
+          {
+            "name": "model.layers.7.short_conv.out_proj",
+            "class": "RowParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "UnquantizedLinearMethod",
+              "module": "vllm.model_executor.layers.linear",
+              "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4"
+            }
+          },
+          {
+            "name": "model.layers.7.feed_forward.w13",
+            "class": "MergedColumnParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "CompressedTensorsLinearMethod",
+              "module": "vllm.model_executor.layers.quantization.compressed_tensors.compressed_tensors",
+              "source_sha256": "e6a92e7c2979463e74b96268de8754160021faae35ee0ca676a6b7df40e7d738"
+            }
+          },
+          {
+            "name": "model.layers.7.feed_forward.w2",
+            "class": "RowParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "CompressedTensorsLinearMethod",
+              "module": "vllm.model_executor.layers.quantization.compressed_tensors.compressed_tensors",
+              "source_sha256": "e6a92e7c2979463e74b96268de8754160021faae35ee0ca676a6b7df40e7d738"
+            }
+          },
+          {
+            "name": "model.layers.8.self_attn.qkv_proj",
+            "class": "QKVParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "CompressedTensorsLinearMethod",
+              "module": "vllm.model_executor.layers.quantization.compressed_tensors.compressed_tensors",
+              "source_sha256": "e6a92e7c2979463e74b96268de8754160021faae35ee0ca676a6b7df40e7d738"
+            }
+          },
+          {
+            "name": "model.layers.8.self_attn.o_proj",
+            "class": "RowParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "CompressedTensorsLinearMethod",
+              "module": "vllm.model_executor.layers.quantization.compressed_tensors.compressed_tensors",
+              "source_sha256": "e6a92e7c2979463e74b96268de8754160021faae35ee0ca676a6b7df40e7d738"
+            }
+          },
+          {
+            "name": "model.layers.8.self_attn.gate_proj",
+            "class": "ColumnParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "UnquantizedLinearMethod",
+              "module": "vllm.model_executor.layers.linear",
+              "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4"
+            }
+          },
+          {
+            "name": "model.layers.8.self_attn.attn",
+            "class": "Attention",
+            "module": "vllm.model_executor.layers.attention.attention",
+            "source_sha256": "3914b60f5407d193cfd1cbe75c6689a6da71f89e37d177a04bb0d95b3244ea44",
+            "quant_method": {
+              "class": "CompressedTensorsKVCacheMethod",
+              "module": "vllm.model_executor.layers.quantization.compressed_tensors.compressed_tensors",
+              "source_sha256": "e6a92e7c2979463e74b96268de8754160021faae35ee0ca676a6b7df40e7d738"
+            },
+            "attn_backend": {
+              "class": "TritonAttentionBackend",
+              "module": "vllm.v1.attention.backends.triton_attn",
+              "source_sha256": "53b221f99c54b6bc21580d7e3e96a12c5eb1de7397bb4bfafb9d0cb6129cb223"
+            },
+            "impl": {
+              "class": "TritonAttentionImpl",
+              "module": "vllm.v1.attention.backends.triton_attn",
+              "source_sha256": "53b221f99c54b6bc21580d7e3e96a12c5eb1de7397bb4bfafb9d0cb6129cb223"
+            }
+          },
+          {
+            "name": "model.layers.8.feed_forward.w13",
+            "class": "MergedColumnParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "CompressedTensorsLinearMethod",
+              "module": "vllm.model_executor.layers.quantization.compressed_tensors.compressed_tensors",
+              "source_sha256": "e6a92e7c2979463e74b96268de8754160021faae35ee0ca676a6b7df40e7d738"
+            }
+          },
+          {
+            "name": "model.layers.8.feed_forward.w2",
+            "class": "RowParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "CompressedTensorsLinearMethod",
+              "module": "vllm.model_executor.layers.quantization.compressed_tensors.compressed_tensors",
+              "source_sha256": "e6a92e7c2979463e74b96268de8754160021faae35ee0ca676a6b7df40e7d738"
+            }
+          },
+          {
+            "name": "model.layers.9.short_conv.conv",
+            "class": "ColumnParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "UnquantizedLinearMethod",
+              "module": "vllm.model_executor.layers.linear",
+              "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4"
+            }
+          },
+          {
+            "name": "model.layers.9.short_conv.in_proj",
+            "class": "MergedColumnParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "UnquantizedLinearMethod",
+              "module": "vllm.model_executor.layers.linear",
+              "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4"
+            }
+          },
+          {
+            "name": "model.layers.9.short_conv.out_proj",
+            "class": "RowParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "UnquantizedLinearMethod",
+              "module": "vllm.model_executor.layers.linear",
+              "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4"
+            }
+          },
+          {
+            "name": "model.layers.9.feed_forward.w13",
+            "class": "MergedColumnParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "CompressedTensorsLinearMethod",
+              "module": "vllm.model_executor.layers.quantization.compressed_tensors.compressed_tensors",
+              "source_sha256": "e6a92e7c2979463e74b96268de8754160021faae35ee0ca676a6b7df40e7d738"
+            }
+          },
+          {
+            "name": "model.layers.9.feed_forward.w2",
+            "class": "RowParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "CompressedTensorsLinearMethod",
+              "module": "vllm.model_executor.layers.quantization.compressed_tensors.compressed_tensors",
+              "source_sha256": "e6a92e7c2979463e74b96268de8754160021faae35ee0ca676a6b7df40e7d738"
+            }
+          },
+          {
+            "name": "model.layers.10.self_attn.qkv_proj",
+            "class": "QKVParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "CompressedTensorsLinearMethod",
+              "module": "vllm.model_executor.layers.quantization.compressed_tensors.compressed_tensors",
+              "source_sha256": "e6a92e7c2979463e74b96268de8754160021faae35ee0ca676a6b7df40e7d738"
+            }
+          },
+          {
+            "name": "model.layers.10.self_attn.o_proj",
+            "class": "RowParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "CompressedTensorsLinearMethod",
+              "module": "vllm.model_executor.layers.quantization.compressed_tensors.compressed_tensors",
+              "source_sha256": "e6a92e7c2979463e74b96268de8754160021faae35ee0ca676a6b7df40e7d738"
+            }
+          },
+          {
+            "name": "model.layers.10.self_attn.gate_proj",
+            "class": "ColumnParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "UnquantizedLinearMethod",
+              "module": "vllm.model_executor.layers.linear",
+              "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4"
+            }
+          },
+          {
+            "name": "model.layers.10.self_attn.attn",
+            "class": "Attention",
+            "module": "vllm.model_executor.layers.attention.attention",
+            "source_sha256": "3914b60f5407d193cfd1cbe75c6689a6da71f89e37d177a04bb0d95b3244ea44",
+            "quant_method": {
+              "class": "CompressedTensorsKVCacheMethod",
+              "module": "vllm.model_executor.layers.quantization.compressed_tensors.compressed_tensors",
+              "source_sha256": "e6a92e7c2979463e74b96268de8754160021faae35ee0ca676a6b7df40e7d738"
+            },
+            "attn_backend": {
+              "class": "TritonAttentionBackend",
+              "module": "vllm.v1.attention.backends.triton_attn",
+              "source_sha256": "53b221f99c54b6bc21580d7e3e96a12c5eb1de7397bb4bfafb9d0cb6129cb223"
+            },
+            "impl": {
+              "class": "TritonAttentionImpl",
+              "module": "vllm.v1.attention.backends.triton_attn",
+              "source_sha256": "53b221f99c54b6bc21580d7e3e96a12c5eb1de7397bb4bfafb9d0cb6129cb223"
+            }
+          },
+          {
+            "name": "model.layers.10.feed_forward.w13",
+            "class": "MergedColumnParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "CompressedTensorsLinearMethod",
+              "module": "vllm.model_executor.layers.quantization.compressed_tensors.compressed_tensors",
+              "source_sha256": "e6a92e7c2979463e74b96268de8754160021faae35ee0ca676a6b7df40e7d738"
+            }
+          },
+          {
+            "name": "model.layers.10.feed_forward.w2",
+            "class": "RowParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "CompressedTensorsLinearMethod",
+              "module": "vllm.model_executor.layers.quantization.compressed_tensors.compressed_tensors",
+              "source_sha256": "e6a92e7c2979463e74b96268de8754160021faae35ee0ca676a6b7df40e7d738"
+            }
+          },
+          {
+            "name": "model.layers.11.short_conv.conv",
+            "class": "ColumnParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "UnquantizedLinearMethod",
+              "module": "vllm.model_executor.layers.linear",
+              "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4"
+            }
+          },
+          {
+            "name": "model.layers.11.short_conv.in_proj",
+            "class": "MergedColumnParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "UnquantizedLinearMethod",
+              "module": "vllm.model_executor.layers.linear",
+              "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4"
+            }
+          },
+          {
+            "name": "model.layers.11.short_conv.out_proj",
+            "class": "RowParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "UnquantizedLinearMethod",
+              "module": "vllm.model_executor.layers.linear",
+              "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4"
+            }
+          },
+          {
+            "name": "model.layers.11.feed_forward.w13",
+            "class": "MergedColumnParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "CompressedTensorsLinearMethod",
+              "module": "vllm.model_executor.layers.quantization.compressed_tensors.compressed_tensors",
+              "source_sha256": "e6a92e7c2979463e74b96268de8754160021faae35ee0ca676a6b7df40e7d738"
+            }
+          },
+          {
+            "name": "model.layers.11.feed_forward.w2",
+            "class": "RowParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "CompressedTensorsLinearMethod",
+              "module": "vllm.model_executor.layers.quantization.compressed_tensors.compressed_tensors",
+              "source_sha256": "e6a92e7c2979463e74b96268de8754160021faae35ee0ca676a6b7df40e7d738"
+            }
+          },
+          {
+            "name": "model.layers.12.self_attn.qkv_proj",
+            "class": "QKVParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "CompressedTensorsLinearMethod",
+              "module": "vllm.model_executor.layers.quantization.compressed_tensors.compressed_tensors",
+              "source_sha256": "e6a92e7c2979463e74b96268de8754160021faae35ee0ca676a6b7df40e7d738"
+            }
+          },
+          {
+            "name": "model.layers.12.self_attn.o_proj",
+            "class": "RowParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "CompressedTensorsLinearMethod",
+              "module": "vllm.model_executor.layers.quantization.compressed_tensors.compressed_tensors",
+              "source_sha256": "e6a92e7c2979463e74b96268de8754160021faae35ee0ca676a6b7df40e7d738"
+            }
+          },
+          {
+            "name": "model.layers.12.self_attn.gate_proj",
+            "class": "ColumnParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "UnquantizedLinearMethod",
+              "module": "vllm.model_executor.layers.linear",
+              "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4"
+            }
+          },
+          {
+            "name": "model.layers.12.self_attn.attn",
+            "class": "Attention",
+            "module": "vllm.model_executor.layers.attention.attention",
+            "source_sha256": "3914b60f5407d193cfd1cbe75c6689a6da71f89e37d177a04bb0d95b3244ea44",
+            "quant_method": {
+              "class": "CompressedTensorsKVCacheMethod",
+              "module": "vllm.model_executor.layers.quantization.compressed_tensors.compressed_tensors",
+              "source_sha256": "e6a92e7c2979463e74b96268de8754160021faae35ee0ca676a6b7df40e7d738"
+            },
+            "attn_backend": {
+              "class": "TritonAttentionBackend",
+              "module": "vllm.v1.attention.backends.triton_attn",
+              "source_sha256": "53b221f99c54b6bc21580d7e3e96a12c5eb1de7397bb4bfafb9d0cb6129cb223"
+            },
+            "impl": {
+              "class": "TritonAttentionImpl",
+              "module": "vllm.v1.attention.backends.triton_attn",
+              "source_sha256": "53b221f99c54b6bc21580d7e3e96a12c5eb1de7397bb4bfafb9d0cb6129cb223"
+            }
+          },
+          {
+            "name": "model.layers.12.feed_forward.w13",
+            "class": "MergedColumnParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "CompressedTensorsLinearMethod",
+              "module": "vllm.model_executor.layers.quantization.compressed_tensors.compressed_tensors",
+              "source_sha256": "e6a92e7c2979463e74b96268de8754160021faae35ee0ca676a6b7df40e7d738"
+            }
+          },
+          {
+            "name": "model.layers.12.feed_forward.w2",
+            "class": "RowParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "CompressedTensorsLinearMethod",
+              "module": "vllm.model_executor.layers.quantization.compressed_tensors.compressed_tensors",
+              "source_sha256": "e6a92e7c2979463e74b96268de8754160021faae35ee0ca676a6b7df40e7d738"
+            }
+          },
+          {
+            "name": "model.layers.13.short_conv.conv",
+            "class": "ColumnParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "UnquantizedLinearMethod",
+              "module": "vllm.model_executor.layers.linear",
+              "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4"
+            }
+          },
+          {
+            "name": "model.layers.13.short_conv.in_proj",
+            "class": "MergedColumnParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "UnquantizedLinearMethod",
+              "module": "vllm.model_executor.layers.linear",
+              "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4"
+            }
+          },
+          {
+            "name": "model.layers.13.short_conv.out_proj",
+            "class": "RowParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "UnquantizedLinearMethod",
+              "module": "vllm.model_executor.layers.linear",
+              "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4"
+            }
+          },
+          {
+            "name": "model.layers.13.feed_forward.w13",
+            "class": "MergedColumnParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "CompressedTensorsLinearMethod",
+              "module": "vllm.model_executor.layers.quantization.compressed_tensors.compressed_tensors",
+              "source_sha256": "e6a92e7c2979463e74b96268de8754160021faae35ee0ca676a6b7df40e7d738"
+            }
+          },
+          {
+            "name": "model.layers.13.feed_forward.w2",
+            "class": "RowParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "CompressedTensorsLinearMethod",
+              "module": "vllm.model_executor.layers.quantization.compressed_tensors.compressed_tensors",
+              "source_sha256": "e6a92e7c2979463e74b96268de8754160021faae35ee0ca676a6b7df40e7d738"
+            }
+          },
+          {
+            "name": "model.layers.14.self_attn.qkv_proj",
+            "class": "QKVParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "CompressedTensorsLinearMethod",
+              "module": "vllm.model_executor.layers.quantization.compressed_tensors.compressed_tensors",
+              "source_sha256": "e6a92e7c2979463e74b96268de8754160021faae35ee0ca676a6b7df40e7d738"
+            }
+          },
+          {
+            "name": "model.layers.14.self_attn.o_proj",
+            "class": "RowParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "CompressedTensorsLinearMethod",
+              "module": "vllm.model_executor.layers.quantization.compressed_tensors.compressed_tensors",
+              "source_sha256": "e6a92e7c2979463e74b96268de8754160021faae35ee0ca676a6b7df40e7d738"
+            }
+          },
+          {
+            "name": "model.layers.14.self_attn.gate_proj",
+            "class": "ColumnParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "UnquantizedLinearMethod",
+              "module": "vllm.model_executor.layers.linear",
+              "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4"
+            }
+          },
+          {
+            "name": "model.layers.14.self_attn.attn",
+            "class": "Attention",
+            "module": "vllm.model_executor.layers.attention.attention",
+            "source_sha256": "3914b60f5407d193cfd1cbe75c6689a6da71f89e37d177a04bb0d95b3244ea44",
+            "quant_method": {
+              "class": "CompressedTensorsKVCacheMethod",
+              "module": "vllm.model_executor.layers.quantization.compressed_tensors.compressed_tensors",
+              "source_sha256": "e6a92e7c2979463e74b96268de8754160021faae35ee0ca676a6b7df40e7d738"
+            },
+            "attn_backend": {
+              "class": "TritonAttentionBackend",
+              "module": "vllm.v1.attention.backends.triton_attn",
+              "source_sha256": "53b221f99c54b6bc21580d7e3e96a12c5eb1de7397bb4bfafb9d0cb6129cb223"
+            },
+            "impl": {
+              "class": "TritonAttentionImpl",
+              "module": "vllm.v1.attention.backends.triton_attn",
+              "source_sha256": "53b221f99c54b6bc21580d7e3e96a12c5eb1de7397bb4bfafb9d0cb6129cb223"
+            }
+          },
+          {
+            "name": "model.layers.14.feed_forward.w13",
+            "class": "MergedColumnParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "CompressedTensorsLinearMethod",
+              "module": "vllm.model_executor.layers.quantization.compressed_tensors.compressed_tensors",
+              "source_sha256": "e6a92e7c2979463e74b96268de8754160021faae35ee0ca676a6b7df40e7d738"
+            }
+          },
+          {
+            "name": "model.layers.14.feed_forward.w2",
+            "class": "RowParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "CompressedTensorsLinearMethod",
+              "module": "vllm.model_executor.layers.quantization.compressed_tensors.compressed_tensors",
+              "source_sha256": "e6a92e7c2979463e74b96268de8754160021faae35ee0ca676a6b7df40e7d738"
+            }
+          },
+          {
+            "name": "model.layers.15.short_conv.conv",
+            "class": "ColumnParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "UnquantizedLinearMethod",
+              "module": "vllm.model_executor.layers.linear",
+              "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4"
+            }
+          },
+          {
+            "name": "model.layers.15.short_conv.in_proj",
+            "class": "MergedColumnParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "UnquantizedLinearMethod",
+              "module": "vllm.model_executor.layers.linear",
+              "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4"
+            }
+          },
+          {
+            "name": "model.layers.15.short_conv.out_proj",
+            "class": "RowParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "UnquantizedLinearMethod",
+              "module": "vllm.model_executor.layers.linear",
+              "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4"
+            }
+          },
+          {
+            "name": "model.layers.15.feed_forward.w13",
+            "class": "MergedColumnParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "CompressedTensorsLinearMethod",
+              "module": "vllm.model_executor.layers.quantization.compressed_tensors.compressed_tensors",
+              "source_sha256": "e6a92e7c2979463e74b96268de8754160021faae35ee0ca676a6b7df40e7d738"
+            }
+          },
+          {
+            "name": "model.layers.15.feed_forward.w2",
+            "class": "RowParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "CompressedTensorsLinearMethod",
+              "module": "vllm.model_executor.layers.quantization.compressed_tensors.compressed_tensors",
+              "source_sha256": "e6a92e7c2979463e74b96268de8754160021faae35ee0ca676a6b7df40e7d738"
+            }
+          },
+          {
+            "name": "model.layers.16.self_attn.qkv_proj",
+            "class": "QKVParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "CompressedTensorsLinearMethod",
+              "module": "vllm.model_executor.layers.quantization.compressed_tensors.compressed_tensors",
+              "source_sha256": "e6a92e7c2979463e74b96268de8754160021faae35ee0ca676a6b7df40e7d738"
+            }
+          },
+          {
+            "name": "model.layers.16.self_attn.o_proj",
+            "class": "RowParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "CompressedTensorsLinearMethod",
+              "module": "vllm.model_executor.layers.quantization.compressed_tensors.compressed_tensors",
+              "source_sha256": "e6a92e7c2979463e74b96268de8754160021faae35ee0ca676a6b7df40e7d738"
+            }
+          },
+          {
+            "name": "model.layers.16.self_attn.gate_proj",
+            "class": "ColumnParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "UnquantizedLinearMethod",
+              "module": "vllm.model_executor.layers.linear",
+              "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4"
+            }
+          },
+          {
+            "name": "model.layers.16.self_attn.attn",
+            "class": "Attention",
+            "module": "vllm.model_executor.layers.attention.attention",
+            "source_sha256": "3914b60f5407d193cfd1cbe75c6689a6da71f89e37d177a04bb0d95b3244ea44",
+            "quant_method": {
+              "class": "CompressedTensorsKVCacheMethod",
+              "module": "vllm.model_executor.layers.quantization.compressed_tensors.compressed_tensors",
+              "source_sha256": "e6a92e7c2979463e74b96268de8754160021faae35ee0ca676a6b7df40e7d738"
+            },
+            "attn_backend": {
+              "class": "TritonAttentionBackend",
+              "module": "vllm.v1.attention.backends.triton_attn",
+              "source_sha256": "53b221f99c54b6bc21580d7e3e96a12c5eb1de7397bb4bfafb9d0cb6129cb223"
+            },
+            "impl": {
+              "class": "TritonAttentionImpl",
+              "module": "vllm.v1.attention.backends.triton_attn",
+              "source_sha256": "53b221f99c54b6bc21580d7e3e96a12c5eb1de7397bb4bfafb9d0cb6129cb223"
+            }
+          },
+          {
+            "name": "model.layers.16.feed_forward.w13",
+            "class": "MergedColumnParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "CompressedTensorsLinearMethod",
+              "module": "vllm.model_executor.layers.quantization.compressed_tensors.compressed_tensors",
+              "source_sha256": "e6a92e7c2979463e74b96268de8754160021faae35ee0ca676a6b7df40e7d738"
+            }
+          },
+          {
+            "name": "model.layers.16.feed_forward.w2",
+            "class": "RowParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "CompressedTensorsLinearMethod",
+              "module": "vllm.model_executor.layers.quantization.compressed_tensors.compressed_tensors",
+              "source_sha256": "e6a92e7c2979463e74b96268de8754160021faae35ee0ca676a6b7df40e7d738"
+            }
+          },
+          {
+            "name": "model.layers.17.short_conv.conv",
+            "class": "ColumnParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "UnquantizedLinearMethod",
+              "module": "vllm.model_executor.layers.linear",
+              "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4"
+            }
+          },
+          {
+            "name": "model.layers.17.short_conv.in_proj",
+            "class": "MergedColumnParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "UnquantizedLinearMethod",
+              "module": "vllm.model_executor.layers.linear",
+              "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4"
+            }
+          },
+          {
+            "name": "model.layers.17.short_conv.out_proj",
+            "class": "RowParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "UnquantizedLinearMethod",
+              "module": "vllm.model_executor.layers.linear",
+              "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4"
+            }
+          },
+          {
+            "name": "model.layers.17.feed_forward.w13",
+            "class": "MergedColumnParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "CompressedTensorsLinearMethod",
+              "module": "vllm.model_executor.layers.quantization.compressed_tensors.compressed_tensors",
+              "source_sha256": "e6a92e7c2979463e74b96268de8754160021faae35ee0ca676a6b7df40e7d738"
+            }
+          },
+          {
+            "name": "model.layers.17.feed_forward.w2",
+            "class": "RowParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "CompressedTensorsLinearMethod",
+              "module": "vllm.model_executor.layers.quantization.compressed_tensors.compressed_tensors",
+              "source_sha256": "e6a92e7c2979463e74b96268de8754160021faae35ee0ca676a6b7df40e7d738"
+            }
+          },
+          {
+            "name": "model.layers.18.self_attn.qkv_proj",
+            "class": "QKVParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "CompressedTensorsLinearMethod",
+              "module": "vllm.model_executor.layers.quantization.compressed_tensors.compressed_tensors",
+              "source_sha256": "e6a92e7c2979463e74b96268de8754160021faae35ee0ca676a6b7df40e7d738"
+            }
+          },
+          {
+            "name": "model.layers.18.self_attn.o_proj",
+            "class": "RowParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "CompressedTensorsLinearMethod",
+              "module": "vllm.model_executor.layers.quantization.compressed_tensors.compressed_tensors",
+              "source_sha256": "e6a92e7c2979463e74b96268de8754160021faae35ee0ca676a6b7df40e7d738"
+            }
+          },
+          {
+            "name": "model.layers.18.self_attn.gate_proj",
+            "class": "ColumnParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "UnquantizedLinearMethod",
+              "module": "vllm.model_executor.layers.linear",
+              "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4"
+            }
+          },
+          {
+            "name": "model.layers.18.self_attn.attn",
+            "class": "Attention",
+            "module": "vllm.model_executor.layers.attention.attention",
+            "source_sha256": "3914b60f5407d193cfd1cbe75c6689a6da71f89e37d177a04bb0d95b3244ea44",
+            "quant_method": {
+              "class": "CompressedTensorsKVCacheMethod",
+              "module": "vllm.model_executor.layers.quantization.compressed_tensors.compressed_tensors",
+              "source_sha256": "e6a92e7c2979463e74b96268de8754160021faae35ee0ca676a6b7df40e7d738"
+            },
+            "attn_backend": {
+              "class": "TritonAttentionBackend",
+              "module": "vllm.v1.attention.backends.triton_attn",
+              "source_sha256": "53b221f99c54b6bc21580d7e3e96a12c5eb1de7397bb4bfafb9d0cb6129cb223"
+            },
+            "impl": {
+              "class": "TritonAttentionImpl",
+              "module": "vllm.v1.attention.backends.triton_attn",
+              "source_sha256": "53b221f99c54b6bc21580d7e3e96a12c5eb1de7397bb4bfafb9d0cb6129cb223"
+            }
+          },
+          {
+            "name": "model.layers.18.feed_forward.w13",
+            "class": "MergedColumnParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "CompressedTensorsLinearMethod",
+              "module": "vllm.model_executor.layers.quantization.compressed_tensors.compressed_tensors",
+              "source_sha256": "e6a92e7c2979463e74b96268de8754160021faae35ee0ca676a6b7df40e7d738"
+            }
+          },
+          {
+            "name": "model.layers.18.feed_forward.w2",
+            "class": "RowParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "CompressedTensorsLinearMethod",
+              "module": "vllm.model_executor.layers.quantization.compressed_tensors.compressed_tensors",
+              "source_sha256": "e6a92e7c2979463e74b96268de8754160021faae35ee0ca676a6b7df40e7d738"
+            }
+          },
+          {
+            "name": "model.layers.19.short_conv.conv",
+            "class": "ColumnParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "UnquantizedLinearMethod",
+              "module": "vllm.model_executor.layers.linear",
+              "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4"
+            }
+          },
+          {
+            "name": "model.layers.19.short_conv.in_proj",
+            "class": "MergedColumnParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "UnquantizedLinearMethod",
+              "module": "vllm.model_executor.layers.linear",
+              "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4"
+            }
+          },
+          {
+            "name": "model.layers.19.short_conv.out_proj",
+            "class": "RowParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "UnquantizedLinearMethod",
+              "module": "vllm.model_executor.layers.linear",
+              "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4"
+            }
+          },
+          {
+            "name": "model.layers.19.feed_forward.w13",
+            "class": "MergedColumnParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "CompressedTensorsLinearMethod",
+              "module": "vllm.model_executor.layers.quantization.compressed_tensors.compressed_tensors",
+              "source_sha256": "e6a92e7c2979463e74b96268de8754160021faae35ee0ca676a6b7df40e7d738"
+            }
+          },
+          {
+            "name": "model.layers.19.feed_forward.w2",
+            "class": "RowParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "CompressedTensorsLinearMethod",
+              "module": "vllm.model_executor.layers.quantization.compressed_tensors.compressed_tensors",
+              "source_sha256": "e6a92e7c2979463e74b96268de8754160021faae35ee0ca676a6b7df40e7d738"
+            }
+          },
+          {
+            "name": "model.layers.20.self_attn.qkv_proj",
+            "class": "QKVParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "CompressedTensorsLinearMethod",
+              "module": "vllm.model_executor.layers.quantization.compressed_tensors.compressed_tensors",
+              "source_sha256": "e6a92e7c2979463e74b96268de8754160021faae35ee0ca676a6b7df40e7d738"
+            }
+          },
+          {
+            "name": "model.layers.20.self_attn.o_proj",
+            "class": "RowParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "CompressedTensorsLinearMethod",
+              "module": "vllm.model_executor.layers.quantization.compressed_tensors.compressed_tensors",
+              "source_sha256": "e6a92e7c2979463e74b96268de8754160021faae35ee0ca676a6b7df40e7d738"
+            }
+          },
+          {
+            "name": "model.layers.20.self_attn.gate_proj",
+            "class": "ColumnParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "UnquantizedLinearMethod",
+              "module": "vllm.model_executor.layers.linear",
+              "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4"
+            }
+          },
+          {
+            "name": "model.layers.20.self_attn.attn",
+            "class": "Attention",
+            "module": "vllm.model_executor.layers.attention.attention",
+            "source_sha256": "3914b60f5407d193cfd1cbe75c6689a6da71f89e37d177a04bb0d95b3244ea44",
+            "quant_method": {
+              "class": "CompressedTensorsKVCacheMethod",
+              "module": "vllm.model_executor.layers.quantization.compressed_tensors.compressed_tensors",
+              "source_sha256": "e6a92e7c2979463e74b96268de8754160021faae35ee0ca676a6b7df40e7d738"
+            },
+            "attn_backend": {
+              "class": "TritonAttentionBackend",
+              "module": "vllm.v1.attention.backends.triton_attn",
+              "source_sha256": "53b221f99c54b6bc21580d7e3e96a12c5eb1de7397bb4bfafb9d0cb6129cb223"
+            },
+            "impl": {
+              "class": "TritonAttentionImpl",
+              "module": "vllm.v1.attention.backends.triton_attn",
+              "source_sha256": "53b221f99c54b6bc21580d7e3e96a12c5eb1de7397bb4bfafb9d0cb6129cb223"
+            }
+          },
+          {
+            "name": "model.layers.20.feed_forward.w13",
+            "class": "MergedColumnParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "CompressedTensorsLinearMethod",
+              "module": "vllm.model_executor.layers.quantization.compressed_tensors.compressed_tensors",
+              "source_sha256": "e6a92e7c2979463e74b96268de8754160021faae35ee0ca676a6b7df40e7d738"
+            }
+          },
+          {
+            "name": "model.layers.20.feed_forward.w2",
+            "class": "RowParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "CompressedTensorsLinearMethod",
+              "module": "vllm.model_executor.layers.quantization.compressed_tensors.compressed_tensors",
+              "source_sha256": "e6a92e7c2979463e74b96268de8754160021faae35ee0ca676a6b7df40e7d738"
+            }
+          },
+          {
+            "name": "model.layers.21.short_conv.conv",
+            "class": "ColumnParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "UnquantizedLinearMethod",
+              "module": "vllm.model_executor.layers.linear",
+              "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4"
+            }
+          },
+          {
+            "name": "model.layers.21.short_conv.in_proj",
+            "class": "MergedColumnParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "UnquantizedLinearMethod",
+              "module": "vllm.model_executor.layers.linear",
+              "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4"
+            }
+          },
+          {
+            "name": "model.layers.21.short_conv.out_proj",
+            "class": "RowParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "UnquantizedLinearMethod",
+              "module": "vllm.model_executor.layers.linear",
+              "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4"
+            }
+          },
+          {
+            "name": "model.layers.21.feed_forward.w13",
+            "class": "MergedColumnParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "CompressedTensorsLinearMethod",
+              "module": "vllm.model_executor.layers.quantization.compressed_tensors.compressed_tensors",
+              "source_sha256": "e6a92e7c2979463e74b96268de8754160021faae35ee0ca676a6b7df40e7d738"
+            }
+          },
+          {
+            "name": "model.layers.21.feed_forward.w2",
+            "class": "RowParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "CompressedTensorsLinearMethod",
+              "module": "vllm.model_executor.layers.quantization.compressed_tensors.compressed_tensors",
+              "source_sha256": "e6a92e7c2979463e74b96268de8754160021faae35ee0ca676a6b7df40e7d738"
+            }
+          },
+          {
+            "name": "model.layers.22.self_attn.qkv_proj",
+            "class": "QKVParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "CompressedTensorsLinearMethod",
+              "module": "vllm.model_executor.layers.quantization.compressed_tensors.compressed_tensors",
+              "source_sha256": "e6a92e7c2979463e74b96268de8754160021faae35ee0ca676a6b7df40e7d738"
+            }
+          },
+          {
+            "name": "model.layers.22.self_attn.o_proj",
+            "class": "RowParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "CompressedTensorsLinearMethod",
+              "module": "vllm.model_executor.layers.quantization.compressed_tensors.compressed_tensors",
+              "source_sha256": "e6a92e7c2979463e74b96268de8754160021faae35ee0ca676a6b7df40e7d738"
+            }
+          },
+          {
+            "name": "model.layers.22.self_attn.gate_proj",
+            "class": "ColumnParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "UnquantizedLinearMethod",
+              "module": "vllm.model_executor.layers.linear",
+              "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4"
+            }
+          },
+          {
+            "name": "model.layers.22.self_attn.attn",
+            "class": "Attention",
+            "module": "vllm.model_executor.layers.attention.attention",
+            "source_sha256": "3914b60f5407d193cfd1cbe75c6689a6da71f89e37d177a04bb0d95b3244ea44",
+            "quant_method": {
+              "class": "CompressedTensorsKVCacheMethod",
+              "module": "vllm.model_executor.layers.quantization.compressed_tensors.compressed_tensors",
+              "source_sha256": "e6a92e7c2979463e74b96268de8754160021faae35ee0ca676a6b7df40e7d738"
+            },
+            "attn_backend": {
+              "class": "TritonAttentionBackend",
+              "module": "vllm.v1.attention.backends.triton_attn",
+              "source_sha256": "53b221f99c54b6bc21580d7e3e96a12c5eb1de7397bb4bfafb9d0cb6129cb223"
+            },
+            "impl": {
+              "class": "TritonAttentionImpl",
+              "module": "vllm.v1.attention.backends.triton_attn",
+              "source_sha256": "53b221f99c54b6bc21580d7e3e96a12c5eb1de7397bb4bfafb9d0cb6129cb223"
+            }
+          },
+          {
+            "name": "model.layers.22.feed_forward.w13",
+            "class": "MergedColumnParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "CompressedTensorsLinearMethod",
+              "module": "vllm.model_executor.layers.quantization.compressed_tensors.compressed_tensors",
+              "source_sha256": "e6a92e7c2979463e74b96268de8754160021faae35ee0ca676a6b7df40e7d738"
+            }
+          },
+          {
+            "name": "model.layers.22.feed_forward.w2",
+            "class": "RowParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "CompressedTensorsLinearMethod",
+              "module": "vllm.model_executor.layers.quantization.compressed_tensors.compressed_tensors",
+              "source_sha256": "e6a92e7c2979463e74b96268de8754160021faae35ee0ca676a6b7df40e7d738"
+            }
+          },
+          {
+            "name": "model.layers.23.short_conv.conv",
+            "class": "ColumnParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "UnquantizedLinearMethod",
+              "module": "vllm.model_executor.layers.linear",
+              "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4"
+            }
+          },
+          {
+            "name": "model.layers.23.short_conv.in_proj",
+            "class": "MergedColumnParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "UnquantizedLinearMethod",
+              "module": "vllm.model_executor.layers.linear",
+              "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4"
+            }
+          },
+          {
+            "name": "model.layers.23.short_conv.out_proj",
+            "class": "RowParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "UnquantizedLinearMethod",
+              "module": "vllm.model_executor.layers.linear",
+              "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4"
+            }
+          },
+          {
+            "name": "model.layers.23.feed_forward.w13",
+            "class": "MergedColumnParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "CompressedTensorsLinearMethod",
+              "module": "vllm.model_executor.layers.quantization.compressed_tensors.compressed_tensors",
+              "source_sha256": "e6a92e7c2979463e74b96268de8754160021faae35ee0ca676a6b7df40e7d738"
+            }
+          },
+          {
+            "name": "model.layers.23.feed_forward.w2",
+            "class": "RowParallelLinear",
+            "module": "vllm.model_executor.layers.linear",
+            "source_sha256": "d4b97d850eb8bdee5fd2459e7ac688d00623b54f5ec0ea590c08da0173f8b4d4",
+            "quant_method": {
+              "class": "CompressedTensorsLinearMethod",
+              "module": "vllm.model_executor.layers.quantization.compressed_tensors.compressed_tensors",
+              "source_sha256": "e6a92e7c2979463e74b96268de8754160021faae35ee0ca676a6b7df40e7d738"
+            }
+          },
+          {
+            "name": "lm_head",
+            "class": "ParallelLMHead",
+            "module": "vllm.model_executor.layers.vocab_parallel_embedding",
+            "source_sha256": "0a25685b16b295d0c9f7127ae48fc7cc86d2a961e4e7e7bd8879354540225f44",
+            "quant_method": {
+              "class": "UnquantizedEmbeddingMethod",
+              "module": "vllm.model_executor.layers.vocab_parallel_embedding",
+              "source_sha256": "0a25685b16b295d0c9f7127ae48fc7cc86d2a961e4e7e7bd8879354540225f44"
+            }
+          }
+        ],
+        "graph": "FULL_AND_PIECEWISE",
+        "allocated": 5895610880,
+        "reserved": 5970591744,
+        "free_total": [
+          27327987712,
+          34208743424
+        ]
+      }
+    ]
+  },
+  "seconds": 0.04434837191365659
+}

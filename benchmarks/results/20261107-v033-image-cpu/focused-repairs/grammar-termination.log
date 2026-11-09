@@ -1,0 +1,7 @@
+  NOOP  qwen-grammar-helpers already applied
+  NOOP  qwen-tool-schema-copy already applied
+  OK    qwen-auto-grammar-opt-in
+  NOOP  qwen-integer-bounds already applied
+  NOOP  modern-structural-tag-fallback already applied
+Installed Qwen grammar compiler contracts: PASS (12 Chat/Responses combinations)
+xgrammar speculative termination regression check: PASS

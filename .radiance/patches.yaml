@@ -23,6 +23,7 @@ area_tests:
   - r9700-tp2-smoke
   - correctness-equivalence
   attention:
+  - r4d-attention-native
   - r9700-tp2-smoke
   - betterbench-standard
   dflash:
@@ -57,285 +58,516 @@ activation_values:
 - historical
 policy:
   prefer_upstream_ownership: true
-  upgrade_rule: Classify each active overlay as upstream-owned, still-required, mechanical-drift, semantic-migration, obsolete, deprecated-architecture debt, or Tier-3.
+  upgrade_rule: Classify each active overlay as upstream-owned, still-required, mechanical-drift, semantic-migration,
+    obsolete, deprecated-architecture debt, or Tier-3.
   gate_rule: Required gates may be strengthened but not silently weakened or removed to make a candidate pass.
 patches:
+  patch_lfm3_backport:
+    component: vllm
+    runner: both
+    areas: [lfm3, runtime, attention, upgrade]
+    reason: Official LFM3 text model/config registration and width-7 recurrent convolution support after stable v0.33.
+    v033_disposition: BACKPORT_GUARDED
+    tests_add: [lfm3-backport-cpu, lfm3-image, lfm3-native]
+    provenance:
+      kind: upstream-backport
+      upstream_pr: 'vLLM #65826'
+      upstream_commit: c96e5f60bbdd7b523d56f6e7cb9b39e0a7013287
+      evidence: upstream/vllm-lfm3/SOURCE_PROVENANCE.json
+    remove_when: The pinned stable vLLM release includes official LFM3 and width-7 convolution support.
   patch_qwen_tool_grammar:
-    areas: [parser, structured-output]
+    areas:
+    - parser
+    - structured-output
     runner: independent
-    reason: Preserve modern-tag failure diagnostics and provide explicit Qwen auto-tool/rounded-Int64 compatibility switches without changing defaults.
-    tests_add: [qwen-tool-grammar-cpu, qwen-tool-grammar-image]
+    reason: Preserve modern-tag failure diagnostics and provide explicit Qwen auto-tool/rounded-Int64 compatibility
+      switches without changing defaults.
+    tests_add:
+    - qwen-tool-grammar-cpu
+    - qwen-tool-grammar-image
+    v033_disposition: RETAIN_GUARDED
   patch_ar_geometry:
     v030_disposition: RETAIN_UNCHANGED
-    areas: [allreduce, tp2, performance]
+    areas:
+    - allreduce
+    - tp2
+    - performance
     reason: Expose the measured TP2 compressed all-reduce geometry controls.
     runner: both
+    v033_disposition: RETAIN_GUARDED
   patch_ar_maxbytes:
     v030_disposition: RETAIN_UNCHANGED
-    areas: [allreduce, tp2]
+    areas:
+    - allreduce
+    - tp2
     reason: Retain exact-message size limits for the qualified Radiance TP2 collective path.
     runner: both
+    v033_disposition: RETAIN_GUARDED
   patch_conv1d_blockn:
     v030_disposition: RETAIN_UNCHANGED
-    areas: [gdn, conv1d]
+    areas:
+    - gdn
+    - conv1d
     reason: Retain block-N compatibility for the qualified GDN/conv1d path.
     runner: both
+    v033_disposition: RETAIN_GUARDED
   patch_dflash2_v0271_backport:
     removed_at: v0.30; historical source at 285ac78e7f19bc1e1b5b09b25f865aea0c6d9754
     v030_disposition: OBSOLETE_DELETE
-    areas: [dflash, historical]
-    reason: Historical v0.27.1 DFlash2 source-copy backport; retained only for archaeology because v0.28 owns DFlash2 natively.
+    areas:
+    - dflash
+    - historical
+    reason: Historical v0.27.1 DFlash2 source-copy backport; retained only for archaeology because v0.28 owns DFlash2
+      natively.
     runner: v1
     activation: historical
     active: false
     status: retired-historical
-    provenance: {kind: historical-upstream-backport, evidence: docs/V028_UPGRADE.md}
+    provenance:
+      kind: historical-upstream-backport
+      evidence: docs/V028_UPGRADE.md
     remove_when: null
   patch_dflash_base:
     v030_disposition: UPSTREAM_OWNED
     active: false
     activation: historical
     removed_at: v0.30; historical source at 285ac78e7f19bc1e1b5b09b25f865aea0c6d9754
-    areas: [dflash, speculative]
+    areas:
+    - dflash
+    - speculative
     reason: Install Radiance DFlash integration hooks on top of vLLM's native DFlash2 implementation.
     runner: v2
+  patch_dflash_quant_exclusions:
+    component: vllm
+    areas: [dflash, speculative, quantization]
+    runner: both
+    reason: Alias FP8 draft ignored_layers to global runtime indices and module root.
+    v033_disposition: BACKPORT_GUARDED
+    provenance:
+      kind: selective-adaptation
+      upstream_pr: 'vLLM #61010'
+      upstream_commit: c9cf9d5e77151bf47116ba908df748908b5112fd
+      evidence: docs/V033_UPGRADE.md
+    remove_when: Stable map_draft_quant_config handles ignored_layers and exact runtime roots upstream.
   patch_dflash_fused_kv_fp8:
     v030_disposition: RETAIN_UNCHANGED
-    areas: [dflash, fp8-kv, speculative]
+    areas:
+    - dflash
+    - fp8-kv
+    - speculative
     reason: Preserve fused FP8 KV handling required by the qualified DFlash lane.
     runner: v2
+    v033_disposition: RETAIN_GUARDED
   patch_dflash_logits_cache_stride:
     removed_at: v0.30; historical source at 285ac78e7f19bc1e1b5b09b25f865aea0c6d9754
     v030_disposition: UPSTREAM_OWNED
     active: false
     activation: historical
     status: upstream-owned-v030
-    areas: [dflash, speculative, correctness]
+    areas:
+    - dflash
+    - speculative
+    - correctness
     reason: Backport the post-v0.28 DFlash logits-cache stride/width correctness fix.
     runner: v2
-    provenance: {kind: upstream-backport, upstream_pr: 'vLLM #53017', upstream_commit: d4f4d3f40fc5350a71777fcb0e5eb8a57bda631f, evidence: docs/V028_UPGRADE.md}
+    provenance:
+      kind: upstream-backport
+      upstream_pr: 'vLLM #53017'
+      upstream_commit: d4f4d3f40fc5350a71777fcb0e5eb8a57bda631f
+      evidence: docs/V028_UPGRADE.md
   patch_dflash_selector_topk:
     v030_disposition: RETAIN_UNCHANGED
-    areas: [dflash, sampling, experimental]
+    areas:
+    - dflash
+    - sampling
+    - experimental
     reason: Expose the DFlash selector top-k experimental control while preserving the checkpoint default.
     runner: v2
+    v033_disposition: RETAIN_GUARDED
   patch_dflash_w4:
     v030_disposition: RETAIN_UNCHANGED
-    areas: [dflash, quantization, draft]
+    areas:
+    - dflash
+    - quantization
+    - draft
     reason: Integrate Radiance W4 draft-linears for the opt-in fast DFlash path.
     runner: v2
+    v033_disposition: RETAIN_GUARDED
   patch_dynamo_metrics:
     v030_disposition: RETAIN_UNCHANGED
-    areas: [metrics, dynamo]
+    areas:
+    - metrics
+    - dynamo
     reason: Expose/retain metrics required to diagnose compiled serving behavior.
     runner: both
+    v033_disposition: RETAIN_GUARDED
   patch_dynwidth:
     v030_disposition: MECHANICAL_PORT
-    areas: [dflash, scheduler, speculative]
+    areas:
+    - dflash
+    - scheduler
+    - speculative
     reason: Apply per-request DFlash verification-width policy from observed acceptance.
     runner: v2
-    provenance: {kind: selective-adaptation, source: ggz14/radiance-vllm-mxfp4 lineage, evidence: docs/RADIANCE_093_R4D050_MXFP4.md}
+    provenance:
+      kind: selective-adaptation
+      source: ggz14/radiance-vllm-mxfp4 lineage
+      evidence: docs/RADIANCE_093_R4D050_MXFP4.md
+    v033_disposition: RETAIN_GUARDED
   patch_fp8_kv_sidecar:
     v030_disposition: RETAIN_UNCHANGED
-    areas: [fp8-kv, calibration]
+    areas:
+    - fp8-kv
+    - calibration
     reason: Support immutable checkpoint-bound FP8 KV calibration sidecars as an opt-in fidelity laboratory.
     runner: both
+    v033_disposition: RETAIN_GUARDED
   patch_from_json_filter:
     v030_disposition: RETAIN_UNCHANGED
-    areas: [parser, serialization]
+    areas:
+    - parser
+    - serialization
     reason: Retain JSON filtering compatibility used by the serving/tooling path.
     runner: independent
+    v033_disposition: RETAIN_GUARDED
   patch_gdn_aiter_prefill:
     v030_disposition: RETAIN_UNCHANGED
-    areas: [gdn, aiter, prefill]
+    areas:
+    - gdn
+    - aiter
+    - prefill
     reason: Provide the explicit AITER GDN prefill bridge retained as a measured opt-in path.
     runner: both
+    v033_disposition: RETAIN_GUARDED
   patch_gdn_merge_inproj:
     v030_disposition: MECHANICAL_PORT
-    areas: [gdn, gemm, performance]
+    areas:
+    - gdn
+    - gemm
+    - performance
     reason: Merge compatible GDN input projections at load time to reduce launch overhead.
     runner: both
-    provenance: {kind: selective-adaptation, source: ggz14/radiance-vllm-mxfp4 lineage, evidence: docs/MXFP4_RX4_CONTINUATION.md}
+    provenance:
+      kind: selective-adaptation
+      source: ggz14/radiance-vllm-mxfp4 lineage
+      evidence: docs/MXFP4_RX4_CONTINUATION.md
+    v033_disposition: RETAIN_GUARDED
   patch_gdn_metadata:
     v030_disposition: MECHANICAL_PORT
-    areas: [gdn, speculative]
+    areas:
+    - gdn
+    - speculative
     reason: Provide exact GPU GDN metadata used by speculative execution.
     runner: both
+    v033_disposition: RETAIN_GUARDED
   patch_gdn_shared_build:
     v030_disposition: RETAIN_UNCHANGED
-    areas: [gdn, speculative, performance]
-    reason: Share equivalent speculative GDN metadata construction across KV groups.
+    areas:
+    - gdn
+    - speculative
+    - performance
+    reason: v0.33 MRV2 explicitly reuses GDN metadata and updates block-table indices while preserving shared graph
+      buffers.
     runner: both
+    v033_disposition: UPSTREAM_OWNED
+    active: false
+    activation: historical
+    status: upstream-owned-v033
   patch_gdn_wmma:
     v030_disposition: RETAIN_UNCHANGED
-    areas: [gdn, rocm, wmma]
+    areas:
+    - gdn
+    - rocm
+    - wmma
     reason: Apply the gfx1201 WMMA triangular-solve path used by qualified GDN execution.
     runner: both
+    v033_disposition: RETAIN_GUARDED
   patch_gfx1201:
     v030_disposition: RETAIN_UNCHANGED
-    areas: [gfx1201, rocm, build]
+    areas:
+    - gfx1201
+    - rocm
+    - build
     reason: Enable/guard gfx1201-specific vLLM behavior required by the qualified R9700 stack.
     runner: both
+    v033_disposition: RETAIN_GUARDED
   patch_kv_group_size:
     v030_disposition: RETAIN_UNCHANGED
-    areas: [kv-cache, capacity]
+    areas:
+    - kv-cache
+    - capacity
     reason: Select hybrid KV group size by measured capacity cost rather than smallest-bucket padding.
     runner: both
+    v033_disposition: RETAIN_GUARDED
   patch_kv_offload_lifecycle:
     v030_disposition: MECHANICAL_PORT
-    areas: [kv-offload, lifecycle]
+    areas:
+    - kv-offload
+    - lifecycle
     reason: Verify upstream-owned mmap lifetime without rewriting it; chain the separate rank-sharded opt-in.
     runner: independent
-    provenance: {kind: upstream-backport-plus-radiance-extension, upstream_pr: 'vLLM #52596', upstream_commit: 4c58a0c398b056b135b98bd93c644945be7e3109, evidence: patch_kv_offload_lifecycle.py}
+    provenance:
+      kind: upstream-backport-plus-radiance-extension
+      upstream_pr: 'vLLM #52596'
+      upstream_commit: 4c58a0c398b056b135b98bd93c644945be7e3109
+      evidence: patch_kv_offload_lifecycle.py
+    v033_disposition: RETAIN_GUARDED
   patch_kv_offload_rank_sharded:
     v030_disposition: SEMANTIC_PORT
-    areas: [kv-offload, tp2, experimental]
+    areas:
+    - kv-offload
+    - tp2
+    - experimental
     reason: Add the opt-in rank-major CPU KV layout; invoked transitively by the lifecycle overlay.
     runner: independent
     activation: indirect
     status: radiance-extension
+    v033_disposition: RETAIN_GUARDED
   patch_kv_offload_registration:
     v030_disposition: SEMANTIC_PORT
-    areas: [kv-offload, rocm]
+    areas:
+    - kv-offload
+    - rocm
     reason: Harden mmap host registration, HIP error draining, and coherent TP fallback.
     runner: independent
+    v033_disposition: RETAIN_GUARDED
   patch_kv_offload_restore:
     v030_disposition: SEMANTIC_PORT
-    areas: [kv-offload, restore]
+    areas:
+    - kv-offload
+    - restore
     reason: Repair native CPU KV restore/group handling for qualified hybrid/speculative layouts.
     runner: independent
+    v033_disposition: RETAIN_GUARDED
   patch_mtp_loopbreak:
     v030_disposition: RETAIN_UNCHANGED
-    areas: [mtp, speculative]
+    areas:
+    - mtp
+    - speculative
     reason: Preserve Radiance MTP loop termination/controller behavior.
     runner: both
+    v033_disposition: RETAIN_GUARDED
   patch_mtp_mm_mask:
     v030_disposition: RETAIN_UNCHANGED
-    areas: [mtp, speculative]
+    areas:
+    - mtp
+    - speculative
     reason: Preserve MTP matrix/mask correctness behavior used by the qualified fast-draft path.
     runner: both
+    v033_disposition: RETAIN_GUARDED
   patch_parser_shared_engine:
     removed_at: v0.30; historical source at 285ac78e7f19bc1e1b5b09b25f865aea0c6d9754
     v030_disposition: UPSTREAM_OWNED
     active: false
     activation: historical
     status: upstream-owned-v030
-    areas: [parser, tools, correctness]
-    reason: Backport the v0.28 shared-parser fix that preserves registered reasoning/tool adapters and structural tags.
+    areas:
+    - parser
+    - tools
+    - correctness
+    reason: Backport the v0.28 shared-parser fix that preserves registered reasoning/tool adapters and structural
+      tags.
     runner: independent
-    provenance: {kind: upstream-backport, upstream_pr: 'vLLM #52830', upstream_commit: 46638857fdbb30e0c232c9e8f9cb1ff6d6f545c3, evidence: docs/V028_UPGRADE.md}
+    provenance:
+      kind: upstream-backport
+      upstream_pr: 'vLLM #52830'
+      upstream_commit: 46638857fdbb30e0c232c9e8f9cb1ff6d6f545c3
+      evidence: docs/V028_UPGRADE.md
   patch_preshuffle:
     v030_disposition: RETAIN_UNCHANGED
-    areas: [fp8, gemm, weights]
+    areas:
+    - fp8
+    - gemm
+    - weights
     reason: Install Radiance preshuffled FP8 weight handling and dispatcher integration.
     runner: both
+    v033_disposition: RETAIN_GUARDED
   patch_quark_bf16_mtp:
     v030_disposition: RETAIN_UNCHANGED
-    areas: [mxfp4, quark, mtp]
+    areas:
+    - mxfp4
+    - quark
+    - mtp
     reason: Allow the qualified Quark checkpoint's BF16 MTP tensors only when explicitly selected.
     runner: both
+    v033_disposition: RETAIN_GUARDED
   patch_quark_mxfp4:
     v030_disposition: MECHANICAL_PORT
-    areas: [mxfp4, quark, quantization]
+    areas:
+    - mxfp4
+    - quark
+    - quantization
     reason: Register and route native Quark MXFP4/W4A8 on gfx1201.
     runner: both
-    provenance: {kind: selective-adaptation, source: ggz14/radiance-vllm-mxfp4 lineage, evidence: docs/MXFP4_W4A8_R9700.md}
+    provenance:
+      kind: selective-adaptation
+      source: ggz14/radiance-vllm-mxfp4 lineage
+      evidence: docs/MXFP4_W4A8_R9700.md
+    v033_disposition: RETAIN_GUARDED
   patch_qwen3_toolparse:
     v030_disposition: RETAIN_UNCHANGED
-    areas: [parser, qwen, tools]
+    areas:
+    - parser
+    - qwen
+    - tools
     reason: Preserve Qwen3 tool/reasoning parser behavior required by Radiance tool-call qualification.
     runner: independent
+    v033_disposition: RETAIN_GUARDED
   patch_qwen_open_object_schema:
     v030_disposition: RETAIN_UNCHANGED
-    areas: [parser, tools, structured-output]
-    reason: Preserve open nested-object schemas used by deferred-tool wrappers instead of flattening/restricting arguments.
+    areas:
+    - parser
+    - tools
+    - structured-output
+    reason: Preserve open nested-object schemas used by deferred-tool wrappers instead of flattening/restricting
+      arguments.
     runner: independent
+    v033_disposition: RETAIN_GUARDED
   patch_r4d:
     v030_disposition: MECHANICAL_PORT
-    areas: [libr4d, attention, gdn]
+    areas:
+    - libr4d
+    - attention
+    - gdn
     reason: Integrate libr4d operators with the pinned vLLM model/runtime paths.
     runner: both
+    v033_disposition: RETAIN_GUARDED
   patch_radiance_dispatch:
     v030_disposition: RETAIN_UNCHANGED
-    areas: [quantization, fp8, dispatch]
+    areas:
+    - quantization
+    - fp8
+    - dispatch
     reason: Install Radiance FP8 dispatch selection and guarded fallbacks.
     runner: both
+    v033_disposition: RETAIN_GUARDED
   patch_rocm_cudagraph_current_stream:
     removed_at: v0.30; historical source at 285ac78e7f19bc1e1b5b09b25f865aea0c6d9754
     v030_disposition: UPSTREAM_OWNED
     active: false
     activation: historical
     status: upstream-owned-v030
-    areas: [rocm, cudagraph, correctness]
+    areas:
+    - rocm
+    - cudagraph
+    - correctness
     reason: Backport vLLM's post-v0.28 ROCm graph capture fix to use the current stream.
     runner: both
-    provenance: {kind: upstream-backport, upstream_pr: 'vLLM #53818', upstream_commit: 080a66a69c6fd1fe464756f88ab958baad66ce69, evidence: docs/V028_UPGRADE.md}
+    provenance:
+      kind: upstream-backport
+      upstream_pr: 'vLLM #53818'
+      upstream_commit: 080a66a69c6fd1fe464756f88ab958baad66ce69
+      evidence: docs/V028_UPGRADE.md
   patch_skinny_gemm:
     v030_disposition: RETAIN_UNCHANGED
-    areas: [gemm, decode]
+    areas:
+    - gemm
+    - decode
     reason: Route qualified skinny GEMM shapes through Radiance-tuned implementations.
     runner: both
+    v033_disposition: RETAIN_GUARDED
   patch_topk_composite:
     v030_disposition: RETAIN_UNCHANGED
-    areas: [sampling, topk]
+    areas:
+    - sampling
+    - topk
     reason: Install the bounded composite top-k path with exact fallback.
     runner: both
+    v033_disposition: RETAIN_GUARDED
   patch_topk_triton_rows:
     removed_at: v0.30; historical source at 285ac78e7f19bc1e1b5b09b25f865aea0c6d9754
     v030_disposition: UPSTREAM_OWNED
     active: false
     activation: historical
     status: upstream-owned-v030
-    areas: [sampling, topk]
+    areas:
+    - sampling
+    - topk
     reason: Route small-row top-k work through the qualified Triton path.
     runner: both
   patch_unified_attention_lds:
     v030_disposition: RETAIN_UNCHANGED
-    areas: [attention, rocm]
+    areas:
+    - attention
+    - rocm
     reason: Retain the qualified broader ROCm LDS fit/tuning guard for unified attention.
     runner: both
+    v033_disposition: RETAIN_GUARDED
   patch_unpad:
     v030_disposition: UPSTREAM_OWNED
     active: false
     activation: historical
     removed_at: v0.30; historical source at 285ac78e7f19bc1e1b5b09b25f865aea0c6d9754
-    areas: [runtime, tensor-shapes]
+    areas:
+    - runtime
+    - tensor-shapes
     reason: Carry Radiance's guarded unpadding compatibility behavior.
     runner: unknown
   patch_verify_head:
     v030_disposition: MECHANICAL_PORT
-    areas: [dflash, sampling, speculative]
+    areas:
+    - dflash
+    - sampling
+    - speculative
     reason: Install the sampling-aware target verification head with exact fallback.
     runner: v2
-    provenance: {kind: selective-adaptation, source: ggz14/radiance-vllm-mxfp4 lineage, evidence: docs/RADIANCE_093_R4D050_MXFP4.md}
+    provenance:
+      kind: selective-adaptation
+      source: ggz14/radiance-vllm-mxfp4 lineage
+      evidence: docs/RADIANCE_093_R4D050_MXFP4.md
+    v033_disposition: RETAIN_GUARDED
   patch_xgrammar_spec_reasoning:
     removed_at: v0.30; historical source at 285ac78e7f19bc1e1b5b09b25f865aea0c6d9754
     v030_disposition: UPSTREAM_OWNED
     active: false
     activation: historical
     status: upstream-owned-v030
-    areas: [structured-output, xgrammar, reasoning, speculative]
+    areas:
+    - structured-output
+    - xgrammar
+    - reasoning
+    - speculative
     reason: Backport reasoning-boundary validation for drafts generated before the grammar mask activates.
     runner: independent
-    provenance: {kind: upstream-backport, upstream_pr: 'vLLM #52805/#53046', evidence: docs/V028_UPGRADE.md}
+    provenance:
+      kind: upstream-backport
+      upstream_pr: 'vLLM #52805/#53046'
+      evidence: docs/V028_UPGRADE.md
   patch_xgrammar_spec_termination:
     removed_at: v0.30; historical source at 285ac78e7f19bc1e1b5b09b25f865aea0c6d9754
     v030_disposition: UPSTREAM_OWNED
     active: false
     activation: historical
     status: upstream-owned-v030
-    areas: [structured-output, xgrammar, speculative]
+    areas:
+    - structured-output
+    - xgrammar
+    - speculative
     reason: Backport speculative grammar termination handling so draft batches cannot overrun a terminated FSM.
     runner: independent
-    provenance: {kind: upstream-backport, upstream_pr: 'vLLM #52805/#53046', evidence: docs/V028_UPGRADE.md}
+    provenance:
+      kind: upstream-backport
+      upstream_pr: 'vLLM #52805/#53046'
+      evidence: docs/V028_UPGRADE.md
   install_radiance_hooks:
     v030_disposition: RETAIN_UNCHANGED
-    areas: [hooks, runtime]
-    reason: Install Radiance runtime hooks into the pinned vLLM tree.
+    areas:
+    - hooks
+    - runtime
+    reason: Register the native vLLM general-plugin entry point; no edit to the plugin loader.
     runner: both
+    v033_disposition: NATIVE_PLUGIN_SEAM
   patch_nvfp4_mxfp4:
-    areas: [mxfp4, nvfp4, quantization]
+    areas:
+    - mxfp4
+    - nvfp4
+    - quantization
     reason: Bounded NVFP4-only load-time conversion with per-partition scale provenance.
     runner: both
     v030_disposition: SEMANTIC_PORT
-    provenance: {kind: selective-adaptation, source: 'https://github.com/GGZ14/vllm-mxfp4', upstream_commit: 31b9a94a7f74eeb3f59e66d16b1b27dfafcd0663, evidence: docs/V030_GGZ14_MXFP4_NVFP4.md}
+    provenance:
+      kind: selective-adaptation
+      source: https://github.com/GGZ14/vllm-mxfp4
+      upstream_commit: 31b9a94a7f74eeb3f59e66d16b1b27dfafcd0663
+      evidence: docs/V030_GGZ14_MXFP4_NVFP4.md
+    v033_disposition: RETAIN_GUARDED

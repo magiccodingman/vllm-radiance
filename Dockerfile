@@ -8,10 +8,10 @@
 # No prebuilt component wheels and no checked-in binaries. The release image carries neither the
 # build toolchain nor the wheels, which is most of the reason it is far smaller than the base.
 #
-# stack: AMD torch 2.12, AMD Triton 3.7.1, torchvision 0.27.1, AITER 0.1.20,
-# pinned vLLM v0.30.0,
-# all compiled for PYTORCH_ROCM_ARCH=gfx1201 against the base image's ROCm 7.14.
-ARG ROCM_BASE=rocm/dev-ubuntu-24.04:7.14.0-full@sha256:439edaa8f0c4be4a3728e528f87b8a2ea1f051f34cf10b27caa4bd94f562eda7
+# Candidate stack: AMD torch 2.13, AMD Triton 3.8, torchvision 0.28, AITER 0.1.26,
+# stable vLLM 0.33, compiled for gfx1201 against ROCm 10.0.
+# See docs/V033_UPGRADE.md for actual qualification and the deferred TP2 gate.
+ARG ROCM_BASE=rocm/dev-ubuntu-24.04:10.0.0-full@sha256:a90cf047f615abe70fbef83c64def0a2d549ef37a39c8ea545430aba4981b374
 ARG GFX_ARCH=gfx1201
 # The release stage starts from a clean distro image rather than the ROCm base, and COPYs in only
 # the pruned ROCm tree plus the venv. Same Ubuntu release as the ROCm base (24.04), so the venv's
@@ -21,30 +21,31 @@ ARG RELEASE_BASE=ubuntu:24.04@sha256:a08e551cb33850e4740772b38217fc1796a66da2506
 # Component pins, in one place. Each is both the git tag that gets compiled and the version the
 # resulting wheel reports, so `pip show`, `importlib.metadata`, and the startup banner all agree
 # with what was actually built.
-# Treat the compiler stack as one atomic upstream-tested ROCm unit. These are
-# the exact AMD commits used by pinned vLLM main's Dockerfile.rocm_base, not the
-# generic PyTorch 2.13 / upstream Triton 3.7.1 combination that hung TP2 Radiance.
+# Upgrade the compiler/runtime foundation together. Use AMD's release/2.13 source,
+# the v0.33 AMD Triton pin and AITER release; do not substitute CUDA's torch 2.14.
+# The historical 2.13 TP2 hang does not establish qualification for this new pair.
 ARG TORCH_REPO=https://github.com/ROCm/pytorch.git
-ARG TORCH_COMMIT=6bbd26020da1c6dc198625dfcdd968b1e4e6b1c5
-ARG TORCH_VERSION=2.12.0
+ARG TORCH_COMMIT=0e8e47fd5bb5cd734b6194b92e941075e932c925
+ARG TORCH_VERSION=2.13.0
 ARG TRITON_REPO=https://github.com/ROCm/triton.git
-ARG TRITON_COMMIT=f0b55c07da61c71775bef6d1a15ebf846430ac75
-ARG TRITON_VERSION=3.7.1
-ARG TORCHVISION_VERSION=0.27.1
-ARG AITER_COMMIT=fc2e5d57fb5b8ad8e7e23f7103071dde798ea618
-ARG AITER_VERSION=0.1.20
-# Radiance's qualified v0.30 ROCm stack retains Transformers 5.15.0. Pin the
+ARG TRITON_COMMIT=669b31acc1dd1b3fd93286afd5db67f65d9f7557
+ARG TRITON_VERSION=3.8.0
+ARG TORCHVISION_VERSION=0.28.0
+ARG AITER_COMMIT=84077b3c0461dac1f0f3f8b9590a9282e2035a2f
+ARG AITER_VERSION=0.1.26
+# vLLM 0.33 requires Transformers >=5.16.1; pin its lower stable boundary. Pin the
 # exact tested release so rebuilds cannot silently change model-loading or
 # chat-template behavior.
-ARG TRANSFORMERS_VERSION=5.15.0
+ARG TRANSFORMERS_VERSION=5.16.1
 # Structured-output qualification is specific to this grammar runtime. vLLM's
 # broad compatible range must not silently change the regression surface.
-ARG XGRAMMAR_VERSION=0.2.3
-# Stable vLLM release with native DFlash2; no DFlash source backport is applied.
+ARG XGRAMMAR_VERSION=0.2.8
+ARG FLYDSL_VERSION=0.4.0
+# Stable vLLM 0.33 with native DFlash2; no DFlash source backport is applied.
 # Pin the immutable tag target rather than resolving it
 # during each build; VLLM_VERSION is the wheel stamp.
-ARG VLLM_COMMIT=ced6857afa0ea7b2e3f0846a62e1394e90f15607
-ARG VLLM_VERSION=0.30.0
+ARG VLLM_COMMIT=4ba787ec9959e566d3b587a796dff07673324da5
+ARG VLLM_VERSION=0.33.0
 # rocm-bandwidth-test for the startup topology/bandwidth sweep. Pinned to the NEWEST tag that still
 # has a plain CMakeLists: the rocm-7.x tags moved to a cmake framework that demands clang>=19 on PATH
 # plus vendored boost/fmt/curl submodules, none of which this tool needs.
@@ -52,8 +53,10 @@ ARG RBT_VERSION=rocm-6.4.4
 # Hand-written gfx1201 kernels. v0.5.0 retains the MXFP4 GDN overflow guards
 # and adds the DFlash convolution plus BF16/W4A16/W4A8 decode kernels.
 ARG R4D_REPO=https://codeberg.org/StillDeadcode/libr4d.git
-ARG R4D_VERSION=v0.5.0
+ARG R4D_VERSION=0.5.0+rdna4.451b136
 ARG R4D_COMMIT=e8de4bc1f3dbd608dcb8d3ffceb6b48acdf83bb7
+ARG R4D_UPSTREAM_REPO=https://codeberg.org/StillDeadcode/radiance.git
+ARG R4D_UPSTREAM_COMMIT=451b136874084650992668bed9e8662deb58de88
 
 # =====================================================================================
 # STAGE 1 builder: compile the stack from source into /wheels
@@ -82,6 +85,12 @@ ENV PATH=/opt/py/bin:$PATH
 # ignores `use_scm_version` and the wheel is stamped 0.0.0.
 RUN pip install -U pip wheel setuptools "setuptools-scm>=8.0" "cmake<4" ninja pybind11 numpy \
       pyyaml typing_extensions cffi requests
+# vLLM 0.33 builds its Python extensions with the pinned upstream Rust toolchain.
+ARG RUST_VERSION=1.95.0
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs -o /tmp/rustup.sh \
+    && sh /tmp/rustup.sh -y --profile minimal --default-toolchain ${RUST_VERSION} \
+    && rm /tmp/rustup.sh
+ENV PATH=/root/.cargo/bin:/opt/py/bin:$PATH
 RUN mkdir -p /wheels
 
 # --- torch (AOTriton off: its gfx1201 source-configure fails and vLLM never uses torch
@@ -90,8 +99,9 @@ ARG TORCH_REPO
 ARG TORCH_COMMIT
 ARG TORCH_VERSION
 RUN --mount=type=cache,id=radiance-ccache-gfx1201,target=/root/.cache/ccache \
-    git clone --filter=blob:none --no-checkout ${TORCH_REPO} /src/pytorch \
-    && cd /src/pytorch \
+    mkdir -p /src/pytorch && cd /src/pytorch \
+    && git init && git remote add origin ${TORCH_REPO} \
+    && git fetch --depth 1 origin ${TORCH_COMMIT} \
     && git checkout --detach ${TORCH_COMMIT} \
     && test "$(git rev-parse HEAD)" = "${TORCH_COMMIT}" \
     && git submodule update --init --recursive --depth 1 \
@@ -100,7 +110,7 @@ RUN --mount=type=cache,id=radiance-ccache-gfx1201,target=/root/.cache/ccache \
     && USE_MAGMA=0 USE_MKLDNN=1 BUILD_TEST=0 USE_NCCL=1 USE_RCCL=1 \
        USE_FLASH_ATTENTION=0 USE_MEM_EFF_ATTENTION=0 USE_AOTRITON=0 \
        CC=gcc-13 CXX=g++-13 \
-       PYTORCH_BUILD_VERSION=${TORCH_VERSION}+rocm7.14 PYTORCH_BUILD_NUMBER=1 \
+       PYTORCH_BUILD_VERSION=${TORCH_VERSION}+rocm10.0 PYTORCH_BUILD_NUMBER=1 \
        python setup.py bdist_wheel \
     && cp dist/*.whl /wheels/ && pip install dist/*.whl && rm -rf /src/pytorch
 
@@ -153,7 +163,7 @@ RUN --mount=type=cache,id=radiance-ccache-gfx1201,target=/root/.cache/ccache \
     git clone --filter=blob:none --no-checkout https://github.com/vllm-project/vllm.git /src/vllm \
     && cd /src/vllm && git checkout --detach ${VLLM_COMMIT} \
     && test "$(git rev-parse HEAD)" = "${VLLM_COMMIT}" \
-    && python use_existing_torch.py \
+    && python tools/use_existing_torch.py --prefix \
     && pip install "setuptools-rust>=1.9.0" \
     && VLLM_TARGET_DEVICE=rocm VLLM_VERSION_OVERRIDE=${VLLM_VERSION} \
        pip wheel --no-build-isolation --no-deps . -w /wheels \
@@ -166,9 +176,7 @@ RUN ls -la /wheels
 ARG RBT_VERSION
 # Plain cmake against the HSA headers/libs the base image already ships; no extra build deps (the
 # builder venv's pip cmake and the apt build-essential above cover it). The RUNPATH is REQUIRED:
-# ROCm 7.14 keeps libhsa-runtime64.so under the versioned component dir (/opt/rocm/core-<ver>/lib,
-# reachable via the `core` alternatives symlink), which is not on the loader's default search path,
-# so an un-rpathed binary dies with "libhsa-runtime64.so.1: cannot open shared object file".
+# Include the current /opt/rocm/lib and the historical component layout in RUNPATH.
 RUN git clone --depth 1 -b ${RBT_VERSION} https://github.com/ROCm/rocm_bandwidth_test.git /src/rbt \
     && cmake -S /src/rbt -B /src/rbt/build -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=/opt/rocm \
          -DCMAKE_EXE_LINKER_FLAGS="-Wl,-rpath,/opt/rocm/core/lib:/opt/rocm/lib" \
@@ -197,6 +205,8 @@ FROM ${ROCM_BASE} AS assemble
 ARG GFX_ARCH
 ARG TRANSFORMERS_VERSION
 ARG XGRAMMAR_VERSION
+ARG FLYDSL_VERSION
+ARG BUILD_JOBS=2
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
       python3.12-venv git \
@@ -221,7 +231,7 @@ RUN pip install --no-cache-dir -U pip wheel setuptools \
       /wheels/torch-*.whl /wheels/triton-*.whl /wheels/torchvision-*.whl /wheels/*aiter-*.whl \
  && pip install --no-cache-dir /wheels/vllm-*.whl \
       "transformers==${TRANSFORMERS_VERSION}" "xgrammar==${XGRAMMAR_VERSION}" \
- && pip install --no-cache-dir flydsl==0.3.1 \
+ && pip install --no-cache-dir "flydsl==${FLYDSL_VERSION}" \
  && pip install --no-cache-dir /opt/rocm/share/amd_smi pillow pybind11 \
  && rm -rf /wheels /root/.cache
 
@@ -247,20 +257,23 @@ COPY fp8-configs/ ${SP}/vllm/model_executor/layers/quantization/utils/configs/
 COPY moe-configs/ ${SP}/vllm/model_executor/layers/fused_moe/configs/
 # AITER has no gfx1201 MXFP4 table. Its gfx1250 table selects an unsupported
 # non-K dimension of 32, so install the measured WMMA-16 configurations.
-COPY mxfp4-configs/ ${SP}/aiter/ops/triton/configs/gemm/
+COPY mxfp4-configs/gfx1201-GEMM-AFP4WFP4-N=17408-K=5120.json ${SP}/aiter/ops/triton/configs/gfx1201/triton/gemm/gemm_afp4wfp4/GEMM-AFP4WFP4-N=17408-K=5120.json
+COPY mxfp4-configs/gfx1201-GEMM-AFP4WFP4-N=5120-K=8704.json ${SP}/aiter/ops/triton/configs/gfx1201/triton/gemm/gemm_afp4wfp4/GEMM-AFP4WFP4-N=5120-K=8704.json
+COPY mxfp4-configs/gfx1201-GEMM-AFP4WFP4.json ${SP}/aiter/ops/triton/configs/gfx1201/triton/gemm/gemm_afp4wfp4/DEFAULT.json
 
 # --- gfx1201 fixes and tuned-kernel patches ---
 # Each patch edits a vLLM (or aiter/triton) source file in place and checks for source drift before
 # writing. patch_gdn_wmma covers the solve_tril triangular block-inverse only; the gated-delta-net
 # gram cast is handled in 0.26.0 upstream.
 COPY patch_*.py install_radiance_hooks.py _patchlib.py /opt/patches/
+COPY upstream/vllm-lfm3/ /opt/patches/upstream/vllm-lfm3/
 RUN set -eu; cd /opt/patches; \
-    for p in patch_gfx1201 patch_radiance_dispatch patch_skinny_gemm patch_unified_attention_lds \
+    for p in patch_lfm3_backport patch_gfx1201 patch_radiance_dispatch patch_skinny_gemm patch_unified_attention_lds \
              patch_gdn_wmma patch_gdn_aiter_prefill patch_preshuffle install_radiance_hooks \
              patch_mtp_mm_mask patch_mtp_loopbreak patch_qwen3_toolparse patch_from_json_filter \
              patch_dynamo_metrics patch_conv1d_blockn patch_r4d \
-             patch_dflash_fused_kv_fp8 patch_dflash_w4 \
-             patch_dflash_selector_topk patch_gdn_metadata patch_gdn_shared_build \
+             patch_dflash_fused_kv_fp8 patch_dflash_quant_exclusions patch_dflash_w4 \
+             patch_dflash_selector_topk patch_gdn_metadata \
              patch_topk_composite \
              patch_quark_mxfp4 patch_nvfp4_mxfp4 patch_quark_bf16_mtp patch_ar_maxbytes patch_ar_geometry \
              patch_kv_group_size patch_gdn_merge_inproj patch_dynwidth patch_verify_head \
@@ -275,6 +288,9 @@ RUN set -eu; cd /opt/patches; \
 ARG R4D_REPO
 ARG R4D_VERSION
 ARG R4D_COMMIT
+ARG R4D_UPSTREAM_REPO
+ARG R4D_UPSTREAM_COMMIT
+COPY tools/prepare_r4d.py /opt/patches/prepare_r4d.py
 COPY r4d_radiance_extras.patch /opt/patches/
 RUN git clone --filter=blob:none --no-checkout ${R4D_REPO} /src/libr4d \
  && cd /src/libr4d \
@@ -282,10 +298,17 @@ RUN git clone --filter=blob:none --no-checkout ${R4D_REPO} /src/libr4d \
  && test "$(git rev-parse HEAD)" = "${R4D_COMMIT}" \
  && git apply --check /opt/patches/r4d_radiance_extras.patch \
  && git apply /opt/patches/r4d_radiance_extras.patch \
- && GFX_ARCH=${GFX_ARCH} OUT=${SP}/r4d.so ./build.sh \
+ && git clone --filter=blob:none --no-checkout ${R4D_UPSTREAM_REPO} /src/radiance-maintained \
+ && git -C /src/radiance-maintained checkout --detach ${R4D_UPSTREAM_COMMIT} \
+ && test "$(git -C /src/radiance-maintained rev-parse HEAD)" = "${R4D_UPSTREAM_COMMIT}" \
+ && python /opt/patches/prepare_r4d.py --legacy /src/libr4d --upstream /src/radiance-maintained \
+      --version "${R4D_VERSION}" --upstream-commit "${R4D_UPSTREAM_COMMIT}" \
+ && GFX_ARCH=${GFX_ARCH} JOBS=${BUILD_JOBS} OUT=${SP}/r4d.so ./build.sh \
+ && mkdir -p /opt/radiance-notices/libr4d-maintained \
+ && cp maintained/LICENSE maintained/NOTICE maintained-source-hashes.json /opt/radiance-notices/libr4d-maintained/ \
  && WANT=$(echo "${R4D_VERSION}" | sed 's/^v//') \
  && python -c "import sys, torch, r4d; assert r4d.__version__ == sys.argv[1]; assert hasattr(r4d, 'ar_oneshot_2rank_exact_nq'); print('r4d RX4', r4d.__version__, 'kernels', len(r4d.kernels()))" "$WANT" \
- && rm -rf /src/libr4d
+ && rm -rf /src/libr4d /src/radiance-maintained
 
 # Native gfx1201 W4A8: packed MXFP4 weights, dynamic per-token FP8
 # activations, and the RDNA4 fp8 WMMA instruction. It remains runtime opt-in
@@ -313,7 +336,7 @@ RUN find /opt/vllm -type f -name '*.so*' ! -name 'r4d.so' ! -name 'radiance_mxfp
 FROM ${RELEASE_BASE} AS final
 ARG GFX_ARCH
 ENV DEBIAN_FRONTEND=noninteractive
-# ROCm 7.14 vendors its own libdrm / numa / elf / sqlite / zlib / zstd (the librocm_sysdeps_* set),
+# ROCm vendors libdrm / numa / elf / sqlite / zlib / zstd (the librocm_sysdeps_* set),
 # so the release image needs very little from the distro:
 #   python3.12     the interpreter the /opt/vllm venv was built against (Ubuntu 24.04 ships 3.12.3)
 #   libnuma-dev    rocSHMEM dlopen()s the UNVERSIONED libnuma.so, which only the -dev package ships
@@ -334,6 +357,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=rocmprune /opt/rocm /opt/rocm
 COPY --from=rocmprune /etc/alternatives /etc/alternatives
 COPY --from=assemble /opt/vllm /opt/vllm
+COPY --from=assemble /opt/radiance-notices /opt/radiance-notices
 COPY --from=builder /artifacts/rocm-bandwidth-test /usr/local/bin/rocm-bandwidth-test
 
 # RADIANCE_GFX_ARCH is what the gfx1201 patch and the banner read for the target arch (amdsmi's
@@ -352,7 +376,7 @@ ENV VIRTUAL_ENV=/opt/vllm \
 ENV RADIANCE_USE_R4D=1 RADIANCE_USE_R4D_GDN=1 RADIANCE_R4D_REPORT=1 \
     RADIANCE_USE_R4D_AR=1 RADIANCE_USE_R4D_AR_QUANT=1 \
     RADIANCE_SKINNY_GEMM=1 RADIANCE_GDN_META=1 RADIANCE_GDN_MERGE_INPROJ=1 \
-    RADIANCE_GDN_FUSED_UPDATE=1 RADIANCE_GDN_FUSED_MAX_ITEMS=32 RADIANCE_GDN_SHARED_BUILD=1 \
+    RADIANCE_GDN_FUSED_UPDATE=1 RADIANCE_GDN_FUSED_MAX_ITEMS=32 \
     RADIANCE_TOPK_TRITON_MIN_ROWS=1 RADIANCE_TOPK_COMPOSITE=1 \
     RADIANCE_TOPK_COMPOSITE_KCAP=64 \
     RADIANCE_MXFP4=0 RADIANCE_MXFP4_W4A8=0 RADIANCE_MXFP4_W4A8_MIN_M=0 RADIANCE_QUARK_BF16_MTP=0 \
@@ -411,7 +435,7 @@ RUN printf '%s\n' \
  && rm -f /tmp/_jit_probe.hip /tmp/_jit_probe.so \
  && echo "runtime JIT toolchain OK (hipcc + libstdc++ headers + Python.h + pybind11)"
 
-ARG RADIANCE_VERSION=1.1.0-rc1.vllm0.30.0
+ARG RADIANCE_VERSION=1.2.0-rc1.vllm0.33.0
 ENV RADIANCE_VERSION=${RADIANCE_VERSION}
 COPY VERSION /opt/radiance_version
 # Dormant worker-extension RPCs for explicit localhost-only qualification.

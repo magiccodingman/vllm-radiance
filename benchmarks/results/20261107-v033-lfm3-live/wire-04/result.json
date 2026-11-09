@@ -1,0 +1,41 @@
+{
+  "status": "FAIL",
+  "scope": "bounded TP1 native FP8 LFM3 serving, no TP2/capacity/performance claim",
+  "gates": [
+    {
+      "gate": "native-owners",
+      "pass": true
+    },
+    {
+      "gate": "short-sse-token-parity",
+      "pass": true,
+      "tokens": 16
+    },
+    {
+      "gate": "long-window-repeat",
+      "pass": true,
+      "prompt_tokens": 636
+    },
+    {
+      "gate": "batch-token-equivalence",
+      "pass": false
+    },
+    {
+      "gate": "state-isolation-after-batch",
+      "pass": true
+    },
+    {
+      "gate": "nested-json-schema",
+      "pass": true
+    },
+    {
+      "gate": "named-tool-and-sse",
+      "pass": true
+    },
+    {
+      "gate": "tool-result-roundtrip",
+      "pass": true
+    }
+  ],
+  "finished_at": "2026-11-07T01:15:42.437367+00:00"
+}

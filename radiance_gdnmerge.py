@@ -121,6 +121,10 @@ def _merged_forward_rx4(self, hidden_states):
 
 def _merge_one(mod) -> bool:
     """Build the merged weights on one GDN module and swap its forward. True if merged."""
+    # Newer upstream fused speculative decode owns its projection/norm ABI.
+    # Do not replace its forward or release weights that path still consumes.
+    if getattr(mod, "enable_fused_gdn_spec_decode", False):
+        return False
     import torch
 
     qkvz, ba = getattr(mod, "in_proj_qkvz", None), getattr(mod, "in_proj_ba", None)

@@ -16,7 +16,7 @@ contracts = {
     "vllm/v1/kv_offload/cpu/shared_offload_region.py": (
         "barrier: Callable[[], None] | None = None",
         "Failed to release peers waiting at the mmap barrier",
-        "Unlinked mmap file %s", "os.unlink(self.mmap_path)"),
+        "Unlinked mmap file %s", "os.unlink(path)"),
     "vllm/v1/kv_offload/cpu/spec.py": (
         "def _all_workers_barrier() -> None:", "barrier=_all_workers_barrier"),
 }
