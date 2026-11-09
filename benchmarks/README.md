@@ -334,6 +334,12 @@ Pass `--fail-below -5` to make any common decode-throughput regression worse
 than 5% fail a milestone gate. Inspect the recorded CV before treating a small
 delta as meaningful.
 
+With `--fail-below`, at least one common decode case must have finite positive
+control and candidate throughput and a finite percentage delta. Every common
+decode case must be measurable; missing/invalid measurements cannot pass the
+gate. The threshold must be finite. Report-only comparisons can still describe
+an empty intersection without asserting a performance result.
+
 For a greedy speculative-decoding correctness gate, compare the matching
 configuration directories. The verifier requires identical seeds, input
 lengths, generated text, and output token lengths for every common raw case:
@@ -587,6 +593,44 @@ otherwise easy-to-miss drafter change in future matched comparisons without
 rereading multi-gigabyte weight files for every run.
 
 ## Results
+
+### Client-shaped tool regressions
+
+Run the permanent synthetic regression for the QA malformed-keypress incident
+(Sayou work item 110) and the nested reporting-package/Int64 compiler incident:
+
+```bash
+python benchmarks/bin/check_client_tool_gate.py
+python benchmarks/bin/run_client_tool_gate.py \
+  --base-url http://127.0.0.1:8000/v1 --model "$MODEL_NAME" \
+  --runs 5 --capture-root "$RUN_ROOT/client-tool"
+```
+
+The live matrix has 40 requests: five samples × four scenarios × streaming and
+non-streaming. It covers automatic tool choice without `strict`, required
+parallel keypress calls, and automatic/strict typed nested packages with the
+rounded .NET Int64 boundary. Every returned call is checked, including later
+calls; incomplete finishes, broken SSE, stringified objects, incorrect types,
+missing calls and changed package values fail. Auto choice may emit one or more
+keypress calls: this scenario checks the validity of every emitted call, not
+whether the model obeys the requested two-action plan. The required parallel
+scenario separately requires exactly two calls. These are wire-format fixtures,
+not executable reporting API definitions or customer prompts.
+
+The client gate and installed grammar compiler check are in the upgrade/release
+qualification plans. CPU negative controls run in PR CI and prove malformed
+first/second calls and truncated streams are rejected. Package comparisons use
+JSON types, so boolean `false` cannot substitute for integer `0` in version or
+coordinate fields. Confidence values that overflow the host float parser are
+rejected; finite values retain the fixture's existing unrestricted number schema.
+Live gates remain manual
+hardware qualification, not automatic Docker-publication CI. Run against the
+exact candidate image with the intended deployment flags (including both Qwen
+compatibility switches for the supported Int64 fixture). Preserve failures and
+the run directory, and record image digest, source revision, flags/model and
+summary with release evidence. These checks do not prove autonomous workflow
+completion, performance equivalence, or full DFlash correctness.
+
 
 ### Native CPU-KV restore gate and convoy baseline
 

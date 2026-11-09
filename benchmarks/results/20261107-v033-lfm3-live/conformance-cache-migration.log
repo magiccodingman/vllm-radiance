@@ -1,0 +1,9 @@
+Using CPython 3.13.13
+Creating virtual environment at: benchmarks/conformance/.venv
+   Building radiance-conformance @ file:///home/slurp/Documents/ChatGPT/AI/work/radiance-v033/benchmarks/conformance
+      Built radiance-conformance @ file:///home/slurp/Documents/ChatGPT/AI/work/radiance-v033/benchmarks/conformance
+Installed 21 packages in 41ms
+........................................................................ [ 36%]
+........................................................................ [ 72%]
+........................................................                 [100%]
+200 passed in 3.06s

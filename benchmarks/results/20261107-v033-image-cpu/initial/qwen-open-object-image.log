@@ -1,0 +1,4 @@
+Traceback (most recent call last):
+  File "/work/benchmarks/bin/check_qwen_open_object_schema.py", line 16, in <module>
+    from xgrammar.testing import _qwen_xml_tool_calling_to_ebnf
+ImportError: cannot import name '_qwen_xml_tool_calling_to_ebnf' from 'xgrammar.testing' (/opt/vllm/lib/python3.12/site-packages/xgrammar/testing.py)

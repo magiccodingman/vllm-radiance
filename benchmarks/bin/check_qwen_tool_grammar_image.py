@@ -59,6 +59,16 @@ def main():
                 assert '9223372036854775807' in raw
                 xgr.Grammar.from_structural_tag(raw)
                 assert value.model_dump() == before and schema == original
+        # The compatibility opt-in restores the old omitted-flag default;
+        # explicit non-strict tools must still leave argument schemas free.
+        value = tool(False, responses=responses)
+        before = value.model_dump()
+        tag = get_model_structural_tag("qwen_3_coder", [value], "auto", False)
+        assert tag is not None
+        raw = tag.model_dump_json()
+        assert '9223372036854775807' not in raw
+        xgr.Grammar.from_structural_tag(raw)
+        assert value.model_dump() == before and schema == original
     assert get_model_structural_tag("qwen_3_coder", [tool()], "none", False) is None
     assert get_model_structural_tag("llama", [tool()], "auto", False) is None
     assert get_model_structural_tag("qwen_3_coder", [], "auto", False) is None

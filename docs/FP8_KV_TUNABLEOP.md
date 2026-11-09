@@ -25,6 +25,10 @@ and FP8-KV capture uses vLLM's public worker-extension and module-hook APIs.
 - Runtime loading accepts only positive scalar `q_scale`, `k_scale`,
   `v_scale`, and `prob_scale` tensors. Arbitrary checkpoint tensors are
   forbidden.
+- Calibration checks finite numeric parameters and FP32 scale representability
+  before writing an artifact. Each rank's observations are validated before
+  maxima are merged, so another rank cannot hide invalid or unobserved data.
+  CPU preflight runs before importing vLLM or constructing the model.
 - Sidecars are loaded only when `RADIANCE_FP8_KV_SCALES` is explicitly set.
   Checksum and source-checkpoint verification are on by default.
 - TunableOp is off by default. Collection records signatures but never tunes
@@ -123,6 +127,12 @@ important possible secondary effect.
 
 This uses PyTorch's standard two-stage offline workflow rather than tuning
 inside model loading or production requests.
+
+Tuning requires a namespace with no existing `results*.csv` or manifest.
+Completed and partial results, including empty output files from failed runs,
+are preserved: select a fresh namespace to retry. A manifest cannot be
+overwritten to bless modified results. It is created only when every requested
+GPU ordinal has a non-empty result, and its GPU count must be a positive integer.
 
 ### 1. Collect signatures
 

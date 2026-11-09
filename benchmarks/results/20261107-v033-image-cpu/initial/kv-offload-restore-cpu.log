@@ -1,0 +1,8 @@
+Traceback (most recent call last):
+  File "/work/benchmarks/bin/check_kv_offload_restore.py", line 128, in <module>
+    main()
+  File "/work/benchmarks/bin/check_kv_offload_restore.py", line 123, in main
+    check_installed_annotation()
+  File "/work/benchmarks/bin/check_kv_offload_restore.py", line 95, in check_installed_annotation
+    from vllm.v1.core.kv_cache_utils import _annotate_eagle_groups
+ImportError: cannot import name '_annotate_eagle_groups' from 'vllm.v1.core.kv_cache_utils' (/opt/vllm/lib/python3.12/site-packages/vllm/v1/core/kv_cache_utils.py)

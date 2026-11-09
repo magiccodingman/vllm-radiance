@@ -26,11 +26,13 @@ LIB = Path(sysconfig.get_paths()["purelib"])
 F = LIB / "vllm/tool_parsers/structural_tag_registry.py"
 
 HELPER_ANCHOR = '''_VLLM_STRUCTURAL_TAG_REGISTRY: dict[str, StructuralTagBuilder] = {}
+_BUILTIN_TOOL_STRUCTURAL_TAG_MODELS: set[str] = set()
 
 
 '''
 
 HELPER_NEW = '''_VLLM_STRUCTURAL_TAG_REGISTRY: dict[str, StructuralTagBuilder] = {}
+_BUILTIN_TOOL_STRUCTURAL_TAG_MODELS: set[str] = set()
 
 
 _QWEN_XML_STRUCTURAL_TAG_MODELS = frozenset(
@@ -86,6 +88,84 @@ def _normalize_qwen_tool_schemas(tools: list[dict[str, object]]) -> None:
 
 '''
 
+LEGACY_NORMALIZER = HELPER_NEW[
+    HELPER_NEW.index("def _normalize_qwen_open_nested_objects("):
+    HELPER_NEW.index("\n\ndef _normalize_qwen_tool_schemas(")
+]
+
+NEW_NORMALIZER = '''def _normalize_qwen_open_nested_objects(
+    schema: object,
+    *,
+    is_root: bool,
+    preserve_evaluation: bool = False,
+) -> None:
+    """Normalize schema positions without changing literal or evaluation constraints."""
+    if isinstance(schema, list):
+        for item in schema:
+            _normalize_qwen_open_nested_objects(
+                item, is_root=False, preserve_evaluation=preserve_evaluation,
+            )
+        return
+    if not isinstance(schema, dict):
+        return
+
+    if is_root:
+        # A reference can evaluate properties at the caller, even if its target
+        # sits in a different branch. Preserve the whole schema when both
+        # references and evaluated-property constraints occur.
+        pending = [schema]
+        has_reference = has_closure = False
+        while pending:
+            value = pending.pop()
+            if isinstance(value, dict):
+                has_reference |= any(key in value for key in ("$ref", "$dynamicRef", "$recursiveRef"))
+                has_closure |= "unevaluatedProperties" in value
+                pending.extend(value.values())
+            elif isinstance(value, list):
+                pending.extend(value)
+            if has_reference and has_closure:
+                return
+
+    # Adding explicit additionalProperties changes evaluated-property annotations.
+    # Keep the original spelling when an enclosing same-instance schema relies on
+    # unevaluatedProperties; schemas for child values start a new evaluation scope.
+    guarded = schema.get("unevaluatedProperties") is not True and (
+        preserve_evaluation or "unevaluatedProperties" in schema
+    )
+    is_plain_open_object = (
+        not is_root and not guarded
+        and schema.get("type") == "object"
+        and "additionalProperties" not in schema
+        and not schema.get("properties")
+        and not schema.get("patternProperties")
+        and not any(key in schema for key in ("$ref", "allOf", "anyOf", "oneOf"))
+    )
+    if is_plain_open_object:
+        schema["additionalProperties"] = True
+
+    # Schema positions only: const, enum, defaults and extension data stay literal.
+    for key in ("properties", "patternProperties", "$defs", "definitions",
+                "dependentSchemas", "dependencies"):
+        mapping = schema.get(key)
+        if isinstance(mapping, dict):
+            for child in mapping.values():
+                _normalize_qwen_open_nested_objects(
+                    child, is_root=False,
+                    preserve_evaluation=guarded if key in ("dependentSchemas", "dependencies") else False,
+                )
+    for key in ("items", "additionalItems", "additionalProperties", "unevaluatedProperties",
+                "unevaluatedItems", "contains", "propertyNames", "prefixItems"):
+        _normalize_qwen_open_nested_objects(schema.get(key), is_root=False)
+    for key in ("not", "if", "then", "else", "allOf", "anyOf", "oneOf"):
+        _normalize_qwen_open_nested_objects(
+            schema.get(key), is_root=False, preserve_evaluation=guarded,
+        )
+'''
+
+# Keep the same guarded helper installation and upgrade an already-baked helper
+# separately below; the original broad helper sentinel is present in both.
+HELPER_NEW = HELPER_NEW.replace(LEGACY_NORMALIZER, NEW_NORMALIZER)
+
 CALL_ANCHOR = '''    dumped_tools = [_dump_tool_for_xgrammar(tool) for tool in tools]
     dumped_tool_choice = _dump_tool_choice_for_xgrammar(tool_choice)
 
@@ -116,6 +196,13 @@ def main() -> None:
         CALL_NEW,
         CALL_SENTINEL,
         "qwen-open-object-schema-normalization",
+    )
+    apply(
+        F,
+        LEGACY_NORMALIZER,
+        NEW_NORMALIZER,
+        "    preserve_evaluation: bool = False,",
+        "qwen-schema-semantics",
     )
 
 

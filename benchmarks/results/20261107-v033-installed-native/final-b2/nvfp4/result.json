@@ -1,0 +1,79 @@
+{
+  "status": "NATIVE_FIXTURE_PASS_NOT_MODEL_QUALITY",
+  "device": 0,
+  "arch": "gfx1201",
+  "receipt": {
+    "source_id": "synthetic-nvfp4-merged-v1",
+    "source_quantization": {
+      "format": "nvfp4-pack-quantized",
+      "group_size": 16
+    },
+    "source_sha256": "4e656a0168e7235e91d4954a22769467250967dcda3cd306c4954a89c60aeed9",
+    "converted_sha256": "261bef3fd74d21dbaae350ff2287220b22b0424aca5e58eacf2d1259089cf4ff",
+    "widths": [
+      128,
+      128,
+      128
+    ],
+    "global_divisors": [
+      1.0,
+      2.0,
+      4.0
+    ],
+    "mode": "mse",
+    "chunk_rows": 128,
+    "peak_fp32_dequant_tensor_bytes": 131072,
+    "temporary_budget_bytes": 33554432,
+    "output_bytes": 52224,
+    "device_arithmetic_temporary_bytes": 0,
+    "relative_rms_error": 0.11135508911862595,
+    "layout": "radiance-mxfp4-e2m1-low-nibble-e8m0-group32-v1",
+    "donor": "31b9a94a7f74eeb3f59e66d16b1b27dfafcd0663",
+    "code_sha256": "03a0db955a70ccb580a8b0c8499898545086bc2adee9461b18e465207ece54c0",
+    "policy": {
+      "enabled": false,
+      "exponent": "mse",
+      "chunk_rows": 128,
+      "extra_fp8": false,
+      "extra_bf16": false,
+      "lm_head": "preserve",
+      "execution_layout": "radiance-mxfp4-e2m1-low-nibble-e8m0-group32-v1"
+    }
+  },
+  "cases": [
+    {
+      "m": 1,
+      "relative_error_to_converted_bf16": 0.02770969271659851,
+      "sha256": "68532482be6e05fade93df61bfe21c649df11f2285f5736f105fa5d1d381f654"
+    },
+    {
+      "m": 2,
+      "relative_error_to_converted_bf16": 0.027542132884263992,
+      "sha256": "5033dcb164eb7d43ea6d16c9404b4e25472724647d8783be8ddcf312cc33f606"
+    },
+    {
+      "m": 17,
+      "relative_error_to_converted_bf16": 0.026502685621380806,
+      "sha256": "62ec55d80aec4831524ff59fb17d047a202a10ad65c9f08bf44d5ae228f0d2af"
+    },
+    {
+      "m": 65,
+      "relative_error_to_converted_bf16": 0.02623353898525238,
+      "sha256": "c2a1703f4c5a593af566276e8baf9f930b6ec38b3f374940f5ab570829193494"
+    }
+  ],
+  "reconstruction_relative_error": 0.11135658621788025,
+  "conversion_gpu_peak_increment": 37809152,
+  "conversion_host_highwater_increment": 2654208,
+  "fixture_process_peak_rss": 1782923264,
+  "rollback": "PASS",
+  "kernel": "_make_kernel_class.<locals>.RadianceMxfp4W4A8LinearKernel",
+  "tp1_wide_decode": {
+    "shape": [
+      1,
+      34816,
+      256
+    ],
+    "relative_error": 0.027701333165168762
+  }
+}

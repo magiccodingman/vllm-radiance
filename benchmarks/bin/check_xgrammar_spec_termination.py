@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import torch
 
-from vllm.v1.structured_output import StructuredOutputManager
+from vllm.v1.structured_output import ConstraintBounds, StructuredOutputManager
 from vllm.v1.structured_output.backend_xgrammar import XgrammarGrammar
 
 
@@ -51,7 +51,7 @@ def main() -> None:
     )
     manager._grammar_bitmask = torch.zeros((8, 4), dtype=torch.int32)
     manager.fill_bitmask_parallel_threshold = 16
-    manager._get_constraint_start = lambda request, tokens: 0
+    manager._get_constraint_bounds = lambda request, tokens: ConstraintBounds(0, 0)
     checked = grammar()
     request = SimpleNamespace(
         use_structured_output=True,
@@ -60,7 +60,7 @@ def main() -> None:
     assert manager.validate_tokens(request, [1, 99, 2, -1]) == [1, 99]
     rows = []
     manager._fill_bitmasks = lambda batch: rows.extend(
-        (index, apply, tuple(g.matcher.tokens)) for g, index, apply in batch
+        (index, apply, tuple(g.matcher.tokens)) for g, index, apply, masked in batch
     )
     manager.grammar_bitmask({"test": request}, ["test"], {"test": [1, 99, -1, -1]})
     assert len(rows) == 5
@@ -69,7 +69,7 @@ def main() -> None:
     assert checked.matcher.tokens == []  # Speculative advancement rolled back.
     assert not checked.is_terminated()
 
-    manager._get_constraint_start = lambda request, tokens: 1
+    manager._get_constraint_bounds = lambda request, tokens: ConstraintBounds(1, 1)
     assert manager.validate_tokens(request, [7, 1, 99, 2]) == [7, 1, 99]
 
     accepted = grammar()

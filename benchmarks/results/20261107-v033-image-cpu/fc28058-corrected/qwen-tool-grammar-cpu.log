@@ -1,0 +1,11 @@
+  OK    qwen-grammar-helpers
+  OK    qwen-tool-schema-copy
+  OK    qwen-auto-grammar-opt-in
+  OK    qwen-integer-bounds
+  NOOP  qwen-grammar-helpers already applied
+  NOOP  qwen-tool-schema-copy already applied
+  NOOP  qwen-auto-grammar-opt-in already applied
+  NOOP  qwen-integer-bounds already applied
+  OK    modern-structural-tag-fallback
+  NOOP  modern-structural-tag-fallback already applied
+Qwen tool grammar CPU contracts: PASS

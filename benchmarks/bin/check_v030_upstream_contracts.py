@@ -27,3 +27,19 @@ for contract in ("sample_idx_mapping = torch.full", "sample_idx_mapping.fill_(-1
                  "tl.minimum(last_valid_pos + 1 + num_query_per_req, max_model_len)"):
     assert contract in source, contract
 print("v0.30 installed unpadding behavior and DFlash source ownership: PASS")
+
+# v0.33's real cache planner passes the current spec to backend block queries.
+# Keep R4D's exact 16-token kernel blocks while admitting larger hybrid pages.
+from radiance_r4d_attn import R4DAttentionBackend
+from vllm.v1.kv_cache_interface import FullAttentionSpec
+from vllm.v1.worker.utils import customize_attention_spec
+from vllm.v1.attention.backend import MultipleOf
+for block_size in (16, 1568, 2240):
+    spec = FullAttentionSpec(block_size=block_size, num_kv_heads=4,
+                             head_size=256, dtype=torch.bfloat16)
+    assert R4DAttentionBackend.get_supported_kernel_block_sizes(spec) == [16]
+    result = customize_attention_spec(R4DAttentionBackend, spec)
+    assert result.block_size == block_size
+    assert result.block_stride_alignment == MultipleOf(16)
+assert R4DAttentionBackend.get_supported_kernel_block_sizes() == [16]
+print("v0.33 R4D real cache-planner spec dispatch: PASS")

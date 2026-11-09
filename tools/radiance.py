@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import subprocess
 from pathlib import Path
@@ -33,20 +34,27 @@ def by_id(doc: dict[str, Any]) -> dict[str, dict[str, Any]]:
 
 
 def changed_files(base: str | None) -> list[str]:
+    """Include branch commits and local edits, including new non-ignored files."""
     if base:
-        command = ["git", "diff", "--name-only", f"{base}...HEAD"]
+        refs = [f"{base}...HEAD"]
     else:
         env_base = subprocess.run(
             ["git", "rev-parse", "--verify", "--quiet", "origin/main"],
             cwd=REPO, text=True, capture_output=True
         ).stdout.strip()
-        command = ["git", "diff", "--name-only", f"{env_base}...HEAD"] if env_base else [
-            "git", "diff", "--name-only", "HEAD~1", "HEAD"
-        ]
-    proc = subprocess.run(command, cwd=REPO, text=True, capture_output=True)
-    if proc.returncode:
-        raise SystemExit(proc.stderr.strip() or f"git diff failed: {' '.join(command)}")
-    return [line.strip() for line in proc.stdout.splitlines() if line.strip()]
+        refs = [f"{env_base}...HEAD"] if env_base else ["HEAD~1", "HEAD"]
+    commands = [
+        ["git", "diff", "--name-only", "--no-renames", "-z", *refs, "--"],
+        ["git", "diff", "--name-only", "--no-renames", "-z", "HEAD", "--"],
+        ["git", "ls-files", "--others", "--exclude-standard", "-z"],
+    ]
+    paths: set[str] = set()
+    for command in commands:
+        proc = subprocess.run(command, cwd=REPO, capture_output=True)
+        if proc.returncode:
+            raise SystemExit(os.fsdecode(proc.stderr).strip() or f"git failed: {' '.join(command)}")
+        paths.update(os.fsdecode(path) for path in proc.stdout.split(b"\0") if path)
+    return sorted(paths)
 
 
 def areas_for_files(doc: dict[str, Any], files: list[str]) -> set[str]:
@@ -85,8 +93,18 @@ def show_plan(items: list[dict[str, Any]]) -> None:
 
 
 def run_auto(items: list[dict[str, Any]], dry_run: bool) -> int:
+    # Validate the whole plan before launching even its first CPU command.
+    # In particular, quoted YAML "false" is truthy in Python.
     for item in items:
-        if not item.get("automatic"):
+        for flag in ("automatic", "ci"):
+            if not isinstance(item.get(flag, False), bool):
+                print(f"FAIL {item['id']}: {flag} must be a YAML boolean")
+                return 1
+        if item.get("automatic") is True and item.get("hardware") != "cpu":
+            print(f"FAIL {item['id']}: automatic checks must require cpu hardware")
+            return 1
+    for item in items:
+        if item.get("automatic") is not True:
             print(f"SKIP {item['id']}: requires {item['hardware']}")
             continue
         print(f"{'PLAN' if dry_run else 'RUN '} {item['id']}: {item['command']}")

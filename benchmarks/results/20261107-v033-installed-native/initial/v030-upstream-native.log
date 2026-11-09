@@ -1,0 +1,2 @@
+usage: check_v030_upstream_native.py [-h] --device DEVICE --out OUT
+check_v030_upstream_native.py: error: argument --device: invalid int value: 'cuda:0'

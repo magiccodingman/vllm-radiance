@@ -58,7 +58,7 @@ REG_NEW = REG_OLD + '    R4D = "radiance_r4d_attn.R4DAttentionBackend"\n'
 
 
 # ---- 2. the gated-delta-net layer ------------------------------------------------------------
-LAYER_IMPORT_OLD = "from vllm.v1.attention.backends.gdn_attn import GDNAttentionMetadata\n"
+LAYER_IMPORT_OLD = "from vllm.v1.attention.backends.gdn_attn import (\n    FLASHINFER_GDN_CHECKPOINT_ALIGNMENT,\n    GDNAttentionMetadata,\n)\n"
 LAYER_IMPORT_NEW = (
     LAYER_IMPORT_OLD
     + "\n"
@@ -86,6 +86,7 @@ LAYER_OLD = (
     "            b: beta gating vector                   (num_tokens, num_heads)\n"
     "            a: alpha gating vector                  (num_tokens, num_heads)\n"
     "            core_attn_out: Pre-allocated output buffer for attention results.\n"
+    "\n"
     "        \"\"\"\n"
     "        forward_context = get_forward_context()\n"
     "        attn_metadata_raw = forward_context.attn_metadata\n"

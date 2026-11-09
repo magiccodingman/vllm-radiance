@@ -1,0 +1,92 @@
+{
+  "request": {
+    "model": "radiance-v033-lfm3",
+    "temperature": 0,
+    "seed": 0,
+    "max_tokens": 128,
+    "chat_template_kwargs": {
+      "enable_thinking": false
+    },
+    "messages": [
+      {
+        "role": "user",
+        "content": "Return Paris in answer.city as JSON."
+      }
+    ],
+    "response_format": {
+      "type": "json_schema",
+      "json_schema": {
+        "name": "city",
+        "strict": true,
+        "schema": {
+          "type": "object",
+          "properties": {
+            "answer": {
+              "type": "object",
+              "properties": {
+                "city": {
+                  "type": "string",
+                  "enum": [
+                    "Paris"
+                  ]
+                }
+              },
+              "required": [
+                "city"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "answer"
+          ],
+          "additionalProperties": false
+        }
+      }
+    }
+  },
+  "response": {
+    "id": "chatcmpl-87d2a7aa38144413",
+    "object": "chat.completion",
+    "created": 1794014141,
+    "model": "radiance-v033-lfm3",
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": "{\n  \"answer\": {\n    \"city\": \"Paris\"\n  }\n}",
+          "refusal": null,
+          "annotations": null,
+          "audio": null,
+          "function_call": null,
+          "reasoning": null
+        },
+        "logprobs": null,
+        "finish_reason": "stop",
+        "stop_reason": null,
+        "token_ids": null,
+        "routed_experts": null,
+        "weight_versions": null
+      }
+    ],
+    "service_tier": null,
+    "system_fingerprint": "vllm-0.33.0-aad2c3fd",
+    "usage": {
+      "prompt_tokens": 19,
+      "total_tokens": 36,
+      "completion_tokens": 17,
+      "prompt_tokens_details": null,
+      "completion_tokens_details": {
+        "reasoning_tokens": 0
+      }
+    },
+    "prompt_logprobs": null,
+    "prompt_token_ids": null,
+    "prompt_text": null,
+    "kv_transfer_params": null,
+    "ec_transfer_params": null,
+    "metrics": null
+  },
+  "seconds": 0.19336664793081582
+}

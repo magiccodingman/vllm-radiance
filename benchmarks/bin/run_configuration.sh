@@ -158,7 +158,8 @@ elif [[ $PREFIX_CACHING == off ]]; then
   server_args+=(--no-enable-prefix-caching)
 fi
 if [[ -n $MAMBA_CACHE_MODE ]]; then
-  server_args+=("--mamba-cache-mode=${MAMBA_CACHE_MODE}")
+  echo "MAMBA_CACHE_MODE is ignored by vLLM 0.33; use PREFIX_CACHING=on/off instead" >&2
+  exit 2
 fi
 if ((ENFORCE_EAGER)); then
   server_args+=(--enforce-eager)

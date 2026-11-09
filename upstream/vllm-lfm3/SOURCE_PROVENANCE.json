@@ -1,0 +1,27 @@
+{
+  "repository": "https://github.com/vllm-project/vllm",
+  "upstream_pr": 65826,
+  "commit": "c96e5f60bbdd7b523d56f6e7cb9b39e0a7013287",
+  "license": "Apache-2.0",
+  "author": "Paul Pak <52512091+paulpak58@users.noreply.github.com>",
+  "co_authors": [
+    "abhijithneilabraham <abhijithneilabrahampk@gmail.com>",
+    "vllm-agent <claw@inferact.ai>",
+    "Cyrus Leung <tlleungac@connect.ust.hk>"
+  ],
+  "import": "Original mail patch; six vllm runtime files installed. Model code and upstream tests are unchanged. Narrow adaptations preserve Transformers5.16.1 config labels/RoPE and promote only width7 convolution products to FP32 on RDNA4. Complete upstream kernel bodies are fingerprint-verified before the reversible precision adaptation.",
+  "sha256": {
+    "c96e5f60bbdd.patch": "5258e48cec5c9f5cfa39ad1e00513b3ddaa7a988065770493e7d05c247c004fe",
+    "test_causal_conv1d.py": "4ff47229495c1a8eb68ab8bc59f3f0077131a6a7627930367e552d79570d6189",
+    "test_lfm3.py": "4af172d151d3692932c749aeb805dd56ff5b7e11ec7cbc6d215eca7ccb660fec"
+  },
+  "remove_when": "Stable pinned vLLM includes the official LFM3 text support and width-7 causal convolution.",
+  "kernel_verification": {
+    "base_vllm_commit": "4ba787ec9959e566d3b587a796dff07673324da5",
+    "method": "Independent git apply --no-index of the immutable payload on pinned stable source; SHA256 of each complete top-level kernel function, excluding its decorator.",
+    "sha256": {
+      "_causal_conv1d_fwd_kernel": "d4070e4d5c8a2836cb7182ca57ae76b1d2bd56bf022fa5d19a47b68d3f654e72",
+      "_causal_conv1d_update_kernel": "83290c32ef13364eaf970f5f73c3091d0456fb7349569f29b9d4295a9041707d"
+    }
+  }
+}

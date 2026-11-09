@@ -1,0 +1,3 @@
+# Unified-diff context lines for blank source lines are one literal space.
+# Preserve the upstream mail patch byte-for-byte, including its checksum.
+c96e5f60bbdd.patch whitespace=-blank-at-eol

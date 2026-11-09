@@ -26,8 +26,8 @@ upstreams:
   - parser
   - kv-cache
   - serving
-  current_pin: ced6857afa0ea7b2e3f0846a62e1394e90f15607
-  last_audited_ref: v0.30.0 migration in docs/V030_UPGRADE.md; qualification status is explicit there
+  current_pin: 4ba787ec9959e566d3b587a796dff07673324da5
+  last_audited_ref: v0.33.0 plus official LFM3 PR65826 c96e5f60bbdd7b523d56f6e7cb9b39e0a7013287; docs/V033_UPGRADE.md and docs/LFM3.md
   policy: Track stable releases; prefer upstream ownership when equivalent; selectively carry reviewed fixes.
 - id: aiter
   repository: https://github.com/ROCm/aiter.git
@@ -41,8 +41,8 @@ upstreams:
   - gdn
   - gemm
   - mxfp4
-  current_pin: fc2e5d57fb5b8ad8e7e23f7103071dde798ea618
-  last_audited_ref: 0.1.20 checkpoint and open-follow-up audit recorded in docs/UPGRADE_PROGRESS.md
+  current_pin: 84077b3c0461dac1f0f3f8b9590a9282e2035a2f
+  last_audited_ref: v0.1.26; shared configuration API and gfx1201 paths audited in docs/V033_UPGRADE.md
   policy: Audit material gfx1201 changes; upgrade independently only when compiler-stack compatibility is demonstrated.
 - id: stilldeadcode-libr4d
   repository: https://codeberg.org/StillDeadcode/libr4d.git
@@ -59,8 +59,10 @@ upstreams:
   - mxfp4
   - dflash
   current_pin: e8de4bc1f3dbd608dcb8d3ffceb6b48acdf83bb7
-  last_audited_ref: libr4d v0.5.0 lineage documented in docs/RADIANCE_093_R4D050_MXFP4.md
-  policy: Build exact source pin, preserve authorship, adapt selectively, qualify against Radiance's production contract.
+  last_audited_ref: 'Retired source: Python ABI/private collective compatibility base only; maintained families
+    pinned separately in docs/V033_UPGRADE.md'
+  policy: Build exact source pin, preserve authorship, adapt selectively, qualify against Radiance's production
+    contract.
 - id: stilldeadcode-vllm-radiance
   repository: https://codeberg.org/StillDeadcode/vllm-radiance
   relationship:
@@ -73,7 +75,7 @@ upstreams:
   - mxfp4
   - kernel-integration
   current_pin: null
-  last_audited_ref: Radiance 0.9.3 lineage documented in docs/RADIANCE_093_R4D050_MXFP4.md
+  last_audited_ref: Retired repository; maintained StillDeadcode/radiance supersedes kernel development. See docs/V033_UPGRADE.md
   policy: Audit deltas rather than mechanically rebasing; preserve locally qualified behavior.
 - id: ggz14-radiance-vllm-mxfp4
   repository: https://github.com/GGZ14/vllm-mxfp4.git
@@ -89,7 +91,8 @@ upstreams:
   - rdna4
   current_pin: null
   last_audited_ref: 31b9a94a7f74eeb3f59e66d16b1b27dfafcd0663; selective deltas in docs/V030_GGZ14_MXFP4_NVFP4.md
-  policy: Preserve original authorship; import selectively because Radiance carries a different vLLM/libr4d base and correctness contract.
+  policy: Preserve original authorship; import selectively because Radiance carries a different vLLM/libr4d base
+    and correctness contract.
 - id: terrydaktal-qwen-r9700-lab
   repository: https://github.com/Terrydaktal/qwen-r9700-lab
   relationship:
@@ -100,7 +103,33 @@ upstreams:
   - gdn
   - speculative
   current_pin: null
-  last_audited_ref: 'PR #10 source-hash inventory in benchmarks/conformance/SOURCE_PROVENANCE.json;
-    origin commit unknown'
-  policy: Preserve source hashes and original authorship; experimental evidence tooling,
-    not a production dependency.
+  last_audited_ref: 'PR #10 source-hash inventory in benchmarks/conformance/SOURCE_PROVENANCE.json; origin commit
+    unknown'
+  policy: Preserve source hashes and original authorship; experimental evidence tooling, not a production dependency.
+- id: stilldeadcode-radiance
+  repository: https://codeberg.org/StillDeadcode/radiance.git
+  relationship:
+  - build-dependency
+  - selective-adaptation
+  - kernel-watch
+  areas:
+  - rdna4
+  - attention
+  - gdn
+  current_pin: 451b136874084650992668bed9e8662deb58de88
+  last_audited_ref: 2026-11-06; attention and GDN scan adapted to retained Python ABI; docs/V033_UPGRADE.md
+  policy: Track maintained kernels; do not import the standalone engine or silently change vLLM-facing contracts.
+- id: ggz14-codeberg-radiance-vllm-mxfp4
+  repository: https://codeberg.org/ggz14/radiance-vllm-mxfp4
+  relationship:
+  - selective-adaptation
+  - conceptual-watch
+  areas:
+  - rdna4
+  - mxfp4
+  - dflash
+  - runtime
+  current_pin: null
+  last_audited_ref: PR59 v0.32 plugin/FP8 compatibility reviewed; PR60 startup-memory adaptation from 2ec647c12bdac200ba2cd06eb6498281e8dc3110;
+    docs/V033_UPGRADE.md
+  policy: Distinct from the GitHub line. Preserve attribution and qualify selected changes locally.

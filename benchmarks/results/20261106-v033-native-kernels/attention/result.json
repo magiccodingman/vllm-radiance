@@ -1,0 +1,166 @@
+{
+  "status": "ROCM10_NATIVE_KERNEL_PASS_NOT_FRAMEWORK_QUALIFICATION",
+  "scope": "Direct HIP/pybind calls on one visible authorized GPU. CPU fixtures use independent FP64 attention over exact stored cache values. No PyTorch loaded in the GPU process.",
+  "visible_count": 1,
+  "r4d_version": "0.5.0+rdna4.451b136",
+  "maintained_commit": "451b136874084650992668bed9e8662deb58de88",
+  "extension_sha256": "9741015832bddf7d8b8d182e7a97fadef67bd42d39e3b4131f190da5722b492f",
+  "cases": [
+    {
+      "file": "bf16-q1.npz",
+      "dtype": "bf16",
+      "q_len": 1,
+      "contexts": [
+        17,
+        33
+      ],
+      "kernel": "attn_decode_h256_gqa6_bf16kv",
+      "relative_error": 0.001743969518153309,
+      "maximum_error": 0.0020018400357311172,
+      "changed_input_graph_error": 0.0017413034063184275
+    },
+    {
+      "file": "bf16-q7.npz",
+      "dtype": "bf16",
+      "q_len": 7,
+      "contexts": [
+        65,
+        129
+      ],
+      "kernel": "attn_decode_h256_gqa6_bf16kv",
+      "relative_error": 0.0017438074187885468,
+      "maximum_error": 0.0011247063754713515,
+      "changed_input_graph_error": 0.0017495819818623374
+    },
+    {
+      "file": "bf16-q10.npz",
+      "dtype": "bf16",
+      "q_len": 10,
+      "contexts": [
+        1025,
+        769
+      ],
+      "kernel": "attn_decode_h256_gqa6_bf16kv",
+      "relative_error": 0.0017290973036178069,
+      "maximum_error": 0.00028226899684491435,
+      "changed_input_graph_error": 0.001755165708973761
+    },
+    {
+      "file": "bf16-q17.npz",
+      "dtype": "bf16",
+      "q_len": 17,
+      "contexts": [
+        129,
+        193
+      ],
+      "kernel": "attn_prefill_h256_gqa6_bf16kv",
+      "relative_error": 0.0016825256067578914,
+      "maximum_error": 0.0005210834084574123,
+      "changed_input_graph_error": 0.0017000488423327914
+    },
+    {
+      "file": "bf16-q65.npz",
+      "dtype": "bf16",
+      "q_len": 65,
+      "contexts": [
+        257,
+        193
+      ],
+      "kernel": "attn_prefill_h256_gqa6_bf16kv",
+      "relative_error": 0.0016773168028167073,
+      "maximum_error": 0.0005358121947091066,
+      "changed_input_graph_error": 0.0016902386568572183
+    },
+    {
+      "file": "bf16-q129.npz",
+      "dtype": "bf16",
+      "q_len": 129,
+      "contexts": [
+        513,
+        385
+      ],
+      "kernel": "attn_prefill_h256_gqa6_bf16kv",
+      "relative_error": 0.0016820152667939813,
+      "maximum_error": 0.0004914042475681335,
+      "changed_input_graph_error": 0.001695458744699764
+    },
+    {
+      "file": "fp8-q1.npz",
+      "dtype": "fp8",
+      "q_len": 1,
+      "contexts": [
+        17,
+        33
+      ],
+      "kernel": "attn_decode_h256_gqa6_fp8kv",
+      "relative_error": 0.0017198360889828582,
+      "maximum_error": 0.002237400472255402,
+      "changed_input_graph_error": 0.0017713394390129176
+    },
+    {
+      "file": "fp8-q7.npz",
+      "dtype": "fp8",
+      "q_len": 7,
+      "contexts": [
+        65,
+        129
+      ],
+      "kernel": "attn_decode_h256_gqa6_fp8kv",
+      "relative_error": 0.0017352224533391458,
+      "maximum_error": 0.0011245467321918667,
+      "changed_input_graph_error": 0.001771080343626325
+    },
+    {
+      "file": "fp8-q10.npz",
+      "dtype": "fp8",
+      "q_len": 10,
+      "contexts": [
+        1025,
+        769
+      ],
+      "kernel": "attn_decode_h256_gqa6_fp8kv",
+      "relative_error": 0.0017437632271533152,
+      "maximum_error": 0.0002812499478100916,
+      "changed_input_graph_error": 0.001756428218418433
+    },
+    {
+      "file": "fp8-q17.npz",
+      "dtype": "fp8",
+      "q_len": 17,
+      "contexts": [
+        129,
+        193
+      ],
+      "kernel": "attn_prefill_h256_gqa6_fp8kv",
+      "relative_error": 0.0016798608458504726,
+      "maximum_error": 0.0009079043357306249,
+      "changed_input_graph_error": 0.0016947314846936844
+    },
+    {
+      "file": "fp8-q65.npz",
+      "dtype": "fp8",
+      "q_len": 65,
+      "contexts": [
+        257,
+        193
+      ],
+      "kernel": "attn_prefill_h256_gqa6_fp8kv",
+      "relative_error": 0.0016742709873438192,
+      "maximum_error": 0.0005278505550207757,
+      "changed_input_graph_error": 0.0016929630055312554
+    },
+    {
+      "file": "fp8-q129.npz",
+      "dtype": "fp8",
+      "q_len": 129,
+      "contexts": [
+        513,
+        385
+      ],
+      "kernel": "attn_prefill_h256_gqa6_fp8kv",
+      "relative_error": 0.0016830435142423197,
+      "maximum_error": 0.0004967849858623086,
+      "changed_input_graph_error": 0.0016958404111595711
+    }
+  ]
+}

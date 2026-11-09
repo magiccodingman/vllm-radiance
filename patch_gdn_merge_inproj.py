@@ -28,11 +28,12 @@ CALL = (
 # (file, anchor). The two runners differ in indent and in how model_config is passed.
 TARGETS = [
     (SP / "vllm/v1/worker/gpu_model_runner.py",
-     "                    self.model = model_loader.load_model(\n"
-     "                        vllm_config=self.vllm_config, model_config=self.model_config\n"
+     "                    self.model = model or model_loader.load_model(\n"
+     "                        vllm_config=self.vllm_config,\n"
+     "                        model_config=self.model_config,\n"
      "                    )\n"),
     (SP / "vllm/v1/worker/gpu/model_runner.py",
-     "                self.model = model_loader.load_model(\n"
+     "                self.model = model or model_loader.load_model(\n"
      "                    vllm_config=self.vllm_config,\n"
      "                    model_config=self.vllm_config.model_config,\n"
      "                )\n"),

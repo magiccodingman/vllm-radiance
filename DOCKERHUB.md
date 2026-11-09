@@ -1,51 +1,40 @@
 # vllm-radiance
 
-vLLM inference server for the AMD Radeon AI PRO R9700 (gfx1201 / RDNA4), combining pinned stable
-vLLM v0.30.0 with libr4d's hand-written RDNA4 kernels and Radiance's FP8/speculative paths.
+vLLM inference server for AMD Radeon AI PRO R9700 (gfx1201 / RDNA4).
+This source candidate is **1.2.0-rc1.vllm0.33.0**; it is not a production promotion
+or a claim that this version has been published to Docker Hub.
 
-> **Status: experimental.** This fork publishes as `magiccodingman/vllm-radiance`.
-> `stilldeadcode/vllm-radiance:0.9.3` is DeadCode's separate upstream release
-> and the external comparison baseline. Current pins and qualification evidence
-> are in `docs/UPGRADE_PROGRESS.md` and `docs/RADIANCE_093_R4D050_MXFP4.md`.
+The stable vLLM upgrade, overlay decisions and qualification limits are recorded
+in `docs/V033_UPGRADE.md`. Native LFM3 support is a focused upstream backport;
+see `docs/LFM3.md` for its separate optional text/FP8 profile. The ordinary Qwen
+Compose retains TP2, FP8 KV, 16K context, 85% GPU allocation, eight sequences,
+prefix caching and its explicit V1 override; speculation remains opt-in.
 
-The source version is 1.1.0-rc1.vllm0.30.0; merging source does not publish a Docker
-Hub image or replace the separately controlled deployment. See `docs/V030_UPGRADE.md` for its actual
-bounded FP8/Quark27B TP2/C1, Runner V2, tools/prefix/vision and native-conversion
-evidence and the new publication report `docs/V030_PUBLICATION_20260922.md`.
-NVFP4→MXFP4 conversion is explicit/default-off; A16 is rejected as unqualified,
-and real converted-model quality still needs a suitable NVFP4 checkpoint gate.
+The candidate passes installed-image CPU checks, native kernel gates and bounded
+GPU0 Quark V1/V2 serving/tool/cache/vision gates. LFM3 remains experimental with
+a recorded greedy batch-parity failure. TP2, performance, capacity and release
+qualification are deferred.
+Older measurements and deployment reports below describe their recorded stacks;
+they are not new-compiler-stack performance claims.
 
-The current fork is validated primarily with
-`Qwen3.8-27B-heretic-ara-fp8-magiccodingman` and
-`amd/Qwen3.8-27B-Quark-AWQ-MXFP4`, mandatory FP8 KV, and two R9700s
-(TP2). Its reusable default is 16K, 85% GPU allocation, and at most eight
-sequences; it deliberately leaves VRAM headroom instead of finding the largest
-batch that fits. Earlier 0.5.8 performance numbers below remain useful history,
-but are not claims about the new compiler stack.
-
-## Source stack (`1.1.0-rc1.vllm0.30.0`)
-
-This branch is not a production promotion. See `docs/V030_UPGRADE.md` for actual
-qualification. Performance tables below remain historical unless explicitly rerun.
-`RADIANCE_TOPK_TRITON_MIN_ROWS` is retired: upstream owns dispatch; nondefault
-overrides now fail explicitly. NVFP4 compatibility is opt-in requantization,
-not native NVFP4; see `docs/V030_GGZ14_MXFP4_NVFP4.md`.
+## Source stack (`1.2.0-rc1.vllm0.33.0`)
 
 | Component | Exact version/pin |
 |---|---|
-| vLLM | `0.30.0` / `ced6857afa0ea7b2e3f0846a62e1394e90f15607` |
-| PyTorch | AMD ROCm 2.12 commit `6bbd26020da1c6dc198625dfcdd968b1e4e6b1c5` |
-| Triton | AMD 3.7.1 commit `f0b55c07da61c71775bef6d1a15ebf846430ac75` |
-| torchvision | 0.27.1 |
-| AITER | 0.1.20 (`fc2e5d57fb5b8ad8e7e23f7103071dde798ea618`) |
-| Transformers | 5.15.0 |
-| XGrammar | 0.2.3 |
-| libr4d | 0.5.0 / `e8de4bc1f3dbd608dcb8d3ffceb6b48acdf83bb7` |
-| ROCm userspace | 7.14, bundled |
+| vLLM | `0.33.0` / `4ba787ec9959e566d3b587a796dff07673324da5` |
+| PyTorch | AMD ROCm 2.13 / `0e8e47fd5bb5cd734b6194b92e941075e932c925` |
+| Triton | AMD 3.8 / `669b31acc1dd1b3fd93286afd5db67f65d9f7557` |
+| torchvision | 0.28.0 |
+| AITER | 0.1.26 / `84077b3c0461dac1f0f3f8b9590a9282e2035a2f` |
+| Transformers / XGrammar | 5.16.1 / 0.2.8 |
+| RDNA4 native bridge | legacy ABI `e8de4bc1f3dbd608dcb8d3ffceb6b48acdf83bb7` plus maintained Radiance kernel family `451b136874084650992668bed9e8662deb58de88` |
+| ROCm image | `10.0.0-full` digest pinned in `.radiance/stack.yaml`; HIP 7.15 |
 
-Use the repository `docker-compose.yml` for the current local image and model
-defaults. Do not substitute an unpinned `main` checkout or generic PyTorch
-2.13/upstream Triton pair.
+StillDeadcode's maintained standalone `radiance` engine supersedes the retired
+fork/library line. This distribution selectively adapts its native kernels;
+it does not replace vLLM with that engine or claim its new KV formats.
+NVFP4 conversion remains explicit/default-off; A16 is unqualified and rejected.
+Use the repository Compose and exact stack pins, not an unpinned source checkout.
 
 ### Current kernel and draft controls
 
@@ -95,7 +84,7 @@ R4D attention is selected with `--attention-backend=R4D`. AITER attention and
 the older operator implementations remain fallbacks/controls. The portable
 Compose defaults to native FP8 weights, FP8 KV, TP2, 16K, 85% allocation,
 eight admitted sequences, 4,096 batched tokens, and automatic prefix caching
-with `--mamba-cache-mode=align`. Speculative decoding is off because its strict
+(hybrid state caching now follows APC). Speculative decoding is off because its strict
 cross-mode output gate has not qualified. For Qwen's
 in-checkpoint MTP head, opt in without editing Compose by adding these two lines
 to `.env`:
@@ -116,7 +105,6 @@ below (replace the drafter path if its directory name differs):
 ```dotenv
 MAX_MODEL_LEN=8192
 PREFIX_CACHING_FLAG=--enable-prefix-caching
-MAMBA_CACHE_MODE=align
 VLLM_USE_V2_MODEL_RUNNER=1
 RADIANCE_COMPILATION_CONFIG='{"cudagraph_mode":"PIECEWISE"}'
 RADIANCE_FAST_DRAFT=1
@@ -127,7 +115,7 @@ That is the measured selective-FP8 K7 lane: R4D target attention, Triton draft
 attention, draft TP2, piecewise graphs, runtime W4 draft linears, and the INT2
 exact-rerank head. Fast-draft graph caches are isolated automatically. It remains opt-in because strict
 cross-mode equivalence has not qualified. Published BetterBench results used
-`--no-enable-prefix-caching --mamba-cache-mode=none` only to enforce a cold,
+`--no-enable-prefix-caching` only to enforce a cold,
 nonce-disjoint benchmark contract; those are not the recommended production
 defaults.
 
@@ -192,9 +180,9 @@ headroom per GPU. A 32K repeated prefix reduced TTFT from 9.04 seconds cold to
 prefix-disabled maximum-capacity sweep completed 32K C11, 64K C7, 128K C4, and
 256K C2; use the more conservative 32K C8 / 64K C6 settings in production.
 
-**Fine-grained MoE (Qwen3.6-35B-A3B-FP8).** Supported and tuned. Two MoE paths are baked in and activate automatically for it: RDNA4-tuned fused-MoE Triton configs (removes the stock config's `M>=96` cliff, lower prefill TTFT, lossless) and a custom bf16 MoE-gate GEMM (`RADIANCE_MOE_ROUTER`, on by default) for the skinny `n` in `[6,16]` batch band that rocBLAS serves poorly (~2.5x faster cold, bit-identical output; wvSplitK already covers `n<=5`). A serving requirement: with `--mamba-cache-mode=align` this model's attention block size is 2240, and align asserts `block_size <= max_num_batched_tokens`, so keep **`--max-num-batched-tokens >= 2240`**; the Compose default is 4096.
+**Fine-grained MoE (Qwen3.6-35B-A3B-FP8).** Supported and tuned. Two MoE paths are baked in and activate automatically for it: RDNA4-tuned fused-MoE Triton configs (removes the stock config's `M>=96` cliff, lower prefill TTFT, lossless) and a custom bf16 MoE-gate GEMM (`RADIANCE_MOE_ROUTER`, on by default) for the skinny `n` in `[6,16]` batch band that rocBLAS serves poorly (~2.5x faster cold, bit-identical output; wvSplitK already covers `n<=5`). A serving requirement: historical hybrid cache alignment required 2240 batched tokens; recheck the current planner and keep **`--max-num-batched-tokens >= 2240`** for that recorded profile; the Compose default is 4096.
 
-**Gemma-4-31B-it-FP8.** Supported (0.4.0), e.g. `RedHatAI/gemma-4-31B-it-FP8-block`. Quantization is auto-detected from `config.json` (compressed-tensors, 128x128 blocks) and the RDNA4-tuned block-FP8 GEMM configs for its shapes load automatically (measured -5% TTFT at 8K prompt, decode unchanged). Text and vision both work. It is not a GDN hybrid, so drop `--mamba-cache-mode`; it also uses its own chat template and parsers rather than the Qwen ones. It carries a lot of KV (60 layers: 50 sliding-window + 10 global head-512), so at a given `--gpu-memory-utilization` it wants a smaller `--max-model-len` than the Qwen models. Long-context prefill is tuned for its head-512 global-attention layers (a head-size-keyed 2D attention config, measured up to -38% TTFT at 64K, -46% at 120K vs the untuned kernel; inert on other head sizes).
+**Gemma-4-31B-it-FP8.** Supported (0.4.0), e.g. `RedHatAI/gemma-4-31B-it-FP8-block`. Quantization is auto-detected from `config.json` (compressed-tensors, 128x128 blocks) and the RDNA4-tuned block-FP8 GEMM configs for its shapes load automatically (measured -5% TTFT at 8K prompt, decode unchanged). Text and vision both work. It is not a GDN hybrid, so no hybrid cache flag is needed; it also uses its own chat template and parsers rather than the Qwen ones. It carries a lot of KV (60 layers: 50 sliding-window + 10 global head-512), so at a given `--gpu-memory-utilization` it wants a smaller `--max-model-len` than the Qwen models. Long-context prefill is tuned for its head-512 global-attention layers (a head-size-keyed 2D attention config, measured up to -38% TTFT at 64K, -46% at 120K vs the untuned kernel; inert on other head sizes).
 
 **Gemma-4-31B MTP speculative decoding.** For a large decode speedup, pair the target with Google's official drafter `google/gemma-4-31B-it-assistant` (vLLM loads its `gemma4_assistant` checkpoint as an MTP model). Lossless (the target verifies every drafted token), and the `RADIANCE_DYNAMIC_DRAFT` controller applies. The drafter has a head-512 layer, so its speculative `attention_backend` must be `ROCM_AITER_UNIFIED_ATTN` (`flash_attn` caps at head 256). Example: `--speculative-config '{"method":"mtp","model":"/models/google/gemma-4-31B-it-assistant","num_speculative_tokens":8,"attention_backend":"ROCM_AITER_UNIFIED_ATTN","disable_padded_drafter_batch":true}' --no-async-scheduling --trust-remote-code`.
 
@@ -309,7 +297,7 @@ docker run --rm -it \
   -e RADIANCE_FUSE_RMS_QUANT=1 \
   -e RADIANCE_DYNAMIC_DRAFT=1 \
   -e VLLM_CACHE_ROOT=/cache/vllm -e TORCHINDUCTOR_CACHE_DIR=/cache/inductor \
-  -e TRITON_CACHE_DIR=/cache/triton -e AITER_ROOT_DIR=/cache/aiter \
+  -e TRITON_CACHE_DIR=/cache/triton -e AITER_JIT_DIR=/cache/aiter \
   -e TRITON_CACHE_AUTOTUNING=1 \
   stilldeadcode/vllm-radiance:0.5.8 \
     /models/YourOrg/Your-Model-FP8 \
@@ -318,7 +306,7 @@ docker run --rm -it \
     --tensor-parallel-size 2 \
     --gpu-memory-utilization 0.92 \
     --attention-backend ROCM_AITER_UNIFIED_ATTN \
-    --enable-prefix-caching --mamba-cache-mode align \
+    --enable-prefix-caching \
     --speculative-config '{"method":"mtp","num_speculative_tokens":8,"attention_backend":"ROCM_AITER_UNIFIED_ATTN","disable_padded_drafter_batch":true}' \
     --no-async-scheduling \
     --host 0.0.0.0 --port 8000
@@ -348,7 +336,6 @@ services:
       - --gpu-memory-utilization=0.92
       - --attention-backend=ROCM_AITER_UNIFIED_ATTN
       - --enable-prefix-caching
-      - --mamba-cache-mode=align
       - '--speculative-config={"method":"mtp","num_speculative_tokens":8,"attention_backend":"ROCM_AITER_UNIFIED_ATTN","disable_padded_drafter_batch":true}'
       - --no-async-scheduling
       - --host=0.0.0.0
@@ -379,7 +366,7 @@ services:
       VLLM_CACHE_ROOT: /cache/vllm
       TORCHINDUCTOR_CACHE_DIR: /cache/inductor
       TRITON_CACHE_DIR: /cache/triton
-      AITER_ROOT_DIR: /cache/aiter
+      AITER_JIT_DIR: /cache/aiter
       TRITON_CACHE_AUTOTUNING: "1"
     devices:
       - /dev/kfd:/dev/kfd
@@ -405,7 +392,7 @@ With an empty cache the first start spends a few extra minutes compiling Triton 
   -e VLLM_CACHE_ROOT=/cache/vllm \
   -e TORCHINDUCTOR_CACHE_DIR=/cache/inductor \
   -e TRITON_CACHE_DIR=/cache/triton \
-  -e AITER_ROOT_DIR=/cache/aiter \
+  -e AITER_JIT_DIR=/cache/aiter \
   -e TRITON_CACHE_AUTOTUNING=1
 ```
 
@@ -421,7 +408,7 @@ With an empty cache the first start spends a few extra minutes compiling Triton 
 | `--max-num-seqs` | workload dependent | max concurrent sequences |
 | `--gpu-memory-utilization` | `0.85` starting point | Leaves measured runtime/drafter headroom; raise only after a model-specific capacity qualification |
 | `--enable-prefix-caching` | on for shared prefixes | enables automatic prefix caching; **required**: hybrid (GDN/mamba) models leave it off by default even though the engine default looks on |
-| `--mamba-cache-mode` | `align` (hybrid models) | makes the linear-attention (GDN) layers prefix-cacheable; pair with `--enable-prefix-caching` on this hybrid. `none` disables mamba-layer caching; `all` is unsupported by this model |
+| `--mamba-cache-mode` | retired | ignored by vLLM 0.33; hybrid state caching follows the prefix-caching flag |
 | `--numa-bind` | omit (off) | multi-NUMA-node hosts only: pin the fleet to the GPU-local node(s). `auto` / `<nodes>` / `interleave` / `preferred=<n>` / `none`. Same as `RADIANCE_NUMA_BIND`; needs `--cap-add SYS_NICE`. See NUMA pinning above. |
 
 Speculative decoding (MTP). Two forms depending on where the MTP head lives:
@@ -441,10 +428,17 @@ Speculative decoding (MTP). Two forms depending on where the MTP head lives:
 Prefix caching (shared system prompts, RAG, agentic context):
 
 ```
---enable-prefix-caching --mamba-cache-mode align
+--enable-prefix-caching
 ```
 
-Automatic prefix caching reuses a shared prompt prefix across requests so only the new suffix is prefilled, a large time-to-first-token drop when many requests share a system prompt or document. On this **GDN hybrid you must pass both flags**: hybrid models default their prefix-caching support flag off ("experimental"), so vLLM **silently disables** prefix caching unless `--enable-prefix-caching` is given, and `--mamba-cache-mode align` is what makes the linear-attention (GDN) layers cacheable by snapshotting and restoring their conv + recurrent state at block boundaries. That restore is **verified bit-identical to a full recompute** (including under MTP), so outputs are unchanged; the win is purely latency (measured ~3.6x in the original qualification and 12.8x for a 32K shared prefix in the MXFP4+DFlash production profile). Trade-offs: align reconciles the mamba and attention page sizes, which raises the attention block size to 1664 tokens and adds one state block per linear-attention layer (slightly lower max concurrency at full context), and prefix hits land on 1664-token boundaries. Do **not** use `--mamba-cache-mode all` (unsupported by this model, raises at startup) and do **not** set `VLLM_SSM_CONV_STATE_LAYOUT=DS` (asserts under MTP + align).
+Automatic prefix caching reuses shared prompt prefixes. In vLLM 0.33,
+hybrid conv/recurrent state caching follows `--enable-prefix-caching`;
+`--mamba-cache-mode` is deprecated and has no effect. Use
+`--no-enable-prefix-caching` for cold controls. Alignment/page size depends on
+the checkpoint and current native cache planner. Earlier 1664-token page sizes
+and latency measurements belong to their historical qualification, not a fixed
+contract for this stack. Keep the default conv-state layout unless qualified.
+
 
 Tool-calling and reasoning:
 

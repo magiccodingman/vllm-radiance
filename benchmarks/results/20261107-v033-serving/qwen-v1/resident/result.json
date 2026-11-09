@@ -1,0 +1,38 @@
+{
+  "status": "PASS",
+  "short_requests": [
+    {
+      "ttft_s": 0.048813323955982924,
+      "steady_tps": 29.35859111419445,
+      "elapsed_s": 1.1047973548993468,
+      "token_sha256": "20b490d92586d7ce3787238a95c8b320c5c8b07f4b9d6d2304580bbac23fb33f",
+      "usage": {
+        "prompt_tokens": 5,
+        "total_tokens": 37,
+        "completion_tokens": 32
+      }
+    },
+    {
+      "ttft_s": 0.044632817851379514,
+      "steady_tps": 29.35603333457746,
+      "elapsed_s": 1.100691869854927,
+      "token_sha256": "20b490d92586d7ce3787238a95c8b320c5c8b07f4b9d6d2304580bbac23fb33f",
+      "usage": {
+        "prompt_tokens": 5,
+        "total_tokens": 37,
+        "completion_tokens": 32
+      }
+    },
+    {
+      "ttft_s": 0.04511519498191774,
+      "steady_tps": 29.35856776377627,
+      "elapsed_s": 1.1011043060570955,
+      "token_sha256": "20b490d92586d7ce3787238a95c8b320c5c8b07f4b9d6d2304580bbac23fb33f",
+      "usage": {
+        "prompt_tokens": 5,
+        "total_tokens": 37,
+        "completion_tokens": 32
+      }
+    }
+  ]
+}

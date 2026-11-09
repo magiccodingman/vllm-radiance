@@ -1,0 +1,114 @@
+{
+  "producer_torch": "2.12.0+rocm7.14",
+  "scope": "CPU-generated exact-stored-value fixtures and independent FP64 reference",
+  "cases": [
+    {
+      "file": "bf16-q1.npz",
+      "dtype": "bf16",
+      "q_len": 1,
+      "contexts": [
+        17,
+        33
+      ]
+    },
+    {
+      "file": "bf16-q7.npz",
+      "dtype": "bf16",
+      "q_len": 7,
+      "contexts": [
+        65,
+        129
+      ]
+    },
+    {
+      "file": "bf16-q10.npz",
+      "dtype": "bf16",
+      "q_len": 10,
+      "contexts": [
+        1025,
+        769
+      ]
+    },
+    {
+      "file": "bf16-q17.npz",
+      "dtype": "bf16",
+      "q_len": 17,
+      "contexts": [
+        129,
+        193
+      ]
+    },
+    {
+      "file": "bf16-q65.npz",
+      "dtype": "bf16",
+      "q_len": 65,
+      "contexts": [
+        257,
+        193
+      ]
+    },
+    {
+      "file": "bf16-q129.npz",
+      "dtype": "bf16",
+      "q_len": 129,
+      "contexts": [
+        513,
+        385
+      ]
+    },
+    {
+      "file": "fp8-q1.npz",
+      "dtype": "fp8",
+      "q_len": 1,
+      "contexts": [
+        17,
+        33
+      ]
+    },
+    {
+      "file": "fp8-q7.npz",
+      "dtype": "fp8",
+      "q_len": 7,
+      "contexts": [
+        65,
+        129
+      ]
+    },
+    {
+      "file": "fp8-q10.npz",
+      "dtype": "fp8",
+      "q_len": 10,
+      "contexts": [
+        1025,
+        769
+      ]
+    },
+    {
+      "file": "fp8-q17.npz",
+      "dtype": "fp8",
+      "q_len": 17,
+      "contexts": [
+        129,
+        193
+      ]
+    },
+    {
+      "file": "fp8-q65.npz",
+      "dtype": "fp8",
+      "q_len": 65,
+      "contexts": [
+        257,
+        193
+      ]
+    },
+    {
+      "file": "fp8-q129.npz",
+      "dtype": "fp8",
+      "q_len": 129,
+      "contexts": [
+        513,
+        385
+      ]
+    }
+  ]
+}

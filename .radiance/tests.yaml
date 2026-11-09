@@ -13,6 +13,10 @@ qualification_levels:
 - performance-qualified
 - release-qualified
 change_map:
+- pattern: '^(patch_lfm3_|upstream/vllm-lfm3/|benchmarks/bin/check_lfm3_|docker-compose\.lfm3)'
+  areas: [lfm3, upgrade, attention]
+- pattern: '^benchmarks/bin/(run_client_tool_gate|check_client_tool_gate|run_tool_schema_gate)'
+  areas: [parser, structured-output]
 - pattern: '^(\.radiance/|tools/|AGENTS\.md$|CONTRIBUTING\.md$|docs/maintenance/)'
   areas: [control-plane]
 - pattern: '^(Dockerfile|Dockerfile\.dev|Dockerfile\.patch|\.gitlab-ci\.yml|Makefile)$'
@@ -43,11 +47,313 @@ change_map:
   areas: [dflash, speculative]
 - pattern: '^(radiance_r4d_attn|patch_r4d|patch_unified_attention_lds)'
   areas: [attention, libr4d]
+- pattern: '^(\.radiance/|tools/|tests/test_radiance_cli\.py$|AGENTS\.md$|CONTRIBUTING\.md$|docs/maintenance/)'
+  areas: [control-plane]
+- pattern: '^(benchmarks/bin/verify_outputs\.py$|tests/test_equivalence_evidence\.py$)'
+  areas: [correctness-evidence]
+- pattern: '^(radiance_tunableop\.py$|tests/test_tunableop_immutability\.py$)'
+  areas: [tunableop, gemm]
+- pattern: '^(radiance_kv_calibration\.py$|tests/test_calibration_validation\.py$)'
+  areas: [fp8-kv, attention]
+- pattern: '^(benchmarks/bin/run_kv_offload_restore_gate\.py$|tests/test_kv_gate_output\.py$)'
+  areas: [kv-offload]
+- pattern: '^(qwen3\.(6|8)-enhanced\.jinja$|tests/test_qwen_history_replay\.py$)'
+  areas: [parser, structured-output]
+- pattern: '^tests/test_client_tool_values\.py$'
+  areas: [parser, structured-output]
+- pattern: '^tests/test_conformance_tool_assembly\.py$'
+  areas: [conformance]
+- pattern: '^(benchmarks/bin/compare\.py$|tests/test_performance_evidence\.py$)'
+  areas: [performance-evidence]
+- pattern: '^(radiance_allreduce\.py$|tests/test_allreduce_dispatch\.py$)'
+  areas: [allreduce, libr4d]
+- pattern: '^(radiance_allreduce\.py$|tests/test_allreduce_quant_consensus\.py$)'
+  areas: [allreduce, libr4d]
+- pattern: '^(radiance_topk\.py$|tests/test_topk_vocabulary\.py$)'
+  areas: [sampling, topk]
+- pattern: '^(radiance_vit_attn\.py$|tests/test_vit_dispatch_guards\.py$)'
+  areas: [attention, vision, libr4d]
+- pattern: '^(radiance_vit_attn\.py$|tests/test_vision_mask_|tests/vision_fixtures\.py$)'
+  areas: [attention, vision, libr4d]
+- pattern: '^(radiance_vit_attn\.py$|tests/test_vision_device_stream\.py$)'
+  areas: [attention, vision, libr4d]
+- pattern: '^tests/test_dflash_w4_device_stream\.py$'
+  areas: [dflash, speculative]
+- pattern: '^radiance_w4\.py$'
+  areas: [dflash, speculative]
+- pattern: '^tests/test_skinny_gemm_contract\.py$'
+  areas: [gemm, runtime]
+- pattern: '^radiance_gemm\.py$'
+  areas: [gemm, runtime]
+- pattern: '^tests/test_ngram_tail_width\.py$'
+  areas: [dflash, speculative]
+- pattern: '^radiance_draft_gpu\.py$'
+  areas: [dflash, speculative]
+- pattern: '^tests/test_qwen_schema_literals\.py$'
+  areas: [parser, structured-output]
+- pattern: '^(radiance_arnq\.py$|tests/test_fp8_stream_install\.py$)'
+  areas: [mxfp4, allreduce]
 profiles:
-  pr: [control-plane-validate, python-compile, kv-offload-registration-cpu, kv-offload-rank-sharded-cpu, kv-offload-restore-cpu, qwen-tool-grammar-cpu]
-  upgrade: [control-plane-validate, python-compile, kv-offload-registration-cpu, kv-offload-rank-sharded-cpu, kv-offload-restore-cpu, parser-shared-engine-image, xgrammar-spec-image, qwen-open-object-image, fp8-kv-calibration-image, tunableop-preflight-image, r9700-tp2-smoke, tool-schema-live, open-object-tool-live, betterbench-standard, correctness-equivalence]
-  release: [control-plane-validate, python-compile, kv-offload-registration-cpu, kv-offload-rank-sharded-cpu, kv-offload-restore-cpu, parser-shared-engine-image, xgrammar-spec-image, qwen-open-object-image, fp8-kv-calibration-image, tunableop-preflight-image, r9700-tp2-smoke, tool-schema-live, open-object-tool-live, betterbench-standard, correctness-equivalence, capacity-qualification]
+  pr: [lfm3-backport-cpu, v033-upgrade-cpu, control-plane-validate, python-compile, kv-offload-registration-cpu, kv-offload-rank-sharded-cpu, kv-offload-restore-cpu, qwen-tool-grammar-cpu, client-tool-gate-cpu, maintenance-cli-cpu, python-source-checks-cpu, equivalence-evidence-cpu, automatic-cpu-boundary, tunableop-immutability-cpu, calibration-validation-cpu, qwen-history-replay-cpu, client-tool-values-cpu, conformance-tool-assembly-cpu, performance-evidence-cpu, dflash-w4-stream-cpu, skinny-gemm-contract-cpu, ngram-tail-width-cpu, qwen-schema-literals-cpu, fp8-stream-install-cpu]
+  upgrade: [lfm3-backport-cpu, v033-upgrade-cpu, lfm3-image, lfm3-native, draft-head-packing-image, r4d-attention-native, gdn-extreme-decay-native, gdn-extreme-decay-h24-native, dflash-independent-noise-native, control-plane-validate, python-compile, kv-offload-registration-cpu, kv-offload-rank-sharded-cpu, kv-offload-restore-cpu, parser-shared-engine-image, xgrammar-spec-image, qwen-open-object-image, qwen-tool-grammar-image, client-tool-gate-cpu, client-tool-live, fp8-kv-calibration-image, tunableop-preflight-image, r9700-tp2-smoke, tool-schema-live, open-object-tool-live, betterbench-standard, correctness-equivalence, qwen-history-replay-cpu, client-tool-values-cpu, conformance-tool-assembly-cpu, dflash-w4-stream-cpu, skinny-gemm-contract-cpu, ngram-tail-width-cpu, qwen-schema-literals-cpu]
+  release: [lfm3-backport-cpu, v033-upgrade-cpu, lfm3-image, lfm3-native, draft-head-packing-image, r4d-attention-native, gdn-extreme-decay-native, gdn-extreme-decay-h24-native, dflash-independent-noise-native, control-plane-validate, python-compile, kv-offload-registration-cpu, kv-offload-rank-sharded-cpu, kv-offload-restore-cpu, parser-shared-engine-image, xgrammar-spec-image, qwen-open-object-image, qwen-tool-grammar-image, client-tool-gate-cpu, client-tool-live, fp8-kv-calibration-image, tunableop-preflight-image, r9700-tp2-smoke, tool-schema-live, open-object-tool-live, betterbench-standard, correctness-equivalence, capacity-qualification, qwen-history-replay-cpu, client-tool-values-cpu, conformance-tool-assembly-cpu, dflash-w4-stream-cpu, skinny-gemm-contract-cpu, ngram-tail-width-cpu, qwen-schema-literals-cpu]
 tests:
+- id: fp8-stream-install-cpu
+  class: contract
+  hardware: cpu
+  areas: [mxfp4, allreduce]
+  command: python -m unittest discover -s tests -p test_fp8_stream_install.py -v
+  automatic: true
+  ci: true
+  description: Actual installer guards preserve stock forwards and TP reductions for unsupported FP8-stream layers.
+- id: qwen-schema-literals-cpu
+  class: contract
+  hardware: cpu
+  areas: [parser, structured-output]
+  command: python -m unittest discover -s tests -p test_qwen_schema_literals.py -v
+  automatic: true
+  ci: true
+  description: JSON Schema const/enum and annotation preservation, schema-only traversal, fresh and already-baked idempotence.
+- id: ngram-tail-width-cpu
+  class: contract
+  hardware: cpu
+  areas: [dflash, speculative]
+  command: python -m unittest discover -s tests -p test_ngram_tail_width.py
+  automatic: true
+  ci: true
+  description: NumPy lane simulation for non-power-of-two n-gram tails, padded stores and continuation lengths; no Triton execution.
+- id: skinny-gemm-contract-cpu
+  class: contract
+  hardware: cpu
+  areas: [gemm, runtime]
+  command: python -m unittest discover -s tests -p test_skinny_gemm_contract.py
+  automatic: true
+  ci: true
+  description: Metadata checks for skinny BF16 GEMM operands, device/stream selection and restoration; no native kernel execution.
+- id: dflash-w4-stream-cpu
+  class: contract
+  hardware: cpu
+  areas: [dflash, speculative]
+  command: python -m unittest discover -s tests -p test_dflash_w4_device_stream.py
+  automatic: true
+  ci: true
+  description: Metadata launch tracing for W4/W4A8 device, stream and exception restoration; no physical GPU execution.
+- id: vision-device-cpu
+  class: contract
+  hardware: cpu
+  areas: [attention, vision, libr4d]
+  command: python -m unittest discover -s tests -p test_vision_device_stream.py -v
+  automatic: true
+  ci: true
+  description: CPU launch doubles check tensor-device current streams, varlen forwarding and caller-device restoration on failure; no HIP execution.
+- id: vision-mask-cpu
+  class: contract
+  hardware: cpu
+  areas: [attention, vision, libr4d]
+  command: uv run --project benchmarks/conformance --locked --group dev --extra cpu-tests --with transformers==5.16.1 python -m unittest discover -s tests -p 'test_vision_mask_*.py' -v
+  automatic: true
+  ci: false
+  description: CPU mask API and SDPA numerical controls preserve per-image padding across the Vision backend switch; no model or GPU.
+- id: vit-dispatch-cpu
+  class: contract
+  hardware: cpu
+  areas: [attention, vision, libr4d]
+  command: python -m unittest discover -s tests -p test_vit_dispatch_guards.py -v
+  automatic: true
+  ci: true
+  description: CPU metadata doubles check ViT raw-pointer dispatch and unchanged stock fallback forwarding; no kernel numerics.
+- id: topk-vocabulary-cpu
+  class: contract
+  hardware: cpu
+  areas: [sampling, topk]
+  command: uv run --project benchmarks/conformance --locked --group dev --extra cpu-tests python -m unittest discover -s tests -p test_topk_vocabulary.py -v
+  automatic: true
+  ci: false
+  description: Full-sort CPU masks and fullgraph eager tracing protect vocabularies below the composite candidate cap.
+- id: allreduce-gloo-cpu
+  class: contract
+  hardware: cpu
+  areas: [allreduce, libr4d]
+  command: uv run --project benchmarks/conformance --locked --group dev --extra cpu-tests python -m unittest discover -s tests -p test_allreduce_gloo.py -v
+  automatic: true
+  ci: false
+  description: Real two/four-process Gloo checks group protocol agreement and TP4 stock fallback with native allocation/IPC doubles; no GPU qualification.
+- id: allreduce-quant-consensus-cpu
+  class: contract
+  hardware: cpu
+  areas: [allreduce, libr4d]
+  command: python -m unittest discover -s tests -p test_allreduce_quant_consensus.py -v
+  automatic: true
+  ci: true
+  description: Threaded CPU rendezvous checks group-wide quant protocol fallback and independent TP2 groups on four synthetic workers; no native execution.
+- id: allreduce-dispatch-cpu
+  class: contract
+  hardware: cpu
+  areas: [allreduce, libr4d]
+  command: python -m unittest discover -s tests -p test_allreduce_dispatch.py -v
+  automatic: true
+  ci: true
+  description: CPU doubles check TP2-only group selection, TP4/upstream fallbacks, aligned tensor ownership and device-current stream launches.
+- id: performance-evidence-cpu
+  class: contract
+  hardware: cpu
+  areas: [performance-evidence]
+  command: python -m unittest discover -s tests -p test_performance_evidence.py -v
+  automatic: true
+  ci: true
+  description: CLI regression gating requires measurable common decode cases and finite positive throughput evidence.
+- id: conformance-tool-assembly-cpu
+  class: contract
+  hardware: cpu
+  areas: [conformance]
+  command: python -m unittest discover -s tests -p test_conformance_tool_assembly.py
+  automatic: true
+  ci: true
+  description: Execute conformance response assembly for indexed interleaving and rejection of non-finite tool JSON.
+- id: client-tool-values-cpu
+  class: contract
+  hardware: cpu
+  areas: [parser, structured-output]
+  command: python -m unittest discover -s tests -p test_client_tool_values.py -v
+  automatic: true
+  ci: true
+  description: Typed package comparisons reject boolean/integer aliasing and overflowing float confidence while retaining valid JSON numbers.
+- id: qwen-history-replay-cpu
+  class: contract
+  hardware: cpu
+  areas: [parser, structured-output]
+  command: python -m unittest discover -s tests -p test_qwen_history_replay.py -v
+  automatic: true
+  ci: true
+  description: Real Jinja replay preserves literal reasoning delimiters, tool values and existing Qwen/Vision prompt controls.
+- id: kv-restore-output-cpu
+  class: contract
+  hardware: cpu
+  areas: [kv-offload]
+  command: python -m unittest discover -s tests -p test_kv_gate_output.py -v
+  automatic: true
+  ci: true
+  description: Synthetic restore-gate CLI checks preserve results in shared directories and refuse overwrites.
+- id: calibration-validation-cpu
+  class: contract
+  hardware: cpu
+  areas: [fp8-kv, attention]
+  command: python -m unittest discover -s tests -p test_calibration_validation.py -v
+  automatic: true
+  ci: true
+  description: Validate per-rank observations, finite FP32 scales and CPU preflight before importing vLLM.
+- id: tunableop-immutability-cpu
+  class: contract
+  hardware: cpu
+  areas: [tunableop, gemm]
+  command: python -m unittest discover -s tests -p test_tunableop_immutability.py -v
+  automatic: true
+  ci: true
+  description: Preserve immutable tuning evidence, reject incomplete device outputs and invalid GPU counts without GPU calls.
+- id: automatic-cpu-boundary
+  class: contract
+  hardware: cpu
+  areas: [control-plane]
+  command: python -m unittest discover -s tests -p test_automatic_cpu_boundary.py -v
+  automatic: true
+  ci: true
+  description: Reject malformed eligibility flags and hardware-dependent automatic entries before executing any command.
+- id: equivalence-evidence-cpu
+  class: contract
+  hardware: cpu
+  areas: [correctness-evidence]
+  command: python -m unittest discover -s tests -p test_equivalence_evidence.py -v
+  automatic: true
+  ci: true
+  description: The actual equivalence CLI rejects missing lengths, empty runs and incomplete request evidence.
+- id: python-source-checks-cpu
+  class: contract
+  hardware: cpu
+  areas: [control-plane]
+  command: python -m unittest discover -s tests -p test_python_source_checks.py -v
+  automatic: true
+  ci: true
+  description: Syntax errors in every source group and missing inputs must fail on all host shells.
+- id: maintenance-cli-cpu
+  class: contract
+  hardware: cpu
+  areas: [control-plane]
+  command: python -m unittest discover -s tests -p test_radiance_cli.py -v
+  automatic: true
+  ci: true
+  description: Real Git histories protect committed, staged, unstaged and untracked changed-test selection.
+- id: gdn-extreme-decay-h24-native
+  class: contract
+  hardware: r9700
+  areas: [gdn, libr4d, upgrade]
+  command: 'python benchmarks/bin/check_gdn_extreme_decay.py --heads 24 --output "$RUN_ROOT/gdn-extreme-decay-h24.json"'
+  automatic: false
+  ci: false
+  description: FP64 GDN recurrence and graph checks for the 24/8 head geometry on one GPU; this is not distributed TP2 qualification.
+- id: r4d-attention-native
+  class: contract
+  hardware: r9700
+  areas: [attention, libr4d, upgrade]
+  command: 'python benchmarks/bin/check_r4d_attention_native.py --out "$RUN_ROOT/r4d-attention.json"'
+  automatic: false
+  ci: false
+  description: Installed BF16-query/BF16-or-FP8-KV paged prefill/decode against FP64 causal attention, shuffled/partial pages, guards and changed-input graphs on one visible GPU.
+- id: lfm3-backport-cpu
+  class: contract
+  hardware: cpu
+  areas: [lfm3, upgrade]
+  command: python benchmarks/bin/check_lfm3_backport_cpu.py
+  automatic: true
+  ci: true
+  description: Immutable official LFM3 payload hashes and fail-closed installation before source mutation.
+- id: lfm3-image
+  class: contract
+  hardware: candidate-image
+  areas: [lfm3, upgrade, attention]
+  command: 'python benchmarks/bin/check_lfm3_image.py --model "$MODEL_PATH" && python -m pytest --noconftest upstream/vllm-lfm3/test_lfm3.py -q'
+  automatic: false
+  ci: false
+  description: Native registry/config, checkpoint compressed-tensors settings and upstream CPU proportional-RoPE reference.
+- id: lfm3-native
+  class: contract
+  hardware: r9700
+  areas: [lfm3, attention, upgrade]
+  command: python -m pytest --noconftest upstream/vllm-lfm3/test_causal_conv1d.py -q
+  automatic: false
+  ci: false
+  description: Unchanged upstream causal-convolution suite including widths 3-7, initial state, padded/gathered sequences and width rejection; requires one visible GPU.
+- id: v033-upgrade-cpu
+  class: contract
+  hardware: cpu
+  areas: [upgrade, attention, dflash, runtime]
+  command: python benchmarks/bin/check_v033_upgrade_cpu.py
+  automatic: true
+  ci: true
+  description: FP8 draft exclusion negative controls, RDNA4 LDS bounds and native plugin metadata discovery.
+- id: draft-head-packing-image
+  class: contract
+  hardware: candidate-image
+  areas: [upgrade, dflash, speculative]
+  command: python benchmarks/bin/check_draft_head_packing.py && python -m pytest --noconftest -q tests/test_draft_head_lazy_fallback.py tests/test_dflash_fused_kv_projection.py
+  automatic: false
+  ci: false
+  description: Real Torch CPU INT2/INT4 packing against an independent reference, chunk boundaries, NaNs and cache reuse.
+- id: client-tool-gate-cpu
+  class: contract
+  hardware: cpu
+  areas: [parser, structured-output]
+  command: python benchmarks/bin/check_client_tool_gate.py
+  automatic: true
+  ci: true
+  description: Negative controls for malformed first/second tool calls, typed nested packages and truncated SSE.
+- id: client-tool-live
+  class: correctness
+  hardware: r9700-tp2
+  areas: [parser, structured-output]
+  command: 'python benchmarks/bin/run_client_tool_gate.py --base-url http://127.0.0.1:8000/v1 --model "$MODEL_NAME" --runs 5 --capture-root "$RUN_ROOT/client-tool"'
+  automatic: false
+  ci: false
+  description: Synthetic QA keypress and nested Int64 package regressions, auto/non-strict and strict, streaming and non-streaming.
 - id: qwen-tool-grammar-cpu
   class: contract
   hardware: cpu
@@ -163,7 +469,7 @@ tests:
   class: static
   hardware: cpu
   areas: [control-plane, patches, runtime, build]
-  command: python -m compileall -q _patchlib.py install_radiance_hooks.py patch_*.py radiance_*.py benchmarks/bin tools
+  command: python tools/check_python_sources.py
   automatic: true
   ci: true
   description: Compile Python sources without importing GPU/runtime dependencies.

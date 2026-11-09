@@ -33,6 +33,8 @@ existing numpy mirror, so the route costs no GPU sync. Rows with top_k disabled 
 vocab_size there, which routes the whole batch to the old path; k=None likewise.
 
 RADIANCE_TOPK_COMPOSITE=0 restores the previous routing. KCAP via RADIANCE_TOPK_COMPOSITE_KCAP.
+The candidate window is bounded by the actual vocabulary width; torch.topk
+cannot select KCAP entries when a valid small vocabulary contains fewer tokens.
 """
 import os
 
@@ -44,8 +46,9 @@ _NEG_INF = float("-inf")
 
 def apply_top_k_top_p_composite(logits: torch.Tensor, k: torch.Tensor,
                                 p: torch.Tensor | None) -> torch.Tensor:
-    vals, idx = torch.topk(logits, KCAP, dim=-1)          # [B, KCAP] descending
-    kk = k.to(torch.long).clamp(1, KCAP)
+    window = min(KCAP, logits.shape[-1])
+    vals, idx = torch.topk(logits, window, dim=-1)        # [B, window] descending
+    kk = k.to(torch.long).clamp(1, window)
     thr = vals.gather(1, kk.unsqueeze(1) - 1)             # k-th largest value per row
     logits.masked_fill_(logits < thr, _NEG_INF)           # value threshold: boundary ties kept
     if p is not None:

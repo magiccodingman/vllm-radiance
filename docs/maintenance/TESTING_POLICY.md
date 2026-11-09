@@ -29,6 +29,11 @@ python tools/radiance.py qualify release
 `qualify` prints the entire qualification plan by default; `--run-auto` executes the safe automatic subset
 while leaving candidate-image, physical-GPU, and maintenance-window gates explicit.
 
+`automatic` and `ci` must be YAML booleans, not quoted strings or integers.
+Automatic entries must require `hardware: cpu`. Both registry validation and
+the CLI execution boundary reject violations; the complete selected plan is
+checked before any command starts.
+
 ## Evidence classes
 
 - **Static/unit/contract** — deterministic source or pure-Python invariants.

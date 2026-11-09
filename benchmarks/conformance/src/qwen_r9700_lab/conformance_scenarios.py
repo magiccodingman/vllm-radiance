@@ -166,16 +166,17 @@ def serial_reference_identity(spec, root):
         "XDG_CACHE_HOME": "xdg-cache",
         "TORCH_EXTENSIONS_DIR": "torch-extensions",
         "CUDA_CACHE_PATH": "cuda",
+        "AITER_JIT_DIR": "aiter-jit",
     }.items():
         if env.get(key) == str(root / "runtime" / directory):
             env[key] = "<qualification-case-runtime>/" + directory
-    # worker_environment copies this source/JIT tree, unlike empty scratch
+    # worker_environment copies this source tree, unlike empty scratch
     # caches. Bind every copied byte before execution; never normalize away a
     # different kernel tree just because its directory name is familiar.
-    aiter_tree = root / "runtime/aiter"
-    if env.get("AITER_ROOT_DIR") == str(aiter_tree):
-        env["AITER_ROOT_DIR"] = {
-            "path": "<qualification-case-runtime>/aiter",
+    aiter_tree = root / "runtime/aiter-meta"
+    if env.get("AITER_META_DIR") == str(aiter_tree):
+        env["AITER_META_DIR"] = {
+            "path": "<qualification-case-runtime>/aiter-meta",
             "copied_tree": copied_tree_identity(aiter_tree),
         }
     return seal(

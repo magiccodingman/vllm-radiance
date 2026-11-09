@@ -1,0 +1,60 @@
+{
+  "request": {
+    "model": "radiance-v033-qwen",
+    "temperature": 0,
+    "seed": 0,
+    "return_token_ids": true,
+    "max_tokens": 1,
+    "prompt": [
+      760,
+      6511,
+      314,
+      9338,
+      369,
+      11751
+    ],
+    "cache_salt": "6a380394aebc4f9b9fab647e18c19063"
+  },
+  "response": {
+    "id": "cmpl-848a68ee1d895353",
+    "object": "text_completion",
+    "created": 1794016542,
+    "model": "radiance-v033-qwen",
+    "choices": [
+      {
+        "index": 0,
+        "text": ".",
+        "logprobs": null,
+        "finish_reason": "length",
+        "stop_reason": null,
+        "token_ids": [
+          13
+        ],
+        "prompt_logprobs": null,
+        "prompt_token_ids": [
+          760,
+          6511,
+          314,
+          9338,
+          369,
+          11751
+        ],
+        "routed_experts": null,
+        "weight_versions": null
+      }
+    ],
+    "service_tier": null,
+    "system_fingerprint": "vllm-0.33.0-6143f762",
+    "usage": {
+      "prompt_tokens": 6,
+      "total_tokens": 7,
+      "completion_tokens": 1,
+      "prompt_tokens_details": null,
+      "completion_tokens_details": null
+    },
+    "kv_transfer_params": null,
+    "ec_transfer_params": null,
+    "metrics": null
+  },
+  "elapsed_s": 0.04617172200232744
+}

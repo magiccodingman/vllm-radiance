@@ -62,28 +62,40 @@ apply(
 
 apply(
     SP / "vllm" / "v1" / "sample" / "ops" / "topk_topp_sampler.py",
-    "def apply_top_k_top_p(\n"
-    "    logits: torch.Tensor, k: torch.Tensor | None, p: torch.Tensor | None\n"
-    ") -> torch.Tensor:\n",
-    "_RADIANCE_TOPK_COMPOSITE = (\n"
-    "    __import__(\"os\").environ.get(\"RADIANCE_TOPK_COMPOSITE\", \"1\") == \"1\"\n"
-    ")\n"
-    "\n"
-    "\n"
-    "def apply_top_k_top_p(\n"
-    "    logits: torch.Tensor, k: torch.Tensor | None, p: torch.Tensor | None,\n"
-    "    max_top_k: int = 0,\n"
-    ") -> torch.Tensor:\n"
-    "    # radiance (patch_topk_composite.py): when every row's top_k is known (on the CPU) to be\n"
-    "    # a small cap, the exact mask only needs the top-KCAP candidates. torch.topk is a\n"
-    "    # multi-block radix select that fills the GPU where the one-program-per-row Triton\n"
-    "    # kernel cannot: 907 us -> ~0.1 ms at 8-9 rows, measured. See radiance_topk.py.\n"
-    "    if _RADIANCE_TOPK_COMPOSITE and k is not None and max_top_k > 0:\n"
-    "        import radiance_topk\n"
-    "        if max_top_k <= radiance_topk.KCAP:\n"
-    "            return radiance_topk.apply_top_k_top_p_composite(logits, k, p)\n",
-    "_RADIANCE_TOPK_COMPOSITE",
-    "topk composite: sampler route",
+    '''def apply_top_k_top_p(
+    logits: torch.Tensor,
+    k: torch.Tensor | None,
+    p: torch.Tensor | None,
+    has_topp_only_rows: bool = True,
+) -> torch.Tensor:
+    """Apply top-k and/or top-p masking to logits.
+
+    has_topp_only_rows must be True if any row has p < 1 and
+    k >= logits.shape[-1] (no active top-k).
+    """
+''',
+    '''_RADIANCE_TOPK_COMPOSITE = __import__("os").environ.get("RADIANCE_TOPK_COMPOSITE", "1") == "1"
+
+
+def apply_top_k_top_p(
+    logits: torch.Tensor,
+    k: torch.Tensor | None,
+    p: torch.Tensor | None,
+    has_topp_only_rows: bool = True,
+    *, max_top_k: int = 0,
+) -> torch.Tensor:
+    """Apply top-k and/or top-p masking to logits.
+
+    has_topp_only_rows must be True if any row has p < 1 and
+    k >= logits.shape[-1] (no active top-k).
+    """
+    if _RADIANCE_TOPK_COMPOSITE and k is not None and max_top_k > 0:
+        import radiance_topk
+        if max_top_k <= radiance_topk.KCAP:
+            return radiance_topk.apply_top_k_top_p_composite(logits, k, p)
+''',
+    '_RADIANCE_TOPK_COMPOSITE',
+    'topk composite: sampler route',
 )
 
 # --- The build actually serves through the NEW worker (vllm/v1/worker/gpu/), whose sampler calls
@@ -94,37 +106,29 @@ apply(
 
 apply(
     SP / "vllm" / "v1" / "worker" / "gpu" / "sample" / "states.py",
-    "        top_k, top_p = self.get_top_k_top_p(expanded_idx_mapping, idx_mapping_np)\n"
-    "        if top_k is None and top_p is None:\n"
-    "            return logits\n"
-    "        return apply_top_k_top_p(logits, top_k, top_p)\n",
-    "        top_k, top_p = self.get_top_k_top_p(expanded_idx_mapping, idx_mapping_np)\n"
-    "        if top_k is None and top_p is None:\n"
-    "            return logits\n"
-    "        # radiance (patch_topk_composite.py): CPU-known bound, no sync.\n"
-    "        kmax = 0 if top_k is None else int(self.top_k.np[idx_mapping_np].max())\n"
-    "        return apply_top_k_top_p(\n"
-    "            logits, top_k, top_p,\n"
-    "            max_top_k=0 if kmax >= self.vocab_size else kmax,\n"
-    "        )\n",
-    "kmax = 0 if top_k is None",
-    "topk composite: new-worker states",
+    '        return apply_top_k_top_p(\n            logits, top_k, top_p, has_topp_only_rows=has_topp_only_rows\n        )\n',
+    '''        # radiance: use the existing CPU mirror; no device synchronization.
+        kmax = 0 if top_k is None else int(self.top_k.np[idx_mapping_np].max())
+        return apply_top_k_top_p(
+            logits, top_k, top_p, has_topp_only_rows=has_topp_only_rows,
+            max_top_k=0 if kmax >= logits.shape[-1] else kmax,
+        )
+''',
+    'kmax = 0 if top_k is None',
+    'topk composite: new-worker states',
 )
 
 apply(
     SP / "vllm" / "v1" / "worker" / "gpu" / "sample" / "sampler.py",
-    "            processed_logits = apply_top_k_top_p(processed_logits, top_k, top_p)\n",
-    "            # radiance (patch_topk_composite.py): CPU-known bound, no sync.\n"
-    "            _rad_kmax = (\n"
-    "                0 if top_k is None\n"
-    "                else int(self.sampling_states.top_k.np[idx_mapping_np].max())\n"
-    "            )\n"
-    "            processed_logits = apply_top_k_top_p(\n"
-    "                processed_logits, top_k, top_p,\n"
-    "                max_top_k=(\n"
-    "                    0 if _rad_kmax >= self.sampling_states.vocab_size else _rad_kmax\n"
-    "                ),\n"
-    "            )\n",
-    "_rad_kmax",
-    "topk composite: new-worker sampler",
+    '            processed_logits = apply_top_k_top_p(\n                processed_logits, top_k, top_p, has_topp_only_rows=has_topp_only_rows\n            )\n',
+    '''            _rad_kmax = (0 if top_k is None else int(
+                self.sampling_states.top_k.np[idx_mapping_np].max()
+            ))
+            processed_logits = apply_top_k_top_p(
+                processed_logits, top_k, top_p, has_topp_only_rows=has_topp_only_rows,
+                max_top_k=0 if _rad_kmax >= processed_logits.shape[-1] else _rad_kmax,
+            )
+''',
+    '_rad_kmax',
+    'topk composite: new-worker sampler',
 )

@@ -1,0 +1,135 @@
+[
+  {
+    "id": "lfm3-backport-cpu",
+    "command": "python benchmarks/bin/check_lfm3_backport_cpu.py",
+    "hardware": "cpu",
+    "returncode": 0,
+    "seconds": 0.226
+  },
+  {
+    "id": "v033-upgrade-cpu",
+    "command": "python benchmarks/bin/check_v033_upgrade_cpu.py",
+    "hardware": "cpu",
+    "returncode": 0,
+    "seconds": 0.307
+  },
+  {
+    "id": "control-plane-validate",
+    "command": "python tools/validate_control_plane.py",
+    "hardware": "cpu",
+    "returncode": 0,
+    "seconds": 0.284
+  },
+  {
+    "id": "python-compile",
+    "command": "python -m compileall -q _patchlib.py install_radiance_hooks.py patch_*.py radiance_*.py benchmarks/bin tools",
+    "hardware": "cpu",
+    "returncode": 0,
+    "seconds": 0.309
+  },
+  {
+    "id": "kv-offload-registration-cpu",
+    "command": "python benchmarks/bin/check_kv_offload_registration.py",
+    "hardware": "cpu",
+    "returncode": 0,
+    "seconds": 0.229
+  },
+  {
+    "id": "kv-offload-rank-sharded-cpu",
+    "command": "python benchmarks/bin/check_kv_offload_rank_sharded.py",
+    "hardware": "cpu",
+    "returncode": 0,
+    "seconds": 0.208
+  },
+  {
+    "id": "kv-offload-restore-cpu",
+    "command": "python benchmarks/bin/check_kv_offload_restore.py",
+    "hardware": "cpu",
+    "returncode": 1,
+    "seconds": 16.022
+  },
+  {
+    "id": "qwen-tool-grammar-cpu",
+    "command": "python benchmarks/bin/check_qwen_tool_grammar_cpu.py",
+    "hardware": "cpu",
+    "returncode": 0,
+    "seconds": 0.202
+  },
+  {
+    "id": "client-tool-gate-cpu",
+    "command": "python benchmarks/bin/check_client_tool_gate.py",
+    "hardware": "cpu",
+    "returncode": 0,
+    "seconds": 0.352
+  },
+  {
+    "id": "lfm3-image",
+    "command": "python benchmarks/bin/check_lfm3_image.py --model \"$MODEL_PATH\" && python -m pytest --noconftest upstream/vllm-lfm3/test_lfm3.py -q",
+    "hardware": "candidate-image",
+    "returncode": 0,
+    "seconds": 33.516
+  },
+  {
+    "id": "draft-head-packing-image",
+    "command": "python benchmarks/bin/check_draft_head_packing.py",
+    "hardware": "candidate-image",
+    "returncode": 0,
+    "seconds": 3.304
+  },
+  {
+    "id": "qwen-tool-grammar-image",
+    "command": "python benchmarks/bin/check_qwen_tool_grammar_image.py",
+    "hardware": "candidate-image",
+    "returncode": 1,
+    "seconds": 15.587
+  },
+  {
+    "id": "v030-upstream-contracts",
+    "command": "python benchmarks/bin/check_v030_upstream_contracts.py",
+    "hardware": "candidate-image",
+    "returncode": 0,
+    "seconds": 10.115
+  },
+  {
+    "id": "nvfp4-conversion-image",
+    "command": "python benchmarks/bin/check_nvfp4_conversion.py",
+    "hardware": "candidate-image",
+    "returncode": 0,
+    "seconds": 3.302
+  },
+  {
+    "id": "parser-shared-engine-image",
+    "command": "python benchmarks/bin/check_parser_shared_engine.py --tokenizer \"$MODEL_PATH\"",
+    "hardware": "candidate-image",
+    "returncode": 0,
+    "seconds": 16.604
+  },
+  {
+    "id": "xgrammar-spec-image",
+    "command": "python benchmarks/bin/check_xgrammar_spec_termination.py",
+    "hardware": "candidate-image",
+    "returncode": 1,
+    "seconds": 15.12
+  },
+  {
+    "id": "qwen-open-object-image",
+    "command": "python benchmarks/bin/check_qwen_open_object_schema.py",
+    "hardware": "candidate-image",
+    "returncode": 1,
+    "seconds": 15.006
+  },
+  {
+    "id": "fp8-kv-calibration-image",
+    "command": "python benchmarks/bin/check_fp8_kv_calibration.py",
+    "hardware": "candidate-image",
+    "returncode": 0,
+    "seconds": 3.489
+  },
+  {
+    "id": "tunableop-preflight-image",
+    "command": "python benchmarks/bin/check_tunableop.py",
+    "hardware": "candidate-image",
+    "returncode": 0,
+    "seconds": 3.328
+  }
+]

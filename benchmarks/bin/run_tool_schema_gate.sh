@@ -44,12 +44,27 @@ for attempt in $(seq 1 "$ATTEMPTS"); do
 
   result=$(jq -c --argjson attempt "$attempt" '
     try (
-      .choices[0].message.tool_calls[0].function as $function
+      .choices[0].message.tool_calls as $calls
+      | (all($calls[];
+          (.function.arguments | fromjson) as $value
+          | ($value | type) == "object"
+            and ($value.reasoning | type) == "string"
+            and ($value.confidence | type) == "number"
+            and ($value.stepComplete | type) == "boolean"
+            and (if .function.name == "click" then ($value.ref | type) == "string"
+                 elif .function.name == "keypress" then
+                   ($value.keys | type) == "array" and ($value.keys | length) > 0
+                   and all($value.keys[]; type == "string")
+                 elif .function.name == "assert" then ($value.condition | type) == "string"
+                 else false end)
+        )) as $all_valid
+      | $calls[0].function as $function
       | ($function.arguments | fromjson) as $args
       | {
           attempt: $attempt,
           pass: (
-            $function.name == "click"
+            $all_valid
+            and $function.name == "click"
             and ($args | has("reasoning"))
             and ($args | has("confidence"))
             and ($args | has("stepComplete"))
