@@ -78,7 +78,10 @@ def _cap_s1(logits, V, pm, ps, NSPLIT, CHUNK: tl.constexpr, BLOCK: tl.constexpr)
         mask = idx < V
         l = tl.load(row + idx, mask=mask, other=-float("inf")).to(tl.float32)
         nm = tl.maximum(m, tl.max(l, 0))
-        e = tl.where(mask, tl.exp(l - nm), 0.0)
+        # A real (e.g. padded) block can contain only -inf. Its contribution
+        # is zero, rather than exp(-inf - -inf) poisoning every later sum.
+        nm_safe = tl.where(nm == -float("inf"), 0.0, nm)
+        e = tl.where(mask, tl.exp(l - nm_safe), 0.0)
         sc = tl.where(m == float("-inf"), 0.0, tl.exp(m - nm))
         s = s * sc + tl.sum(e, 0); m = nm
     o = b * NSPLIT + sp
@@ -91,9 +94,10 @@ def _cap_s2(logits, V, pm, ps, conf, NSPLIT, BN: tl.constexpr):
     r = tl.arange(0, BN); mask = r < NSPLIT; o = b * NSPLIT + r
     m = tl.load(pm + o, mask=mask, other=-float("inf"))
     s = tl.load(ps + o, mask=mask, other=0.0)
-    M = tl.max(m, 0); sc = tl.exp(m - M)
+    M = tl.max(m, 0); sc = tl.where(m == -float("inf"), 0.0, tl.exp(m - M))
     S = tl.sum(s * sc, 0)
-    tl.store(conf + b, 1.0 / S)                             # top-1 softmax prob = exp(max-M)/S = 1/S
+    # Preserve the undefined all-masked softmax instead of reporting infinity.
+    tl.store(conf + b, tl.where(M == -float("inf"), float("nan"), 1.0 / S))
 
 
 def capture_gpu(logits, out_conf, scratch):
@@ -101,7 +105,8 @@ def capture_gpu(logits, out_conf, scratch):
     scratch holds the [B*NSPLIT] partials (reused across slots)."""
     B, V = logits.shape
     pm, ps = scratch
-    _cap_s1[(B, _NSPLIT)](logits, V, pm, ps, _NSPLIT, _CHUNK, _CBLOCK)
+    chunk = max(_CHUNK, triton.cdiv(V, _NSPLIT * _CBLOCK) * _CBLOCK)
+    _cap_s1[(B, _NSPLIT)](logits, V, pm, ps, _NSPLIT, chunk, _CBLOCK)
     _cap_s2[(B,)](logits, V, pm, ps, out_conf, _NSPLIT, 64)
 
 
@@ -113,7 +118,7 @@ def _cap_s2_local(pm, ps, om, os_, NSPLIT, BN: tl.constexpr):
     r = tl.arange(0, BN); mask = r < NSPLIT; o = b * NSPLIT + r
     m = tl.load(pm + o, mask=mask, other=-float("inf"))
     s = tl.load(ps + o, mask=mask, other=0.0)
-    M = tl.max(m, 0); sc = tl.exp(m - M)
+    M = tl.max(m, 0); sc = tl.where(m == -float("inf"), 0.0, tl.exp(m - M))
     tl.store(om + b, M)
     tl.store(os_ + b, tl.sum(s * sc, 0))
 
@@ -125,7 +130,8 @@ def capture_local(logits, out_max, out_sum, scratch):
     floats per row instead of the whole 248320-wide logit row."""
     B, V = logits.shape
     pm, ps = scratch
-    _cap_s1[(B, _NSPLIT)](logits, V, pm, ps, _NSPLIT, _CHUNK, _CBLOCK)
+    chunk = max(_CHUNK, triton.cdiv(V, _NSPLIT * _CBLOCK) * _CBLOCK)
+    _cap_s1[(B, _NSPLIT)](logits, V, pm, ps, _NSPLIT, chunk, _CBLOCK)
     _cap_s2_local[(B,)](pm, ps, out_max, out_sum, _NSPLIT, 64)
 
 
