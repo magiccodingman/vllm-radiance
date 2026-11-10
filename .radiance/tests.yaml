@@ -13,8 +13,12 @@ qualification_levels:
 - performance-qualified
 - release-qualified
 change_map:
+- pattern: '^(radiance_draft_gpu\.py$|radiance_draft\.py$|benchmarks/bin/check_draft_confidence\.py$)'
+  areas: [draft-confidence, dflash, speculative]
 - pattern: '^(patch_lfm3_|upstream/vllm-lfm3/|benchmarks/bin/check_lfm3_|docker-compose\.lfm3)'
   areas: [lfm3, upgrade, attention]
+- pattern: '^tests/test_lfm3_payload_checkout\.py$'
+  areas: [lfm3, control-plane]
 - pattern: '^benchmarks/bin/(run_client_tool_gate|check_client_tool_gate|run_tool_schema_gate)'
   areas: [parser, structured-output]
 - pattern: '^(\.radiance/|tools/|AGENTS\.md$|CONTRIBUTING\.md$|docs/maintenance/)'
@@ -98,6 +102,30 @@ profiles:
   upgrade: [lfm3-backport-cpu, v033-upgrade-cpu, lfm3-image, lfm3-native, draft-head-packing-image, r4d-attention-native, gdn-extreme-decay-native, gdn-extreme-decay-h24-native, dflash-independent-noise-native, control-plane-validate, python-compile, kv-offload-registration-cpu, kv-offload-rank-sharded-cpu, kv-offload-restore-cpu, parser-shared-engine-image, xgrammar-spec-image, qwen-open-object-image, qwen-tool-grammar-image, client-tool-gate-cpu, client-tool-live, fp8-kv-calibration-image, tunableop-preflight-image, r9700-tp2-smoke, tool-schema-live, open-object-tool-live, betterbench-standard, correctness-equivalence, qwen-history-replay-cpu, client-tool-values-cpu, conformance-tool-assembly-cpu, dflash-w4-stream-cpu, skinny-gemm-contract-cpu, ngram-tail-width-cpu, qwen-schema-literals-cpu]
   release: [lfm3-backport-cpu, v033-upgrade-cpu, lfm3-image, lfm3-native, draft-head-packing-image, r4d-attention-native, gdn-extreme-decay-native, gdn-extreme-decay-h24-native, dflash-independent-noise-native, control-plane-validate, python-compile, kv-offload-registration-cpu, kv-offload-rank-sharded-cpu, kv-offload-restore-cpu, parser-shared-engine-image, xgrammar-spec-image, qwen-open-object-image, qwen-tool-grammar-image, client-tool-gate-cpu, client-tool-live, fp8-kv-calibration-image, tunableop-preflight-image, r9700-tp2-smoke, tool-schema-live, open-object-tool-live, betterbench-standard, correctness-equivalence, capacity-qualification, qwen-history-replay-cpu, client-tool-values-cpu, conformance-tool-assembly-cpu, dflash-w4-stream-cpu, skinny-gemm-contract-cpu, ngram-tail-width-cpu, qwen-schema-literals-cpu]
 tests:
+- id: lfm3-payload-checkout-cpu
+  class: contract
+  hardware: cpu
+  areas: [lfm3, control-plane]
+  command: python -m unittest discover -s tests -p test_lfm3_payload_checkout.py -v
+  automatic: true
+  ci: true
+  description: Real Git checkouts with true/false/input autocrlf preserve all upstream LFM3 immutable hashes.
+- id: draft-confidence-cpu
+  class: contract
+  hardware: cpu
+  areas: [draft-confidence, dflash, speculative]
+  command: uv run --project benchmarks/conformance --locked --group dev --extra cpu-tests --with triton==3.8.0 python benchmarks/bin/check_draft_confidence.py --device cpu
+  automatic: true
+  ci: false
+  description: Linux Triton CPU interpreter compares actual confidence kernels and TP1 caller with Torch for masked rows, empty shards and vocabularies beyond 262144 tokens.
+- id: draft-confidence-native
+  class: contract
+  hardware: r9700
+  areas: [draft-confidence, dflash, speculative]
+  command: python benchmarks/bin/check_draft_confidence.py --device cuda:0
+  automatic: false
+  ci: false
+  description: Actual Triton kernel numerics and graph replay on one R9700; repeat on each device. NVIDIA passes are portable-kernel evidence only, not ROCm TP2/TP4 qualification.
 - id: fp8-stream-install-cpu
   class: contract
   hardware: cpu
