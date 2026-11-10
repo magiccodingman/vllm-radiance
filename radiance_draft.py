@@ -119,7 +119,8 @@ def _local_draft(proposer, hidden_states):
     start = getattr(getattr(lm_head, "shard_indices", None), "org_vocab_start_index", 0) or 0
     tp = get_tensor_model_parallel_world_size()
     if tp == 1:
-        return (lidx + start).to(torch.int64), 1.0 / lsum
+        conf = torch.where(torch.isneginf(lmax), float("nan"), 1.0 / lsum)
+        return (lidx + start).to(torch.int64), conf
     stats = torch.stack([lmax, lsum, (lidx + start).to(torch.float32)], dim=-1)   # [B,3]
     g = tensor_model_parallel_all_gather(stats, dim=-1).view(B, tp, 3)
     gm = g[:, :, 0]
