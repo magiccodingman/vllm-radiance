@@ -31,6 +31,9 @@ def main():
     gpu = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(gpu)
     device = torch.device(args.device)
+    if device.type == "cuda":
+        # CUDA/HIP graph contexts capture the current device's stream.
+        torch.cuda.set_device(device)
 
     class ConfidenceTests(unittest.TestCase):
         def check(self, logits):
