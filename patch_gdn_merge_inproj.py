@@ -7,10 +7,7 @@ already run process_weights_after_loading (so weight_scale is [K/32, N] and radi
 folded), and it is before the drafter loads and before any CUDA graph is captured, so the
 torch.cat the merge does is a plain allocation rather than one inside capture.
 
-vLLM 0.30 ships TWO model runners -- the legacy `v1/worker/gpu_model_runner.py` and the newer
-`v1/worker/gpu/model_runner.py` (GPUModelRunnerV2, selected in gpu_worker.py) -- with different
-`load_model` bodies. Patching only one is a silent no-op: the injected call simply never runs, and
-the merge reports nothing at all. Both pinned-source anchors are required here.
+vLLM 0.34 uses the Model Runner V2 load path. Require that anchor before installing.
 
 Inert unless RADIANCE_GDN_MERGE_INPROJ=1. Idempotent. Run once pre-serve / at image build."""
 import ast
@@ -25,13 +22,7 @@ CALL = (
     "{i}_radiance_gdnmerge.merge_model(self.model)\n"
 )
 
-# (file, anchor). The two runners differ in indent and in how model_config is passed.
 TARGETS = [
-    (SP / "vllm/v1/worker/gpu_model_runner.py",
-     "                    self.model = model or model_loader.load_model(\n"
-     "                        vllm_config=self.vllm_config,\n"
-     "                        model_config=self.model_config,\n"
-     "                    )\n"),
     (SP / "vllm/v1/worker/gpu/model_runner.py",
      "                self.model = model or model_loader.load_model(\n"
      "                    vllm_config=self.vllm_config,\n"
