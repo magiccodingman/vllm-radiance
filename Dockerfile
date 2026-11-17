@@ -36,7 +36,7 @@ ARG AITER_VERSION=0.1.26
 # vLLM 0.33 requires Transformers >=5.16.1; pin its lower stable boundary. Pin the
 # exact tested release so rebuilds cannot silently change model-loading or
 # chat-template behavior.
-ARG TRANSFORMERS_VERSION=5.16.1
+ARG TRANSFORMERS_VERSION=5.18.0
 # Structured-output qualification is specific to this grammar runtime. vLLM's
 # broad compatible range must not silently change the regression surface.
 ARG XGRAMMAR_VERSION=0.2.8

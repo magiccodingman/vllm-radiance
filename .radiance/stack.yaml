@@ -62,10 +62,10 @@ components:
   build: source
   policy: stable-release-plus-reviewed-focused-followups
 - id: transformers
-  version: 5.16.1
+  version: 5.18.0
   repository: https://github.com/huggingface/transformers
   docker_args:
-    TRANSFORMERS_VERSION: 5.16.1
+    TRANSFORMERS_VERSION: 5.18.0
   build: pypi
 - id: xgrammar
   version: 0.2.8
