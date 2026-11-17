@@ -4,13 +4,8 @@
 The Qrita Triton kernel runs one program per row over the whole vocabulary: 907 us/step at the
 rejection sampler's 8-9 rows (2026-08-30 census, single largest non-GEMM kernel). The composite
 needs to know the batch's largest top_k BEFORE touching GPU tensors, so this patch threads it
-from the input batch's existing CPU numpy mirror through SamplingMetadata:
-
-  1. SamplingMetadata gains `max_top_k: int = 0` (0 = unknown/absent -> old path).
-  2. The input batch fills it from `top_k_cpu` (rows without top-k carry vocab_size there, which
-     correctly disqualifies the whole batch).
-  3. The rejection sampler forwards it to apply_top_k_top_p.
-  4. apply_top_k_top_p routes to the composite when 0 < max_top_k <= KCAP.
+from the V2 sampling states’ CPU NumPy mirror. The sampler selects the composite
+route when every row has an active top-k within the kernel’s capacity.
 
 RADIANCE_TOPK_COMPOSITE=0 turns the route off. See radiance_topk.py for exactness notes.
 """
@@ -20,45 +15,6 @@ from pathlib import Path
 from _patchlib import apply
 
 SP = Path(sysconfig.get_paths()["purelib"])
-
-apply(
-    SP / "vllm" / "v1" / "sample" / "metadata.py",
-    "    # When non-None, use ``holder.has_tracked_requests()`` to see if this batch applies\n"
-    "    # thinking-token-budget logits (holder may exist with an empty tracking set).\n"
-    "    thinking_budget_state_holder: ThinkingBudgetStateHolder | None = None\n",
-    "    # When non-None, use ``holder.has_tracked_requests()`` to see if this batch applies\n"
-    "    # thinking-token-budget logits (holder may exist with an empty tracking set).\n"
-    "    thinking_budget_state_holder: ThinkingBudgetStateHolder | None = None\n"
-    "\n"
-    "    # radiance (patch_topk_composite.py): largest per-request top_k in the batch, from the\n"
-    "    # CPU mirror -- lets the sampler route small-k batches without a GPU sync. 0 = unknown.\n"
-    "    max_top_k: int = 0\n",
-    "max_top_k: int = 0",
-    "topk composite: metadata field",
-)
-
-apply(
-    SP / "vllm" / "v1" / "worker" / "gpu_input_batch.py",
-    "            top_k=None if self.no_top_k else self.top_k[:num_reqs],\n",
-    "            top_k=None if self.no_top_k else self.top_k[:num_reqs],\n"
-    "            # radiance (patch_topk_composite.py): CPU-known bound, no sync. Rows without a\n"
-    "            # real top-k hold vocab_size in top_k_cpu, disqualifying the composite route.\n"
-    "            max_top_k=0 if self.no_top_k else int(self.top_k_cpu[:num_reqs].max()),\n",
-    "max_top_k=0 if self.no_top_k",
-    "topk composite: input batch",
-)
-
-apply(
-    SP / "vllm" / "v1" / "sample" / "rejection_sampler.py",
-    "    return apply_top_k_top_p(logits, top_k, top_p)\n",
-    "    return apply_top_k_top_p(\n"
-    "        logits, top_k, top_p,\n"
-    "        # radiance (patch_topk_composite.py)\n"
-    "        max_top_k=getattr(sampling_metadata, \"max_top_k\", 0),\n"
-    "    )\n",
-    'max_top_k=getattr(sampling_metadata, "max_top_k", 0)',
-    "topk composite: rejection sampler",
-)
 
 apply(
     SP / "vllm" / "v1" / "sample" / "ops" / "topk_topp_sampler.py",
