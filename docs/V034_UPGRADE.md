@@ -19,6 +19,11 @@ The native vLLM extension imported successfully.
   order. The BF16 control on 0.33 also failed only the strict batch token
   equivalence check. Both candidate checkpoint configurations passed the
   installed registry, width-7 convolution configuration, and RoPE checks.
+- The upstream LFM3 native suites first returned 327 passes and two failures
+  on long BF16 width-7 convolution. The failures reproduced with the stock
+  channel tile. Restoring the existing width-7 FP32 products correction in
+  the convolution overlay brought the suites to 329 passes on the candidate
+  with the corrected source mounted. The image rebuild is pending.
 - Qwen 27B Quark MXFP4 with FP8 DFlash-7 and R4D attention on dual R9700s
   passed FP8 drafter ownership, streaming token parity, and a named tool call.
   The drafter proposed 149 tokens and the target accepted 80. This smoke test
