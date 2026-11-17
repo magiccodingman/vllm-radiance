@@ -40,4 +40,8 @@ The native vLLM extension imported successfully.
   accepted 58 of 123 draft tokens. The tested image for `5f83a33` was
   `sha256:292fe06d838fe8b5970ba6f834a680baff582cbe4252eddda64326929cc984de`.
 
-The upgrade remains in draft while qualification is open.
+The final runtime image also passed the dual-R9700 DFlash-7 rerun (80 of
+149 draft tokens accepted) and reproduced the same LFM3 serving results for
+both checkpoints. Strict batch token equivalence remains a known limitation
+shared with 0.33. The synthetic native suites and live smoke tests do not
+establish a throughput or maximum-context claim.
