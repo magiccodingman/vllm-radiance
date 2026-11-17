@@ -14,8 +14,6 @@ services:
       - --max-num-seqs=${MAX_NUM_SEQS:-2}
       - --max-num-batched-tokens=${MAX_NUM_BATCHED_TOKENS:-1024}
       - --gpu-memory-utilization=${GPU_UTIL:-0.20}
-      # Keep the qualified fixed KV sizing policy during the 0.34 migration.
-      - ${KV_CACHE_SIZING_FLAG:---no-enable-extensible-kv-cache}
       - --no-enable-prefix-caching
       - --enable-auto-tool-choice
       - --tool-call-parser=qwen3_coder
@@ -24,6 +22,7 @@ services:
       - --host=0.0.0.0
       - --port=8000
     environment:
+      RADIANCE_EXTENSIBLE_KV_CACHE: "${RADIANCE_EXTENSIBLE_KV_CACHE:-0}"
       # Respect the checkpoint's compressed-tensors metadata. Explicitly forcing
       # the unrelated `fp8` loader would change the checkpoint's quantization.
       RADIANCE_WEIGHT_QUANTIZATION: auto
