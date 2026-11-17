@@ -63,6 +63,10 @@ policy:
   gate_rule: Required gates may be strengthened but not silently weakened or removed to make a candidate pass.
 patches:
   patch_lfm3_backport:
+    active: false
+    activation: historical
+    status: retired-historical
+    removed_at: v0.34; native upstream model support
     component: vllm
     runner: both
     areas: [lfm3, runtime, attention, upgrade]
