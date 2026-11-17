@@ -32,6 +32,8 @@ services:
       - --max-num-seqs=${MAX_NUM_SEQS:-8}
       - --max-model-len=${MAX_MODEL_LEN:-16384}
       - --gpu-memory-utilization=${GPU_UTIL:-0.85}
+      # Keep the qualified fixed KV sizing policy during the 0.34 migration.
+      - ${KV_CACHE_SIZING_FLAG:---no-enable-extensible-kv-cache}
       # R4D's measured chunked-prefill/MTP operating point. For Qwen hidden-size
       # 5120 this remains inside the exact TP2 all-reduce payload ceiling.
       - --max-num-batched-tokens=${MAX_NUM_BATCHED_TOKENS:-4096}
