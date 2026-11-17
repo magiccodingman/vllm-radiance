@@ -41,6 +41,8 @@ class PlatformProbe:
                 "draft_owners": inventory(draft_model) if draft_model is not None else [],
                 "speculative_method": spec_config.method if spec_config is not None else None,
                 "num_speculative_steps": getattr(runner, "num_speculative_steps", 0),
+                "radiance_mtp_forwards": getattr(runner, "_radiance_mtp_forwards", None),
+                "radiance_mtp_widths": getattr(runner, "_radiance_mtp_widths", None),
                 "rank": self.rank, "owners": owners,
                 "graph": str(self.vllm_config.compilation_config.cudagraph_mode),
                 "allocated": torch.cuda.memory_allocated(),

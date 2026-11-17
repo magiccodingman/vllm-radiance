@@ -30,7 +30,9 @@ def main():
     insert(runner, "            if self.pcp_manager is not None:\n                self.pcp_manager.sync_drafts(\n",
            "            self.speculator._radiance_policy = None\n"
            "            if policy is not None and policy.step:\n"
-           "                draft_widths = policy.finish(draft_tokens)\n",
+           "                draft_widths = policy.finish(draft_tokens)\n"
+           "                self._radiance_mtp_forwards = policy.step\n"
+           "                self._radiance_mtp_widths = draft_widths\n",
            "MTP: assemble controlled proposal")
     replace(runner, "                input_batch, draft_tokens[:, :num_spec_tokens]\n",
             "                input_batch, draft_tokens[:, :num_spec_tokens], draft_widths\n",
