@@ -343,12 +343,16 @@ patches:
     runner: independent
     v033_disposition: RETAIN_GUARDED
   patch_mtp_loopbreak:
+    active: false
+    activation: historical
+    status: retired-historical
+    v034_reason: V1 proposer removed. The V2 controller port is pending and tracked in draft MR !52.
     v030_disposition: RETAIN_UNCHANGED
     areas:
     - mtp
     - speculative
     reason: Preserve Radiance MTP loop termination/controller behavior.
-    runner: both
+    runner: v1
     v033_disposition: RETAIN_GUARDED
   patch_mtp_mm_mask:
     active: false
