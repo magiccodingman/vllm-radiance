@@ -130,6 +130,34 @@ def _local_draft(proposer, hidden_states):
     return ids, 1.0 / S
 
 
+def _observe_draft_slot(st, j, cfn, mtpn, contc, clen, num_steps, fc):
+    """Update the per-request stop and n-gram decisions for one draft slot."""
+    B = len(mtpn)
+    if j == 0:
+        st.update(cum=np.ones(B, np.float32), stopped=np.zeros(B, bool), allagree=np.ones(B, bool),
+                  sslot=np.full(B, num_steps, np.int64), saction=np.full(B, 2, np.int64))
+    agree = (((j < clen) & (contc[:, j] == mtpn)) if j < contc.shape[1] else np.zeros(B, bool))
+    # free-win n-gram -> take it (1); else draft on while cumulative confidence holds, else verify (2)
+    action = np.where(agree, 1, np.where(st["cum"] >= TAU, 0, 2)).astype(np.int64)
+    newly = (~st["stopped"]) & (action != 0)
+    # action at slot j is the decision FOR slot j: keep MTP[:j], then the n-gram tail from j on when
+    # chosen. slot j's own forward ran only to produce this decision's confidence.
+    st["sslot"] = np.where(newly, j, st["sslot"])
+    st["saction"] = np.where(newly, action, st["saction"])
+    st["stopped"] = st["stopped"] | (action != 0)
+    st["cum"] = st["cum"] * cfn
+    # running MTP<->n-gram agreement over the drafted prefix (frozen once a request stops)
+    st["allagree"] = st["allagree"] & (agree | st["stopped"])
+    if fc and (j + 1) >= fc:
+        # forward cap hit: stop the remaining MTP forwards, but a request whose MTP has matched the
+        # n-gram the whole way keeps drafting for FREE via the verbatim tail (up to full width).
+        # Others just verify their MTP prefix. Only the forwards are capped.
+        cap_new = ~st["stopped"]
+        st["sslot"] = np.where(cap_new, j + 1, st["sslot"])
+        st["saction"] = np.where(cap_new & st["allagree"], 1, st["saction"])
+        st["stopped"] = st["stopped"] | cap_new
+
+
 # ----- drafter hooks: per-slot confidence capture + A/B/C decision ------------
 def _install_drafter_hooks():
     import torch
@@ -176,31 +204,9 @@ def _install_drafter_hooks():
         arr = packed.cpu().numpy()
         cfn = arr[0]; mtpn = arr[1].astype(np.int64)
         st = self._radiance_gate
-        if j == 0:
-            st.update(cum=np.ones(B, np.float32), stopped=np.zeros(B, bool), allagree=np.ones(B, bool),
-                      sslot=np.full(B, self._radiance_nspec, np.int64), saction=np.full(B, 2, np.int64))
-        clen = self._radiance_clen_cpu; contc = self._radiance_cont_cpu
-        agree = (((j < clen) & (contc[:, j] == mtpn)) if j < contc.shape[1] else np.zeros(B, bool))
-        # free-win n-gram -> take it (1); else draft on while cumulative confidence holds, else verify (2)
-        action = np.where(agree, 1, np.where(st["cum"] >= TAU, 0, 2)).astype(np.int64)
-        newly = (~st["stopped"]) & (action != 0)
-        # action at slot j is the decision FOR slot j: keep MTP[:j], then the n-gram tail from j on when
-        # chosen. slot j's own forward ran only to produce this decision's confidence.
-        st["sslot"] = np.where(newly, j, st["sslot"])
-        st["saction"] = np.where(newly, action, st["saction"])
-        st["stopped"] = st["stopped"] | (action != 0)
-        st["cum"] = st["cum"] * cfn
-        # running MTP<->n-gram agreement over the drafted prefix (frozen once a request stops)
-        st["allagree"] = st["allagree"] & (agree | st["stopped"])
-        fc = self._radiance_fwd_cap
-        if fc and (j + 1) >= fc:
-            # forward cap hit: stop the remaining MTP forwards, but a request whose MTP has matched the
-            # n-gram the whole way keeps drafting for FREE via the verbatim tail (up to full width).
-            # Others just verify their MTP prefix. Only the forwards are capped.
-            cap_new = ~st["stopped"]
-            st["sslot"] = np.where(cap_new, j + 1, st["sslot"])
-            st["saction"] = np.where(cap_new & st["allagree"], 1, st["saction"])
-            st["stopped"] = st["stopped"] | cap_new
+        _observe_draft_slot(st, j, cfn, mtpn, self._radiance_cont_cpu,
+                            self._radiance_clen_cpu, self._radiance_nspec,
+                            self._radiance_fwd_cap)
         if st["stopped"].all():
             self._radiance_stop = True
         return draft_token_ids
