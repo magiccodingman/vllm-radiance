@@ -47,8 +47,6 @@ services:
       # Baseline serving is deliberately non-speculative. For Qwen's in-checkpoint
       # MTP head, opt in from .env without editing this file; see
       # RADIANCE_SPECULATIVE_CONFIG and RADIANCE_FAST_DRAFT below.
-      # The recommended MTP config sets disable_padded_drafter_batch, which is incompatible
-      # with async scheduling; keep async off so vLLM does not auto-enable then disable it.
       - --no-async-scheduling
       # Agentic serving uses the checkpoint-native chat template by default.
       # Add --chat-template in a private override only for a checkpoint that
@@ -189,9 +187,6 @@ services:
       # Experimental until qualified per host; 0 preserves one whole-region
       # registration. A positive GiB value requests row-aligned chunks.
       RADIANCE_KV_OFFLOAD_REGISTER_CHUNK_GIB: "${RADIANCE_KV_OFFLOAD_REGISTER_CHUNK_GIB:-0}"
-      # DFlash2 requires V2. Preserve Radiance's explicit V1 default here;
-      # upstream 0.33 now auto-selects V2 when this override is absent.
-      VLLM_USE_V2_MODEL_RUNNER: "${VLLM_USE_V2_MODEL_RUNNER:-0}"
       NCCL_PROTO: Simple
       # throttle inductor compile workers to limit peak compile-time RAM (defensive).
       TORCHINDUCTOR_COMPILE_THREADS: "4"

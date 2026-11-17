@@ -44,8 +44,8 @@ ARG FLYDSL_VERSION=0.4.0
 # Stable vLLM 0.33 with native DFlash2; no DFlash source backport is applied.
 # Pin the immutable tag target rather than resolving it
 # during each build; VLLM_VERSION is the wheel stamp.
-ARG VLLM_COMMIT=4ba787ec9959e566d3b587a796dff07673324da5
-ARG VLLM_VERSION=0.33.0
+ARG VLLM_COMMIT=62d4bc3c7e33b1b6c906e233e6af2d3506c482ca
+ARG VLLM_VERSION=0.34.0
 # rocm-bandwidth-test for the startup topology/bandwidth sweep. Pinned to the NEWEST tag that still
 # has a plain CMakeLists: the rocm-7.x tags moved to a cmake framework that demands clang>=19 on PATH
 # plus vendored boost/fmt/curl submodules, none of which this tool needs.
@@ -266,9 +266,8 @@ COPY mxfp4-configs/gfx1201-GEMM-AFP4WFP4.json ${SP}/aiter/ops/triton/configs/gfx
 # writing. patch_gdn_wmma covers the solve_tril triangular block-inverse only; the gated-delta-net
 # gram cast is handled in 0.26.0 upstream.
 COPY patch_*.py install_radiance_hooks.py _patchlib.py /opt/patches/
-COPY upstream/vllm-lfm3/ /opt/patches/upstream/vllm-lfm3/
 RUN set -eu; cd /opt/patches; \
-    for p in patch_lfm3_backport patch_gfx1201 patch_radiance_dispatch patch_skinny_gemm patch_unified_attention_lds \
+    for p in patch_gfx1201 patch_radiance_dispatch patch_skinny_gemm patch_unified_attention_lds \
              patch_gdn_wmma patch_gdn_aiter_prefill patch_preshuffle install_radiance_hooks \
              patch_mtp_mm_mask patch_mtp_loopbreak patch_qwen3_toolparse patch_from_json_filter \
              patch_dynamo_metrics patch_conv1d_blockn patch_r4d \
