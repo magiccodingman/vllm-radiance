@@ -369,3 +369,58 @@ def install():
              f"(GPU-resident capture + n-gram matcher; per-slot confidence gate short-circuits the forward loop)")
     except Exception as e:
         _log(f"install failed (dynamic draft disabled): {e!r}")
+
+
+class V2DraftPolicy:
+    """Proposal-local policy for the V2 MTP host loop."""
+
+    def __init__(self, runner, batch, num_steps):
+        import torch
+        import radiance_draft_gpu as gpu
+
+        self.gpu = gpu
+        self.num_steps = num_steps
+        self.num_reqs = batch.num_reqs
+        self.cap = _batch_ceil(self.num_reqs)
+        self.state = {}
+        self.step = 0
+        self.stop = False
+        tokens = runner.req_states.all_token_ids.gpu
+        lengths = runner.req_states.total_len.gpu
+        continuation, length = gpu.match_gpu(
+            tokens, lengths, num_steps, tokens.shape[1], rows=batch.idx_mapping
+        )
+        self.continuation = continuation.cpu().numpy()
+        self.lengths = length.cpu().numpy()
+        self.scratch = gpu.make_scratch(self.num_reqs, tokens.device)
+        self.packed = torch.empty((2, self.num_reqs), device=tokens.device)
+
+    def observe(self, logits, sampled):
+        self.gpu.capture_gpu(logits, self.packed[0], self.scratch)
+        self.packed[1].copy_(sampled)
+        confidence, tokens = self.packed.cpu().numpy()
+        _observe_draft_slot(self.state, self.step, confidence, tokens.astype(np.int64),
+                            self.continuation, self.lengths, self.num_steps, self.cap)
+        self.step += 1
+        self.stop = bool(self.state["stopped"].all())
+
+    def finish(self, drafts):
+        rows = _assemble_draft_rows(drafts[:, :self.step].cpu().numpy(), self.state,
+                                    self.continuation, self.lengths, self.num_steps)
+        widths = [len(row) for row in rows]
+        padded = [row + [-1] * (drafts.shape[1] - len(row)) for row in rows]
+        drafts.copy_(drafts.new_tensor(padded))
+        return widths
+
+
+def v2_policy_for(runner, batch, num_steps):
+    speculator = runner.speculator
+    parallel = runner.vllm_config.parallel_config
+    if (not DYNAMIC or getattr(speculator, "method", None) != "mtp" or num_steps <= 1
+            or runner.vllm_config.scheduler_config.async_scheduling
+            or parallel.data_parallel_size != 1 or parallel.pipeline_parallel_size != 1
+            or runner.pcp_manager is not None or runner.adaptive_verification is not None
+            or batch.is_prefilling_np.any() or speculator.draft_logits is not None
+            or speculator.use_local_argmax_reduction):
+        return None
+    return V2DraftPolicy(runner, batch, num_steps)
