@@ -65,8 +65,7 @@ patches:
   patch_lfm3_backport:
     active: false
     activation: historical
-    status: retired-historical
-    removed_at: v0.34; native upstream model support
+    status: upstream-owned-v034
     component: vllm
     runner: both
     areas: [lfm3, runtime, attention, upgrade]
