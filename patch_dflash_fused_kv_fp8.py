@@ -50,8 +50,36 @@ LAZY_NEW = '''        if self._fused_kv_weight is None and hasattr(self, "_kv_so
         if self._fused_kv_weight is not None:
 '''
 
+def patch_context_buffers():
+    """Materialize after quantization post-processing, with reload support."""
+    apply(
+        F,
+        "        refill_derived(self, \"_fused_kv_weight\", kv_weight)\n",
+        '''        elif self._context_kv_proj is None and not current_platform.is_cpu():
+            # The loader has finished packing the projections. Keep native
+            # fused quantized context projections on their upstream path.
+            kv_weight = torch.cat(
+                [_dflash_kv_weight_rows(a.qkv_proj, a.q_size) for a in layers_attn],
+                dim=0,
+            )
+            if has_bias:
+                kv_bias = torch.cat([a.qkv_proj.bias[a.q_size:] for a in layers_attn])
+        refill_derived(self, "_fused_kv_weight", kv_weight)
+''',
+        "elif self._context_kv_proj is None and not current_platform.is_cpu():",
+        "dflash: materialize context KV in the model post-load hook",
+    )
+    anchor = "        isinstance(p.quant_method, UnquantizedLinearMethod) for p in projs\n"
+    apply(F, anchor, "        isinstance(p.quant_method, UnquantizedLinearMethod)\n"
+          "        and p.weight.ndim == 2\n        for p in projs\n",
+          "and p.weight.ndim == 2", "dflash: require dense matrix storage for eager KV")
+
+
 def main():
     apply(F, HELPER_OLD, HELPER_NEW, "_dflash_kv_weight_rows", "dflash: effective quantized KV rows")
+    if "def _build_context_kv_buffers(" in F.read_text():
+        patch_context_buffers()
+        return
     apply(F, SOURCE_OLD, SOURCE_NEW, "self._kv_source_attn", "dflash: retain processed projection sources")
     apply(F, DENSE_OLD, DENSE_NEW, "and proj.weight.ndim == 2",
           "dflash: require dense matrix storage for eager KV")
