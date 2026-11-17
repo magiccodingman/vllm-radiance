@@ -152,6 +152,10 @@ RX5 negative results are recorded in the
 Choose exactly one mode. `RADIANCE_SPECULATIVE_CONFIG` contains either MTP or DFlash; the modes are not
 cumulative.
 
+When moving an existing deployment to vLLM 0.34, remove `VLLM_USE_V2_MODEL_RUNNER`
+from environment overrides and `disable_padded_drafter_batch` from speculative JSON.
+Check both private Compose overrides and command-line flags.
+
 | Mode | Separate drafter | Required profile |
 |---|---|---|
 | Qualified non-spec | No | Leave speculative variables unset |
@@ -163,7 +167,7 @@ cumulative.
 For a Qwen checkpoint with an in-checkpoint MTP head:
 
 ```dotenv
-RADIANCE_SPECULATIVE_CONFIG='{"method":"mtp","num_speculative_tokens":8,"attention_backend":"R4D","disable_padded_drafter_batch":true}'
+RADIANCE_SPECULATIVE_CONFIG='{"method":"mtp","num_speculative_tokens":8,"attention_backend":"R4D"}'
 RADIANCE_FAST_DRAFT=1
 ```
 
@@ -177,10 +181,9 @@ For the native-FP8 ARA target and its selective-FP8 drafter:
 
 ```dotenv
 MAX_MODEL_LEN=8192
-VLLM_USE_V2_MODEL_RUNNER=1
 RADIANCE_COMPILATION_CONFIG='{"cudagraph_mode":"PIECEWISE"}'
 RADIANCE_FAST_DRAFT=1
-RADIANCE_SPECULATIVE_CONFIG='{"method":"dflash","model":"/models/Qwen3.8-27B-heretic-ara-DFlash2-fp8-magiccodingman","num_speculative_tokens":7,"draft_tensor_parallel_size":2,"attention_backend":"TRITON_ATTN","max_model_len":8192,"disable_padded_drafter_batch":true}'
+RADIANCE_SPECULATIVE_CONFIG='{"method":"dflash","model":"/models/Qwen3.8-27B-heretic-ara-DFlash2-fp8-magiccodingman","num_speculative_tokens":7,"draft_tensor_parallel_size":2,"attention_backend":"TRITON_ATTN","max_model_len":8192}'
 ```
 
 For AMD's Quark MXFP4 target, use the target-matched
