@@ -16,11 +16,15 @@ The native vLLM extension imported successfully.
   token parity, repeated long prompts, post-batch state isolation, nested JSON
   schema, and named tool round trips. Both failed strict batch token equivalence.
   The FP8 control on 0.33 produced the same two batch continuations in reversed
-  order. The BF16 control is still running.
+  order. The BF16 control on 0.33 also failed only the strict batch token
+  equivalence check. Both candidate checkpoint configurations passed the
+  installed registry, width-7 convolution configuration, and RoPE checks.
 - Qwen 27B Quark MXFP4 with FP8 DFlash-7 and R4D attention on dual R9700s
   passed FP8 drafter ownership, streaming token parity, and a named tool call.
   The drafter proposed 149 tokens and the target accepted 80. This smoke test
   covers the tested configuration and carries no throughput claim.
+- All eight draft-confidence kernel checks passed on each R9700, including
+  HIP graph replay and fully masked rows.
 - The V1 MTP loop installer was retired from image assembly. The V2 port of
   Radiance's confidence and n-gram controller remains open.
 
