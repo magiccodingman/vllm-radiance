@@ -325,28 +325,29 @@ def _postprocess_gpu(runner, draft):
     if not st or "sslot" not in st or cont_cpu is None:
         return draft
     if torch.is_tensor(draft) and draft.dim() == 2:
-        mtp = draft.int().cpu().numpy(); B = mtp.shape[0]
-        row = lambda i: mtp[i]
+        rows = draft.int().cpu().numpy()
     elif isinstance(draft, list):
-        B = len(draft)
-        row = lambda i: draft[i]
+        rows = draft
     else:
         return draft
-    if st["sslot"].shape[0] != B:
+    if len(st["sslot"]) != len(rows):
         return draft
-    clen = d._radiance_clen_cpu; nspec = d._radiance_nspec
-    sslot = st["sslot"]; saction = st["saction"]
-    out = []
-    for i in range(B):
-        r = row(i)
-        k = int(min(sslot[i], len(r)))
-        di = [int(x) for x in r[:k]]
-        if saction[i] == 1 and k < int(clen[i]):       # append the verbatim n-gram continuation
-            di += [int(x) for x in cont_cpu[i, k:int(clen[i])]]
-        if not di:
-            di = [int(r[0])] if len(r) else []
-        out.append(di[:nspec])
-    return out
+    return _assemble_draft_rows(rows, st, cont_cpu, d._radiance_clen_cpu,
+                                d._radiance_nspec)
+
+
+def _assemble_draft_rows(rows, state, continuation, lengths, num_steps):
+    """Build each request's verified prefix and optional n-gram continuation."""
+    output = []
+    for i, row in enumerate(rows):
+        keep = min(int(state["sslot"][i]), len(row))
+        tokens = [int(token) for token in row[:keep]]
+        if state["saction"][i] == 1 and keep < int(lengths[i]):
+            tokens.extend(int(token) for token in continuation[i, keep:int(lengths[i])])
+        if not tokens and len(row):
+            tokens.append(int(row[0]))
+        output.append(tokens[:num_steps])
+    return output
 
 
 # ----- entry ------------------------------------------------------------------
