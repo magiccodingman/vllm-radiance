@@ -325,6 +325,25 @@ fi
 # passed through so the banner can report the attention backend that was actually selected.
 python /opt/radiance_preamble.py "$@" || true
 
+# vLLM 0.34 enables extensible KV caches by default. Preserve fixed cache sizing
+# for Radiance's qualified memory budgets unless the deployment opts in.
+_rad_has_kv_sizing=0
+for _arg in "$@"; do
+  case "$_arg" in
+    --enable-extensible-kv-cache|--no-enable-extensible-kv-cache)
+      _rad_has_kv_sizing=1
+      break
+      ;;
+  esac
+done
+if [ "$_rad_has_kv_sizing" -eq 0 ]; then
+  case "${RADIANCE_EXTENSIBLE_KV_CACHE:-0}" in
+    0) set -- "$@" --no-enable-extensible-kv-cache ;;
+    1) set -- "$@" --enable-extensible-kv-cache ;;
+    *) echo "[radiance] ERROR RADIANCE_EXTENSIBLE_KV_CACHE must be 0 or 1" >&2; exit 64 ;;
+  esac
+fi
+
 # Hand off. exec so vLLM becomes PID 1 and receives signals directly; the backgrounded
 # bandwidth job keeps its inherited stdout and prints its report when it finishes. When
 # --numa-bind resolved a binding, wrap the exec in numactl (TP workers inherit it).

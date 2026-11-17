@@ -32,7 +32,7 @@ LIB = Path(sysconfig.get_paths()["purelib"])
 
 
 def patch_cache_group_annotation() -> None:
-    """v0.33 owns layer-role marking and DFlash's no-trailing-block policy."""
+    """v0.34 owns layer-role marking and DFlash's no-trailing-block policy."""
     contracts = {
         "vllm/v1/core/kv_cache_planning.py": (
             "spec_config.use_eagle_block_drop()",
@@ -42,7 +42,6 @@ def patch_cache_group_annotation() -> None:
         "vllm/v1/worker/gpu/attn_utils.py": (
             "if attn_module.is_draft_layer:", "spec = replace(spec, is_draft=True)",
         ),
-        "vllm/v1/worker/gpu_model_runner.py": ("is_draft_layer",),
         "vllm/config/speculative.py": (
             "return self.use_eagle() and not (self.use_dflash() or self.use_dspark())",
         ),
@@ -69,7 +68,7 @@ def patch_shared_prefix_convoy() -> None:
                         " chunks are already being loaded",
                         req_status.req.request_id,
                     )
-                    return None
+                    return None, full_attention_hit_boundary
 ''',
         '''                if any(key in self._chunks_being_loaded for key in offload_keys):
                     # Preserve the no-duplicate-load guard without serializing
@@ -80,10 +79,22 @@ def patch_shared_prefix_convoy() -> None:
                         " chunks are already being loaded",
                         req_status.req.request_id,
                     )
-                    return 0
+                    return -1, None
 ''',
         "Skipping CPU hit for request %s since some of its",
         "kv-offload restore: avoid shared-prefix load convoy",
+    )
+
+    anchor = "        num_hit_tokens = self._lookup_partial_tail_hit(\n"
+    apply(
+        path, anchor,
+        '''        if complete_hit == -1:
+            # A complete-chunk load is in flight. Skip both lookup paths.
+            req_status.partial_tail_boundary = None
+            return 0
+''' + anchor,
+        "if complete_hit == -1:",
+        "kv-offload restore: skip partial lookup during duplicate load",
     )
 
 

@@ -34,6 +34,7 @@ import sysconfig
 from pathlib import Path
 
 from _patchlib import apply
+from patch_lfm3_backport import adapt_kernel_precision, canonical_kernel_source
 
 CONV = (
     Path(sysconfig.get_paths()["purelib"])
@@ -71,6 +72,12 @@ IMPORT_NEW = (
 
 
 def main():
+    source = CONV.read_text()
+    # Native LFM3 supplies width 7, but ROCm still needs FP32 products
+    # to pass the long variable-length BF16 reference cases.
+    repaired = adapt_kernel_precision(canonical_kernel_source(source))
+    if repaired != source:
+        CONV.write_text(repaired)
     apply(CONV, IMPORT_ANCHOR, IMPORT_NEW, "_RADIANCE_CONV1D_BLOCKN",
           "conv1d BLOCK_N constant")
     apply(CONV, ANCHOR, NEW, "_RADIANCE_CONV1D_BLOCKN\n            if dim",

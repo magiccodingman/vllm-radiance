@@ -63,6 +63,9 @@ policy:
   gate_rule: Required gates may be strengthened but not silently weakened or removed to make a candidate pass.
 patches:
   patch_lfm3_backport:
+    active: false
+    activation: historical
+    status: upstream-owned-v034
     component: vllm
     runner: both
     areas: [lfm3, runtime, attention, upgrade]
@@ -340,20 +343,21 @@ patches:
     runner: independent
     v033_disposition: RETAIN_GUARDED
   patch_mtp_loopbreak:
-    v030_disposition: RETAIN_UNCHANGED
-    areas:
-    - mtp
-    - speculative
-    reason: Preserve Radiance MTP loop termination/controller behavior.
-    runner: both
-    v033_disposition: RETAIN_GUARDED
+    areas: [mtp, speculative]
+    reason: Run the Radiance MTP confidence and n-gram policy in the V2 host draft loop.
+    runner: v2
+    v034_disposition: semantic-migration
   patch_mtp_mm_mask:
+    active: false
+    activation: historical
+    status: retired-historical
+    v034_reason: V2 embeds the token slice sized by the multimodal mask and removes the unpadded V1 path.
     v030_disposition: RETAIN_UNCHANGED
     areas:
     - mtp
     - speculative
     reason: Preserve MTP matrix/mask correctness behavior used by the qualified fast-draft path.
-    runner: both
+    runner: v1
     v033_disposition: RETAIN_GUARDED
   patch_parser_shared_engine:
     removed_at: v0.30; historical source at 285ac78e7f19bc1e1b5b09b25f865aea0c6d9754

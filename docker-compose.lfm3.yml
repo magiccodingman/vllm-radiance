@@ -22,7 +22,7 @@ services:
       - --host=0.0.0.0
       - --port=8000
     environment:
-      VLLM_USE_V2_MODEL_RUNNER: "1"
+      RADIANCE_EXTENSIBLE_KV_CACHE: "${RADIANCE_EXTENSIBLE_KV_CACHE:-0}"
       # Respect the checkpoint's compressed-tensors metadata. Explicitly forcing
       # the unrelated `fp8` loader would change the checkpoint's quantization.
       RADIANCE_WEIGHT_QUANTIZATION: auto

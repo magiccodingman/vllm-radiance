@@ -5,6 +5,9 @@ INT2 projection and reranker on a public synthetic fixture, with no checkpoint.
 """
 
 import ast
+import runpy
+import sys
+import textwrap
 from types import SimpleNamespace
 
 import numpy as np
@@ -266,3 +269,37 @@ def test_public_hook_respects_fast_draft_opt_in(fast_draft):
     model = object()
     namespace["before_compute_logits"](SimpleNamespace(model=model), None, None)
     assert calls == ([model] if fast_draft else [])
+
+
+@pytest.mark.parametrize("raises", [False, True])
+def test_v034_sampling_guard_clears_after_logits(monkeypatch, raises):
+    overlay = runpy.run_path(str(SOURCE / "patch_verify_head.py"))
+    processor = SimpleNamespace(_radiance_fast_ok=False)
+    module = ast.parse((SOURCE / "radiance_verifyhead.py").read_text())
+    hook = next(node for node in module.body
+                if isinstance(node, ast.FunctionDef) and node.name == "after_compute_logits")
+    scope = {"_state": {"armed": True, "lp": processor}}
+    exec(compile(ast.Module(body=[hook], type_ignores=[]), "actual-cleanup", "exec"), scope)
+
+    def arm(*args):
+        processor._radiance_fast_ok = True
+
+    def compute_sample_logits(hidden):
+        assert processor._radiance_fast_ok
+        if raises:
+            raise RuntimeError("sampling failed")
+        return hidden
+
+    monkeypatch.setitem(sys.modules, "radiance_verifyhead", SimpleNamespace(
+        before_compute_logits=arm, after_compute_logits=scope["after_compute_logits"]))
+    body = textwrap.dedent(overlay["NEW"]) + "return logits\n"
+    exec("def sample(self, hidden_states, input_batch, grammar_output):\n"
+         + textwrap.indent(body, "    "), scope)
+    runner = SimpleNamespace(model_state=SimpleNamespace(compute_sample_logits=compute_sample_logits))
+    batch = SimpleNamespace(logits_indices=0)
+    if raises:
+        with pytest.raises(RuntimeError, match="sampling failed"):
+            scope["sample"](runner, [42], batch, None)
+    else:
+        assert scope["sample"](runner, [42], batch, None) == 42
+    assert not processor._radiance_fast_ok

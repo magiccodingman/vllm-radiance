@@ -25,6 +25,7 @@ Env (the only knobs):
   RADIANCE_DRAFT_SCHEDULE  "bs:max_depth,..." batch-size MTP-forward ceiling (default 1:8,2:7,4:6,8:5,16:4)
   RADIANCE_DRAFT_TAU       confidence-product stop threshold (default 0.35)
 """
+from contextlib import contextmanager
 import os
 import sys
 import numpy as np
@@ -130,6 +131,34 @@ def _local_draft(proposer, hidden_states):
     return ids, 1.0 / S
 
 
+def _observe_draft_slot(st, j, cfn, mtpn, contc, clen, num_steps, fc):
+    """Update the per-request stop and n-gram decisions for one draft slot."""
+    B = len(mtpn)
+    if j == 0:
+        st.update(cum=np.ones(B, np.float32), stopped=np.zeros(B, bool), allagree=np.ones(B, bool),
+                  sslot=np.full(B, num_steps, np.int64), saction=np.full(B, 2, np.int64))
+    agree = (((j < clen) & (contc[:, j] == mtpn)) if j < contc.shape[1] else np.zeros(B, bool))
+    # free-win n-gram -> take it (1); else draft on while cumulative confidence holds, else verify (2)
+    action = np.where(agree, 1, np.where(st["cum"] >= TAU, 0, 2)).astype(np.int64)
+    newly = (~st["stopped"]) & (action != 0)
+    # action at slot j is the decision FOR slot j: keep MTP[:j], then the n-gram tail from j on when
+    # chosen. slot j's own forward ran only to produce this decision's confidence.
+    st["sslot"] = np.where(newly, j, st["sslot"])
+    st["saction"] = np.where(newly, action, st["saction"])
+    st["stopped"] = st["stopped"] | (action != 0)
+    st["cum"] = st["cum"] * cfn
+    # running MTP<->n-gram agreement over the drafted prefix (frozen once a request stops)
+    st["allagree"] = st["allagree"] & (agree | st["stopped"])
+    if fc and (j + 1) >= fc:
+        # forward cap hit: stop the remaining MTP forwards, but a request whose MTP has matched the
+        # n-gram the whole way keeps drafting for FREE via the verbatim tail (up to full width).
+        # Others just verify their MTP prefix. Only the forwards are capped.
+        cap_new = ~st["stopped"]
+        st["sslot"] = np.where(cap_new, j + 1, st["sslot"])
+        st["saction"] = np.where(cap_new & st["allagree"], 1, st["saction"])
+        st["stopped"] = st["stopped"] | cap_new
+
+
 # ----- drafter hooks: per-slot confidence capture + A/B/C decision ------------
 def _install_drafter_hooks():
     import torch
@@ -176,31 +205,9 @@ def _install_drafter_hooks():
         arr = packed.cpu().numpy()
         cfn = arr[0]; mtpn = arr[1].astype(np.int64)
         st = self._radiance_gate
-        if j == 0:
-            st.update(cum=np.ones(B, np.float32), stopped=np.zeros(B, bool), allagree=np.ones(B, bool),
-                      sslot=np.full(B, self._radiance_nspec, np.int64), saction=np.full(B, 2, np.int64))
-        clen = self._radiance_clen_cpu; contc = self._radiance_cont_cpu
-        agree = (((j < clen) & (contc[:, j] == mtpn)) if j < contc.shape[1] else np.zeros(B, bool))
-        # free-win n-gram -> take it (1); else draft on while cumulative confidence holds, else verify (2)
-        action = np.where(agree, 1, np.where(st["cum"] >= TAU, 0, 2)).astype(np.int64)
-        newly = (~st["stopped"]) & (action != 0)
-        # action at slot j is the decision FOR slot j: keep MTP[:j], then the n-gram tail from j on when
-        # chosen. slot j's own forward ran only to produce this decision's confidence.
-        st["sslot"] = np.where(newly, j, st["sslot"])
-        st["saction"] = np.where(newly, action, st["saction"])
-        st["stopped"] = st["stopped"] | (action != 0)
-        st["cum"] = st["cum"] * cfn
-        # running MTP<->n-gram agreement over the drafted prefix (frozen once a request stops)
-        st["allagree"] = st["allagree"] & (agree | st["stopped"])
-        fc = self._radiance_fwd_cap
-        if fc and (j + 1) >= fc:
-            # forward cap hit: stop the remaining MTP forwards, but a request whose MTP has matched the
-            # n-gram the whole way keeps drafting for FREE via the verbatim tail (up to full width).
-            # Others just verify their MTP prefix. Only the forwards are capped.
-            cap_new = ~st["stopped"]
-            st["sslot"] = np.where(cap_new, j + 1, st["sslot"])
-            st["saction"] = np.where(cap_new & st["allagree"], 1, st["saction"])
-            st["stopped"] = st["stopped"] | cap_new
+        _observe_draft_slot(st, j, cfn, mtpn, self._radiance_cont_cpu,
+                            self._radiance_clen_cpu, self._radiance_nspec,
+                            self._radiance_fwd_cap)
         if st["stopped"].all():
             self._radiance_stop = True
         return draft_token_ids
@@ -319,28 +326,29 @@ def _postprocess_gpu(runner, draft):
     if not st or "sslot" not in st or cont_cpu is None:
         return draft
     if torch.is_tensor(draft) and draft.dim() == 2:
-        mtp = draft.int().cpu().numpy(); B = mtp.shape[0]
-        row = lambda i: mtp[i]
+        rows = draft.int().cpu().numpy()
     elif isinstance(draft, list):
-        B = len(draft)
-        row = lambda i: draft[i]
+        rows = draft
     else:
         return draft
-    if st["sslot"].shape[0] != B:
+    if len(st["sslot"]) != len(rows):
         return draft
-    clen = d._radiance_clen_cpu; nspec = d._radiance_nspec
-    sslot = st["sslot"]; saction = st["saction"]
-    out = []
-    for i in range(B):
-        r = row(i)
-        k = int(min(sslot[i], len(r)))
-        di = [int(x) for x in r[:k]]
-        if saction[i] == 1 and k < int(clen[i]):       # append the verbatim n-gram continuation
-            di += [int(x) for x in cont_cpu[i, k:int(clen[i])]]
-        if not di:
-            di = [int(r[0])] if len(r) else []
-        out.append(di[:nspec])
-    return out
+    return _assemble_draft_rows(rows, st, cont_cpu, d._radiance_clen_cpu,
+                                d._radiance_nspec)
+
+
+def _assemble_draft_rows(rows, state, continuation, lengths, num_steps):
+    """Build each request's verified prefix and optional n-gram continuation."""
+    output = []
+    for i, row in enumerate(rows):
+        keep = min(int(state["sslot"][i]), len(row))
+        tokens = [int(token) for token in row[:keep]]
+        if state["saction"][i] == 1 and keep < int(lengths[i]):
+            tokens.extend(int(token) for token in continuation[i, keep:int(lengths[i])])
+        if not tokens and len(row):
+            tokens.append(int(row[0]))
+        output.append(tokens[:num_steps])
+    return output
 
 
 # ----- entry ------------------------------------------------------------------
@@ -362,3 +370,70 @@ def install():
              f"(GPU-resident capture + n-gram matcher; per-slot confidence gate short-circuits the forward loop)")
     except Exception as e:
         _log(f"install failed (dynamic draft disabled): {e!r}")
+
+
+class V2DraftPolicy:
+    """Proposal-local policy for the V2 MTP host loop."""
+
+    def __init__(self, runner, batch, num_steps):
+        import torch
+        import radiance_draft_gpu as gpu
+
+        self.gpu = gpu
+        self.num_steps = num_steps
+        self.num_reqs = batch.num_reqs
+        self.cap = _batch_ceil(self.num_reqs)
+        self.state = {}
+        self.step = 0
+        self.stop = False
+        tokens = runner.req_states.all_token_ids.gpu
+        lengths = runner.req_states.total_len.gpu
+        continuation, length = gpu.match_gpu(
+            tokens, lengths, num_steps, tokens.shape[1], rows=batch.idx_mapping
+        )
+        self.continuation = continuation.cpu().numpy()
+        self.lengths = length.cpu().numpy()
+        self.scratch = gpu.make_scratch(self.num_reqs, tokens.device)
+        self.packed = torch.empty((2, self.num_reqs), device=tokens.device)
+
+    def observe(self, logits, sampled):
+        self.gpu.capture_gpu(logits, self.packed[0], self.scratch)
+        self.packed[1].copy_(sampled)
+        confidence, tokens = self.packed.cpu().numpy()
+        _observe_draft_slot(self.state, self.step, confidence, tokens.astype(np.int64),
+                            self.continuation, self.lengths, self.num_steps, self.cap)
+        self.step += 1
+        self.stop = bool(self.state["stopped"].all())
+
+    def finish(self, drafts):
+        rows = _assemble_draft_rows(drafts[:, :self.step].cpu().numpy(), self.state,
+                                    self.continuation, self.lengths, self.num_steps)
+        widths = [len(row) for row in rows]
+        padded = [row + [-1] * (drafts.shape[1] - len(row)) for row in rows]
+        drafts.copy_(drafts.new_tensor(padded))
+        return widths
+
+
+def v2_policy_for(runner, batch, num_steps):
+    speculator = runner.speculator
+    parallel = runner.vllm_config.parallel_config
+    if (not DYNAMIC or getattr(speculator, "method", None) != "mtp" or num_steps <= 1
+            or runner.vllm_config.scheduler_config.async_scheduling
+            or parallel.data_parallel_size != 1 or parallel.pipeline_parallel_size != 1
+            or runner.pcp_manager is not None or runner.adaptive_verification is not None
+            or batch.is_prefilling_np.any() or speculator.draft_logits is not None
+            or speculator.use_local_argmax_reduction):
+        return None
+    return V2DraftPolicy(runner, batch, num_steps)
+
+
+
+@contextmanager
+def v2_policy_scope(runner, batch, num_steps):
+    """Make the policy visible to the sampler only during this proposal."""
+    policy = v2_policy_for(runner, batch, num_steps)
+    runner.speculator._radiance_policy = policy
+    try:
+        yield policy
+    finally:
+        runner.speculator._radiance_policy = None

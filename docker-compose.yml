@@ -39,7 +39,7 @@ services:
       # R4D is the fastest qualified head-256/GQA6 backend on gfx1201. Set
       # ATTENTION_BACKEND=ROCM_AITER_UNIFIED_ATTN for the measured fallback.
       - --attention-backend=${ATTENTION_BACKEND:-R4D}
-      # Explicit APC remains enabled for shared prefixes. In vLLM 0.33 hybrid
+      # Explicit APC remains enabled for shared prefixes. In vLLM 0.34 hybrid
       # conv/recurrent cache state follows this flag; --mamba-cache-mode is ignored.
       # Page alignment and cache capacity remain model-dependent. Cold controls
       # should set PREFIX_CACHING_FLAG=--no-enable-prefix-caching.
@@ -47,8 +47,6 @@ services:
       # Baseline serving is deliberately non-speculative. For Qwen's in-checkpoint
       # MTP head, opt in from .env without editing this file; see
       # RADIANCE_SPECULATIVE_CONFIG and RADIANCE_FAST_DRAFT below.
-      # The recommended MTP config sets disable_padded_drafter_batch, which is incompatible
-      # with async scheduling; keep async off so vLLM does not auto-enable then disable it.
       - --no-async-scheduling
       # Agentic serving uses the checkpoint-native chat template by default.
       # Add --chat-template in a private override only for a checkpoint that
@@ -66,6 +64,7 @@ services:
       - --host=0.0.0.0
       - --port=8000
     environment:
+      RADIANCE_EXTENSIBLE_KV_CACHE: "${RADIANCE_EXTENSIBLE_KV_CACHE:-0}"
       # Explicit Qwen tool compatibility; both preserve upstream defaults when off.
       RADIANCE_QWEN_AUTO_TOOL_GRAMMAR: "${RADIANCE_QWEN_AUTO_TOOL_GRAMMAR:-0}"
       RADIANCE_QWEN_INT64_BOUND_COMPAT: "${RADIANCE_QWEN_INT64_BOUND_COMPAT:-0}"
@@ -189,9 +188,6 @@ services:
       # Experimental until qualified per host; 0 preserves one whole-region
       # registration. A positive GiB value requests row-aligned chunks.
       RADIANCE_KV_OFFLOAD_REGISTER_CHUNK_GIB: "${RADIANCE_KV_OFFLOAD_REGISTER_CHUNK_GIB:-0}"
-      # DFlash2 requires V2. Preserve Radiance's explicit V1 default here;
-      # upstream 0.33 now auto-selects V2 when this override is absent.
-      VLLM_USE_V2_MODEL_RUNNER: "${VLLM_USE_V2_MODEL_RUNNER:-0}"
       NCCL_PROTO: Simple
       # throttle inductor compile workers to limit peak compile-time RAM (defensive).
       TORCHINDUCTOR_COMPILE_THREADS: "4"

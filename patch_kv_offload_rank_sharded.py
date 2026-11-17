@@ -65,8 +65,10 @@ def patch_spec():
                 raise RuntimeError("RADIANCE_KV_OFFLOAD_RANK_SHARDED is incompatible with replicated CPU KV layout")
 '''
     apply(path, anchor, new, 'rank_sharded = get_rank_sharded_enabled()', 'rank-major opt-in policy')
-    apply(path, '                num_segments=_REGION_SEGMENTS,\n',
-          '                num_segments=_REGION_SEGMENTS,\n                rank_sharded=rank_sharded,\n                world_size=world_size if rank_sharded else None,\n',
+    segments = "REGION_SEGMENTS" if "num_segments=REGION_SEGMENTS," in path.read_text() else "_REGION_SEGMENTS"
+    anchor = f"                num_segments={segments},\n"
+    apply(path, anchor, anchor +
+          '                rank_sharded=rank_sharded,\n                world_size=world_size if rank_sharded else None,\n',
           'rank_sharded=rank_sharded,', 'rank-major logical worker ownership')
 
 

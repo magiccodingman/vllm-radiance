@@ -67,8 +67,8 @@ class NgramTailWidthTests(unittest.TestCase):
         result = np.full(len(contexts) * width + 8, -777, dtype=np.int32)
         counts = np.full(len(contexts), -777, dtype=np.int32)
         fn = self.scope['_match_gather']
-        args = [Pointer(rows.ravel()), Pointer(lengths), maxlen, Pointer(keys),
-                Pointer(result), Pointer(counts), 20, width]
+        args = [Pointer(rows.ravel()), Pointer(lengths), None, maxlen, Pointer(keys),
+                Pointer(result), Pointer(counts), False, 20, width]
         if 'BLOCK' in inspect.signature(fn).parameters:
             args.append(1 << (width - 1).bit_length())
         for self.tl.row in range(len(contexts)):
@@ -122,11 +122,11 @@ class NgramTailWidthTests(unittest.TestCase):
                                             next_power_of_2=lambda value: 1 << (value - 1).bit_length()),
                      _match_scan=Launch(), _match_gather=Launch(), _MAXL=24, _MIN=3, _SH=20)
         exec(compile(ast.Module(body=[node], type_ignores=[]), str(SOURCE), 'exec'), scope)
-        scope['match_gpu'](SimpleNamespace(shape=(2, 12), device='cpu'), Buffer(), 7, 12)
+        scope['match_gpu'](SimpleNamespace(shape=(2, 12), stride=lambda dim: 12, device='cpu'), Buffer(), 7, 12)
         args, kwargs = launches[-1]
-        block = kwargs.get('BLOCK', args[8] if len(args) > 8 else None)
+        block = kwargs.get('BLOCK', args[10] if len(args) > 10 else None)
         self.assertEqual(block, 8)
-        self.assertEqual(args[7], 7)
+        self.assertEqual(args[9], 7)
 
 
 if __name__ == '__main__':

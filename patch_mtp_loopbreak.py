@@ -1,39 +1,78 @@
 #!/usr/bin/env python3
-"""Bake: let the RADIANCE draft controller short-circuit the MTP draft loop.
-
-vLLM's SpecDecodeBaseProposer.propose runs a fixed `for token_index in
-range(num_speculative_tokens - 1)` loop -- one draft-model forward per iteration,
-no early exit. The whole point of the confidence-gated controller is to STOP
-running forwards once every request has decided to stop (verify) or take an
-n-gram: fewer serial draft forwards on low-headroom content. The controller sets
-`self._radiance_stop` from its per-slot A/B/C decision; this patch injects the one
-line that honours it, so the remaining forwards are never launched (the partial
-`draft_token_ids_list` is what gets stacked and returned).
-
-Idempotent; anchor-count-guarded; ast.parse guard before writing. NOOP once applied."""
-import ast
+"""Install the Radiance MTP policy on the vLLM 0.34 V2 host loop."""
 import sysconfig
 from pathlib import Path
+
 from _patchlib import apply
 
-LIB = Path(sysconfig.get_paths()["purelib"])
-F = LIB / "vllm/v1/spec_decode/llm_base_proposer.py"
+GPU = Path(sysconfig.get_paths()["purelib"]) / "vllm/v1/worker/gpu"
+SPEC = GPU / "spec_decode"
 
-ANCHOR = (
-    "        for token_index in range(self.num_speculative_tokens - 1):\n"
-    "            # Update the inputs.\n"
-)
-NEW = (
-    "        for token_index in range(self.num_speculative_tokens - 1):\n"
-    "            if getattr(self, \"_radiance_stop\", False):\n"
-    "                break  # radiance: controller stopped; skip the remaining draft forwards\n"
-    "            # Update the inputs.\n"
-)
-SENTINEL = "radiance: controller stopped; skip the remaining draft forwards"
+
+def insert(file, anchor, addition, label):
+    apply(file, anchor, addition + anchor, addition.strip(), label)
+
+
+def replace(file, anchor, replacement, label):
+    apply(file, anchor, replacement, replacement.strip(), label)
 
 
 def main():
-    apply(F, ANCHOR, NEW, SENTINEL, "mtp-draft-loop-break")
+    runner = GPU / "model_runner.py"
+    insert(runner, "        num_spec_tokens = self.execute_model_state.num_spec_tokens_to_schedule\n",
+           "        draft_widths = None\n", "MTP: clear proposal widths")
+    anchor = "            with use_workspace_lane(self._draft_workspace_lane):\n                draft_tokens = self.speculator.propose(\n"
+    replace(runner, anchor,
+            "            from radiance_draft import v2_policy_scope\n"
+            "            with (\n"
+            "                use_workspace_lane(self._draft_workspace_lane),\n"
+            "                v2_policy_scope(self, input_batch, num_spec_tokens) as policy,\n"
+            "            ):\n"
+            "                draft_tokens = self.speculator.propose(\n",
+            "MTP: scope policy to this proposal")
+    insert(runner, "            if self.pcp_manager is not None:\n                self.pcp_manager.sync_drafts(\n",
+           "            if policy is not None and policy.step:\n"
+           "                draft_widths = policy.finish(draft_tokens)\n"
+           "                self._radiance_mtp_forwards = policy.step\n"
+           "                self._radiance_mtp_widths = draft_widths\n",
+           "MTP: assemble controlled proposal")
+    replace(runner, "                input_batch, draft_tokens[:, :num_spec_tokens]\n",
+            "                input_batch, draft_tokens[:, :num_spec_tokens], draft_widths\n",
+            "MTP: publish per-request widths")
+
+    handler = SPEC / "utils.py"
+    replace(handler, "        self, input_batch: InputBatch, draft_tokens: torch.Tensor\n",
+            "        self, input_batch: InputBatch, draft_tokens: torch.Tensor, draft_widths=None\n",
+            "MTP: accept per-request widths")
+    replace(handler, "            for req_id in input_batch.req_ids:\n                self._draft_tokens_by_req[req_id] = num_draft_tokens\n",
+            "            for i, req_id in enumerate(input_batch.req_ids):\n"
+            "                self._draft_tokens_by_req[req_id] = (\n"
+            "                    num_draft_tokens if draft_widths is None else draft_widths[i]\n"
+            "                )\n", "MTP: record proposal widths")
+    replace(handler, "        for req_id, row in zip(input_batch.req_ids, draft_tokens_np):\n            self._draft_tokens_by_req[req_id] = row\n",
+            "        for i, (req_id, row) in enumerate(zip(input_batch.req_ids, draft_tokens_np)):\n"
+            "            self._draft_tokens_by_req[req_id] = row if draft_widths is None else row[:draft_widths[i]]\n",
+            "MTP: respect proposal widths in grammar validation")
+
+    insert(SPEC / "speculator.py", "        self._maybe_predict_acceptance(logits, idx_mapping, draft_step)\n",
+           "        policy = getattr(self, \"_radiance_policy\", None)\n"
+           "        if policy is not None:\n"
+           "            policy.observe(logits, sampled)\n", "MTP: observe confidence")
+    for target in ("target_dependent_ar", "autoregressive"):
+        replace(SPEC / target / "speculator.py", "            need_eager=is_profile,\n",
+                "            need_eager=is_profile or getattr(self, \"_radiance_policy\", None) is not None,\n",
+                "MTP: use eager drafter dispatch only during controlled proposals")
+    loop = SPEC / "autoregressive/speculator.py"
+    replace(loop, "            if self.supports_decode_metadata_update\n            else self._multi_step_decode\n",
+            "            if self.supports_decode_metadata_update and getattr(self, \"_radiance_policy\", None) is None\n"
+            "            else self._multi_step_decode\n", "MTP: choose the host loop")
+    insert(loop, "        for step in range(1, num_speculative_steps):\n            if not skip_attn",
+           "        policy = getattr(self, \"_radiance_policy\", None)\n", "MTP: read the proposal policy")
+    replace(loop, "        for step in range(1, num_speculative_steps):\n            if not skip_attn",
+            "        for step in range(1, num_speculative_steps):\n"
+            "            if policy is not None and policy.stop:\n"
+            "                break\n"
+            "            if not skip_attn", "MTP: terminate the draft loop early")
 
 
 if __name__ == "__main__":

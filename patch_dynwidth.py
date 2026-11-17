@@ -29,6 +29,8 @@ full K7 verification). Idempotent; run once pre-serve.
 """
 import ast
 import sysconfig
+
+from _patchlib import apply
 from pathlib import Path
 
 SP = Path(sysconfig.get_paths()["purelib"])
@@ -40,12 +42,12 @@ HUNK_A_ANCHOR = """                num_rejected = num_draft_tokens - num_accepte
 HUNK_A_ADD = """                self._radiance_dynw_observe(request, num_accepted, num_draft_tokens)
 """
 
-HUNK_B_ANCHOR = """            request.spec_token_ids = self.structured_output_manager.validate_tokens(
+HUNK_B_ANCHOR = """            request.spec_token_ids = self.structured_output_manager.trim_spec_tokens(
                 request, spec_token_ids
             )
 
     def update_draft_token_ids_in_output("""
-HUNK_B_ADD = """            request.spec_token_ids = self.structured_output_manager.validate_tokens(
+HUNK_B_ADD = """            request.spec_token_ids = self.structured_output_manager.trim_spec_tokens(
                 request, spec_token_ids
             )
             self._radiance_cap_spec_width(request)
@@ -94,12 +96,22 @@ def _radiance_cap_spec_width(self, request):
     if w < _RAD_DYNW_MIN:
         w = _RAD_DYNW_MIN
     if w < len(request.spec_token_ids):
-        del request.spec_token_ids[w:]
+        request.spec_token_ids = request.spec_token_ids[:w]
 
 
 Scheduler._radiance_dynw_observe = _radiance_dynw_observe
 Scheduler._radiance_cap_spec_width = _radiance_cap_spec_width
 '''
+
+async_target = TARGET.with_name("async_scheduler.py")
+async_anchor = "            request.spec_token_ids = spec_token_placeholders\n"
+apply(
+    async_target,
+    async_anchor,
+    async_anchor + "            self._radiance_cap_spec_width(request)\n",
+    "self._radiance_cap_spec_width(request)",
+    "dynwidth: cap asynchronous placeholders",
+)
 
 src = TARGET.read_text()
 if SENTINEL in src:
@@ -111,11 +123,7 @@ for anchor, add, tag in ((HUNK_A_ANCHOR, HUNK_A_ADD, "observe"), (HUNK_B_ANCHOR,
         print(f"  FAIL  hunk {tag}: anchor matched {src.count(anchor)}x, expected 1")
         ok = False
 if not ok:
-    import os
-    if os.environ.get("RADIANCE_DYNAMIC_WIDTH", "0") == "1":
-        raise SystemExit("  FAIL  dynwidth cannot be honoured")
-    print("  WARN  dynwidth not applied (inert: RADIANCE_DYNAMIC_WIDTH is off)")
-    raise SystemExit(0)
+    raise SystemExit("  FAIL  dynwidth cannot be honoured")
 src = src.replace(HUNK_A_ANCHOR, HUNK_A_ANCHOR + HUNK_A_ADD, 1)
 src = src.replace(HUNK_B_ANCHOR, HUNK_B_ADD, 1)
 src += TAIL

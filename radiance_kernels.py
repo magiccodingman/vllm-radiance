@@ -477,11 +477,6 @@ def install_all():
     except Exception as e:
         sys.stderr.write(f"[radiance] install_custom_ar failed: {e!r}\n")
     try:
-        import radiance_draft
-        radiance_draft.install()                 # RADIANCE_DYNAMIC_DRAFT (default off)
-    except Exception as e:
-        sys.stderr.write(f"[radiance] radiance_draft install failed: {e!r}\n")
-    try:
         import radiance_drafthead
         radiance_drafthead.install()             # RADIANCE_FAST_DRAFT: 2-bit draft head + exact rerank
     except Exception as e:

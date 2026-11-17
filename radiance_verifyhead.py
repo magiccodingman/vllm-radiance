@@ -260,3 +260,10 @@ def before_compute_logits(runner, input_batch, grammar_output) -> None:
         sys.stderr.write(f"[radiance.verifyhead] first 200 steps: {_state['fast']} on the int2 "
                          f"head, {_state['slow']} fell back to bf16\n")
         sys.stderr.flush()
+
+
+
+def after_compute_logits() -> None:
+    """Limit the approximate head to the guarded sampling call."""
+    if _state["armed"]:
+        _state["lp"]._radiance_fast_ok = False
