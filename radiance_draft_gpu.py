@@ -24,9 +24,10 @@ _MAXL, _MIN, _SH = 24, 3, 20      # n-gram match bounds; key packs (matchlen << 
 
 
 @triton.jit
-def _match_scan(ctx, nA, ML, key, MAXL: tl.constexpr, MIN: tl.constexpr, SH: tl.constexpr, BLOCK: tl.constexpr):
+def _match_scan(ctx, nA, rows, ML, key, INDEXED: tl.constexpr, MAXL: tl.constexpr, MIN: tl.constexpr, SH: tl.constexpr, BLOCK: tl.constexpr):
     i = tl.program_id(0)                                   # request row in the context mirror
-    n = tl.load(nA + i); row = ctx + i * ML
+    slot = tl.load(rows + i) if INDEXED else i
+    n = tl.load(nA + slot); row = ctx + slot * ML
     q = tl.program_id(1) * BLOCK + tl.arange(0, BLOCK)
     alive = q < (n - 1); L = tl.zeros((BLOCK,), tl.int32)  # longest backward suffix match at end-pos q
     for k in range(MAXL):
@@ -38,9 +39,11 @@ def _match_scan(ctx, nA, ML, key, MAXL: tl.constexpr, MIN: tl.constexpr, SH: tl.
 
 
 @triton.jit
-def _match_gather(ctx, nA, ML, key, cont, clen, SH: tl.constexpr, NSPEC: tl.constexpr,
+def _match_gather(ctx, nA, rows, ML, key, cont, clen, INDEXED: tl.constexpr, SH: tl.constexpr, NSPEC: tl.constexpr,
                   BLOCK: tl.constexpr):
-    i = tl.program_id(0); n = tl.load(nA + i); row = ctx + i * ML; k = tl.load(key + i)
+    i = tl.program_id(0)
+    slot = tl.load(rows + i) if INDEXED else i
+    n = tl.load(nA + slot); row = ctx + slot * ML; k = tl.load(key + i)
     start = (k & ((1 << SH) - 1)) + 1; has = k != 0
     t = tl.arange(0, BLOCK); in_bounds = t < NSPEC
     valid = in_bounds & has & (start + t < n)
@@ -50,16 +53,19 @@ def _match_gather(ctx, nA, ML, key, cont, clen, SH: tl.constexpr, NSPEC: tl.cons
     tl.store(clen + i, tl.sum(valid.to(tl.int32), 0))
 
 
-def match_gpu(ctx, n_arr, nspec, nmax):
+def match_gpu(ctx, n_arr, nspec, nmax, rows=None):
     """ctx [B, maxlen] int32 GPU context mirror; n_arr [B] int32 lengths; nmax = max length (from the
     host-side num_tokens_no_spec, so no D2H). Returns cont [B,nspec] i32 and cont_len [B], both on
-    device. Full-context, no window."""
-    B, ML = ctx.shape
+    device. Full-context, no window. With rows, use the resident request slots
+    in ctx and n_arr without copying the token history into batch order."""
+    indexed = rows is not None
+    B = rows.numel() if indexed else ctx.shape[0]
+    ML = ctx.stride(0)
     key = torch.zeros(B, dtype=torch.int32, device=ctx.device)
     cont = torch.empty(B * nspec, dtype=torch.int32, device=ctx.device)
     clen = torch.empty(B, dtype=torch.int32, device=ctx.device)
-    _match_scan[(B, triton.cdiv(nmax, 512))](ctx, n_arr, ML, key, _MAXL, _MIN, _SH, BLOCK=512)
-    _match_gather[(B,)](ctx, n_arr, ML, key, cont, clen, _SH, nspec,
+    _match_scan[(B, triton.cdiv(nmax, 512))](ctx, n_arr, rows, ML, key, indexed, _MAXL, _MIN, _SH, BLOCK=512)
+    _match_gather[(B,)](ctx, n_arr, rows, ML, key, cont, clen, indexed, _SH, nspec,
                         triton.next_power_of_2(nspec))
     return cont.view(B, nspec), clen
 
