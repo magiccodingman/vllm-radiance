@@ -22,13 +22,15 @@ def main():
     insert(runner, "        num_spec_tokens = self.execute_model_state.num_spec_tokens_to_schedule\n",
            "        draft_widths = None\n", "MTP: clear proposal widths")
     anchor = "            with use_workspace_lane(self._draft_workspace_lane):\n                draft_tokens = self.speculator.propose(\n"
-    insert(runner, anchor,
-           "            from radiance_draft import v2_policy_for\n"
-           "            policy = v2_policy_for(self, input_batch, num_spec_tokens)\n"
-           "            self.speculator._radiance_policy = policy\n",
-           "MTP: initialize proposal policy")
+    replace(runner, anchor,
+            "            from radiance_draft import v2_policy_scope\n"
+            "            with (\n"
+            "                use_workspace_lane(self._draft_workspace_lane),\n"
+            "                v2_policy_scope(self, input_batch, num_spec_tokens) as policy,\n"
+            "            ):\n"
+            "                draft_tokens = self.speculator.propose(\n",
+            "MTP: scope policy to this proposal")
     insert(runner, "            if self.pcp_manager is not None:\n                self.pcp_manager.sync_drafts(\n",
-           "            self.speculator._radiance_policy = None\n"
            "            if policy is not None and policy.step:\n"
            "                draft_widths = policy.finish(draft_tokens)\n"
            "                self._radiance_mtp_forwards = policy.step\n"

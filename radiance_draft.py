@@ -25,6 +25,7 @@ Env (the only knobs):
   RADIANCE_DRAFT_SCHEDULE  "bs:max_depth,..." batch-size MTP-forward ceiling (default 1:8,2:7,4:6,8:5,16:4)
   RADIANCE_DRAFT_TAU       confidence-product stop threshold (default 0.35)
 """
+from contextlib import contextmanager
 import os
 import sys
 import numpy as np
@@ -424,3 +425,15 @@ def v2_policy_for(runner, batch, num_steps):
             or speculator.use_local_argmax_reduction):
         return None
     return V2DraftPolicy(runner, batch, num_steps)
+
+
+
+@contextmanager
+def v2_policy_scope(runner, batch, num_steps):
+    """Make the policy visible to the sampler only during this proposal."""
+    policy = v2_policy_for(runner, batch, num_steps)
+    runner.speculator._radiance_policy = policy
+    try:
+        yield policy
+    finally:
+        runner.speculator._radiance_policy = None
