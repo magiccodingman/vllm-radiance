@@ -39,7 +39,7 @@ services:
       # R4D is the fastest qualified head-256/GQA6 backend on gfx1201. Set
       # ATTENTION_BACKEND=ROCM_AITER_UNIFIED_ATTN for the measured fallback.
       - --attention-backend=${ATTENTION_BACKEND:-R4D}
-      # Explicit APC remains enabled for shared prefixes. In vLLM 0.33 hybrid
+      # Explicit APC remains enabled for shared prefixes. In vLLM 0.34 hybrid
       # conv/recurrent cache state follows this flag; --mamba-cache-mode is ignored.
       # Page alignment and cache capacity remain model-dependent. Cold controls
       # should set PREFIX_CACHING_FLAG=--no-enable-prefix-caching.
