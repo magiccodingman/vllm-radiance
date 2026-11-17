@@ -23,7 +23,9 @@ The native vLLM extension imported successfully.
   on long BF16 width-7 convolution. The failures reproduced with the stock
   channel tile. Restoring the existing width-7 FP32 products correction in
   the convolution overlay brought the suites to 329 passes on the candidate
-  with the corrected source mounted. The image rebuild is pending.
+  with the corrected source mounted. The rebuilt image
+  `sha256:6731da0421e7e5701f4b22668a4a74ab220e6a194860b9e2dced45025681d28f`
+  also passed all 329 tests with the correction installed at build time.
 - Qwen 27B Quark MXFP4 with FP8 DFlash-7 and R4D attention on dual R9700s
   passed FP8 drafter ownership, streaming token parity, and a named tool call.
   The drafter proposed 149 tokens and the target accepted 80. This smoke test
