@@ -117,6 +117,44 @@ class DFlashFusedKVProjectionTests(unittest.TestCase):
                                        proj.effective[2:], rtol=0, atol=0)
         return first
 
+    def test_v034_post_load_refreshes_quantized_context_buffers(self):
+        installed = """
+def _reads_raw_weights(projs):
+    return not current_platform.is_cpu() and all(
+        isinstance(p.quant_method, UnquantizedLinearMethod) for p in projs
+    )
+
+class Buffers:
+    def _build_context_kv_buffers(self, layers_attn, has_bias):
+        kv_weight = kv_bias = None
+        if _reads_raw_weights([a.qkv_proj for a in layers_attn]):
+            kv_weight = torch.cat([a.qkv_proj.weight[a.q_size:] for a in layers_attn])
+        refill_derived(self, "_fused_kv_weight", kv_weight)
+        refill_derived(self, "_fused_kv_bias", kv_bias)
+
+""" + self.overlay["HELPER_OLD"] + "\n    pass\n"
+        patched = self.bake(installed)
+        scope = dict(self.scope, nn=torch.nn, UnquantizedLinearMethod=type(None),
+                     support_torch_compile=lambda cls: cls, refill_derived=setattr,
+                     current_platform=SimpleNamespace(is_cpu=lambda: False))
+        exec(patched, scope)
+        state = scope["Buffers"]()
+        state._context_kv_proj = None
+        layers = [attention("quant"), attention("packed")]
+        state._build_context_kv_buffers(layers, True)
+        expected = torch.cat([a.qkv_proj.effective[2:] for a in layers])
+        torch.testing.assert_close(state._fused_kv_weight, expected)
+        torch.testing.assert_close(
+            state._fused_kv_bias, torch.cat([a.qkv_proj.bias[2:] for a in layers]))
+        layers[0].qkv_proj.effective.mul_(2)
+        state._build_context_kv_buffers(layers, True)
+        torch.testing.assert_close(state._fused_kv_weight[:expected.shape[0] // 2],
+                                   layers[0].qkv_proj.effective[2:])
+        state._context_kv_proj = object()
+        state._build_context_kv_buffers(layers, True)
+        self.assertIsNone(state._fused_kv_weight)
+        self.assertIsNone(state._fused_kv_bias)
+
     def installed_fixture(self, helper, source, dense):
         return (
             helper + "\n    pass\n\nclass Buffers:\n"
