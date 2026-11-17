@@ -32,7 +32,12 @@ The native vLLM extension imported successfully.
   covers the tested configuration and carries no throughput claim.
 - All eight draft-confidence kernel checks passed on each R9700, including
   HIP graph replay and fully masked rows.
-- The V1 MTP loop installer was retired from image assembly. The V2 port of
-  Radiance's confidence and n-gram controller remains open.
+- The confidence and n-gram controller now runs on V2 for synchronous MTP
+  with one data and pipeline rank. It uses eager draft dispatch during controlled
+  proposals. The dual-R9700 Qwen Quark run passed streaming token parity and
+  named tool calls with the checkpoint's BF16 MTP override. Both ranks measured
+  two forwards and a two-token proposal under a two-forward ceiling. The target
+  accepted 58 of 123 draft tokens. The tested image for `5f83a33` was
+  `sha256:292fe06d838fe8b5970ba6f834a680baff582cbe4252eddda64326929cc984de`.
 
 The upgrade remains in draft while qualification is open.
